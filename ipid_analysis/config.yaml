@@ -1,0 +1,28 @@
+# General
+targets: "targets"
+protocol: "icmp"
+tcpDstPort: 80
+tcpSA: false
+recTraffic: false
+
+# Fast Probing
+fastProbeCount: 20
+fastProbeInterval: "10ms"
+
+# Slow Probing
+slowProbeCount: 20
+
+# Other
+IfaceA:
+  name: "eth0"
+  ip: "141.76.94.12"
+IfaceB:
+  name: "eth1"
+  ip: "141.76.94.15"
+maxRTT: "2s"
+maxSendRate: 25000
+tcpSrcPortOff: 22570
+udpSrcPortOff: 32570
+defaultIpId: 0
+detectMirror: false
+mirrorIpIds: [57322,1177,14224,619,621,623,625,627,629,631,633,635,637,18759,26956,48662,33892,13533,42622,30470]
