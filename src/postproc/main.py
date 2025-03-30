@@ -7,13 +7,12 @@ import geoip2
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from geoip2 import database
 from geoip2.errors import AddressNotFoundError
 from matplotlib import pyplot as plt
-from scipy.stats import chi2, chisquare
+from scipy.stats import chisquare
 from statsmodels.distributions import ECDF
 
-from utils import (
+from core.utils import (
     create_logger,
     get_percent_str,
     log_df,
@@ -732,9 +731,9 @@ class Plotter:
         plt.show()
 
 
-def main():
+def start(result: str):
     if len(sys.argv) != 2:
-        logger.error("Usage: python3 postprocessing.py <msm>")
+        logger.error("Usage: python3 main.py <msm>")
         sys.exit(1)
 
     msm_path = get_msm(sys.argv[1])
@@ -834,7 +833,3 @@ def main():
     # ip = "188.191.146.220"
     # plotter.ipid_by_time([ip])
     # plotter.ipid_by_time([ip], show_bounds=False)
-
-
-if __name__ == "__main__":
-    main()

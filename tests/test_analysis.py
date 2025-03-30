@@ -1,28 +1,23 @@
-import csv
 import unittest
 from enum import Enum
 
 import numpy as np
-import seaborn as sns
 from matplotlib import pyplot as plt
 from sklearn.metrics import accuracy_score, precision_score, recall_score, classification_report, confusion_matrix, \
     ConfusionMatrixDisplay
 
 import pandas as pd
 
-from ipid_analysis.postprocessing import (
+from src.postproc import (
     get_pattern,
     is_mirror,
     has_pattern,
     IPIDParts,
-    pattern_distribution_df,
 )
-from ipid_analysis.utils import (
-    headline_str,
+from core.utils import (
     MAX_IPID,
     MIRROR_IPIDS,
     create_logger,
-    log_df,
     PROBE_COUNT, DETECT_MIRROR,
 )
 

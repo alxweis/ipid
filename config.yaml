@@ -1,0 +1,33 @@
+# General
+targets: "latest" # Use e.g. "tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
+protocol: "icmp"
+recTraffic: false
+
+# TCP
+tcpDstPort: 80
+tcpReqFlags: "S"
+tcpSrcPortOffset: 22570
+
+# UDP
+udpDstPort: 53
+udpSrcPortOffset: 32570
+
+# B2B Probing
+b2bProbeCount: 20
+b2bProbeInterval: "10ms"
+
+# SEQ Probing
+seqProbeCount: 20
+
+# Other
+IfaceA:
+  name: "eth0"
+  ip: "141.76.94.12"
+IfaceB:
+  name: "eth1"
+  ip: "141.76.94.15"
+maxRTT: "2s"
+maxSendRate: 25000
+defaultSendIpIds: [0] # Sends [0,0,0,...]
+detectReflectedIpIds: false
+reflectionSendIpIds: [3717,3718,3719] # Sequence must not match with any known pattern

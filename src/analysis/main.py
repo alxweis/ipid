@@ -12,7 +12,7 @@ import seaborn as sns
 from matplotlib.lines import Line2D
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
-from postprocessing import IPIDParts
+from postproc import IPIDParts
 
 
 def class_distribution(eval_file, os_filter):
@@ -413,10 +413,10 @@ def fast_slow_comparison(fast_msm, slow_msm):
         plot_ipid_distribution(data_local_ge1, local_ge1_max_inc, "local_ge1", mode)
 
     fast_eval = pd.read_csv(get_csv_file(fast_msm, "eval"))
-    fast_probing = pd.read_csv(get_csv_file(fast_msm, "probing"))
+    fast_probing = pd.read_csv(get_csv_file(fast_msm, "../probing"))
 
     slow_eval = pd.read_csv(get_csv_file(slow_msm, "eval"))
-    slow_probing = pd.read_csv(get_csv_file(slow_msm, "probing"))
+    slow_probing = pd.read_csv(get_csv_file(slow_msm, "../probing"))
 
     slow_eval = slow_eval[slow_eval['IP'].isin(fast_eval['IP'])]
     fast_eval = fast_eval[fast_eval['IP'].isin(slow_eval['IP'])]
@@ -459,7 +459,7 @@ def class_distribution_per_hop(proto, hops_msm, endpoints_msm):
     endpoints_eval_df = pd.read_csv(get_csv_file(endpoints_msm, "eval"))
 
     # Lade die Hops-to-IPs-Daten
-    with open("create_ripe_hitlist/hop_to_ips.json", "r") as f:
+    with open("hitlist/create_ripe_hitlist/hop_to_ips.json", "r") as f:
         hop_to_ips = {k: set(v) for k, v in json.load(f).items()}
 
     # Entferne Hop Nummer 255

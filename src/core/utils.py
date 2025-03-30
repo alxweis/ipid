@@ -12,7 +12,7 @@ def load_config(config_file):
 
 
 ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-config = load_config(os.path.join(ROOT_PATH, "ipid_analysis/config.yaml"))
+config = load_config(os.path.join(ROOT_PATH, "src/config.yaml"))
 FAST_PROBE_COUNT = config['fastProbeCount']
 SLOW_PROBE_COUNT = config['slowProbeCount']
 TCP_DST_PORT = config['tcpDstPort']
@@ -48,7 +48,7 @@ def get_msm(msm_path):
 
 
 def get_ip_info(database_name):
-    return os.path.join(ROOT_PATH, "ip_info", database_name)
+    return os.path.join(ROOT_PATH, "maxmind", database_name)
 
 
 def log_df(logger, df, sub_headline=""):

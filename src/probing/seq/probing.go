@@ -1,4 +1,4 @@
-package probing_fast
+package seq
 
 import (
 	"encoding/csv"
@@ -25,22 +25,22 @@ import (
 )
 
 type Config struct {
-	Targets       string         `yaml:"targets"`
-	Protocol      string         `yaml:"protocol"`
-	TcpDstPort    layers.TCPPort `yaml:"tcpDstPort"`
-	TcpSA         bool           `yaml:"tcpSA"`
-	RecTraffic    bool           `yaml:"recTraffic"`
-	ProbeCount    uint16         `yaml:"fastProbeCount"`
-	ProbeInterval time.Duration  `yaml:"fastProbeInterval"`
-	IfaceA        Iface          `yaml:"IfaceA"`
-	IfaceB        Iface          `yaml:"IfaceB"`
-	MaxRTT        time.Duration  `yaml:"maxRTT"`
-	MaxSendRate   int            `yaml:"maxSendRate"`
-	TcpSrcPortOff uint32         `yaml:"tcpSrcPortOff"`
-	UdpSrcPortOff uint16         `yaml:"udpSrcPortOff"`
-	DefaultIpId   uint16         `yaml:"defaultIpId"`
-	DetectMirror  bool           `yaml:"detectMirror"`
-	MirrorIpIds   []uint16       `yaml:"mirrorIpIds"`
+	Targets              string         `yaml:"targets"`
+	Protocol             string         `yaml:"protocol"`
+	RecTraffic           bool           `yaml:"recTraffic"`
+	TcpDstPort           layers.TCPPort `yaml:"tcpDstPort"`
+	TcpReqFlags          string         `yaml:"tcpReqFlags"`
+	TcpSrcPortOffset     uint32         `yaml:"tcpSrcPortOffset"`
+	UdpDstPort           layers.UDPPort `yaml:"udpDstPort"`
+	UdpSrcPortOffset     uint16         `yaml:"udpSrcPortOffset"`
+	ProbeCount           uint16         `yaml:"seqProbeCount"`
+	IfaceA               Iface          `yaml:"IfaceA"`
+	IfaceB               Iface          `yaml:"IfaceB"`
+	MaxRTT               time.Duration  `yaml:"maxRTT"`
+	MaxSendRate          int            `yaml:"maxSendRate"`
+	DefaultSendIpIds     []uint16       `yaml:"defaultSendIpIds"`
+	DetectReflectedIpIds bool           `yaml:"detectReflectedIpIds"`
+	ReflectionSendIpIds  []uint16       `yaml:"reflectionSendIpIds"`
 }
 
 type Iface struct {
@@ -126,8 +126,9 @@ func Main() {
 	senderA := setupSender(config.IfaceA)
 	senderB := setupSender(config.IfaceB)
 
-	outputDir, msmId := createOutputDir()
+	outputDir, outputId := createOutputDir()
 	outputFile := createOutputFile(outputDir)
+
 	if config.RecTraffic {
 		startRecording(outputDir)
 	}
@@ -136,7 +137,7 @@ func Main() {
 	go setupReceiver(config.IfaceA, proto)
 	go setupReceiver(config.IfaceB, proto)
 
-	sendRatePerTarget := float64(time.Second / config.ProbeInterval)
+	sendRatePerTarget := float64(time.Second / (200 * time.Millisecond))
 	batchSize := int(float64(config.MaxSendRate) / sendRatePerTarget)
 	batchCount := int(math.Ceil(float64(len(targets)) / float64(batchSize)))
 	runTime := time.Duration(0)
@@ -147,7 +148,7 @@ func Main() {
 		}
 		batch := targets[i:end]
 		batchIndex := int(math.Ceil(float64(end) / float64(batchSize)))
-		log.Printf("Processing Batch (%d/%d): len=%d start=%d end=%d ", batchIndex, batchCount, len(batch), i, end)
+		log.Printf("Processing Batch (%d/%d): len=%d start=%d end=%d", batchIndex, batchCount, len(batch), i, end)
 
 		startProbing := time.Now()
 		probingWg.Add(len(batch))
@@ -156,6 +157,7 @@ func Main() {
 		}
 		probingWg.Wait()
 		runTime += time.Since(startProbing)
+		log.Printf("Finished Batch (%d/%d): requests=%d replies=%d valid_replies_portion=%d runtime=%v send_rate=%d send_rate_load=%d", batchIndex, batchCount, 0, 0, time.Since(startProbing), 0, 0)
 
 		//printResults()
 		saveResults(outputFile)
@@ -163,7 +165,7 @@ func Main() {
 		results.Clear()
 		recvChans.Clear()
 	}
-	log.Printf("Finished all batches: runtime=%v", runTime)
+	log.Printf("Finished all Batches: runtime=%v", runTime)
 
 	close(stopReceiving)
 	recvWg.Wait()
@@ -172,8 +174,8 @@ func Main() {
 		stopRecording()
 	}
 
-	log.Println("Results saved to", outputFile.Name())
-	log.Println("Command for Postprocessing: sudo python3 postprocessing.py", msmId)
+	log.Println("Results Directory:", outputDir)
+	log.Println("Results ID:", outputId)
 	err := outputFile.Close()
 	if err != nil {
 		panic(err)
@@ -196,7 +198,7 @@ func getProbe(target string, key uint16) (*Probe, bool) {
 
 	probe, ok := probes.Load(key)
 	if !ok {
-		log.Printf("Probe not created")
+		//log.Printf("Probe not created") // Commented out because it gets called frequently due to many incomplete target probes
 		return nil, false
 	}
 
@@ -220,13 +222,24 @@ func probeTarget(senderA Sender, senderB Sender, rawIPLayers []layers.IPv4, targ
 	dstIP := net.ParseIP(target).To4()
 	payloads := buildPackets(rawIPLayers, dstIP, proto)
 
-	createRecvChan(target)
+	attempts := 3
 
-	sendPackets(senderA, senderB, payloads, target)
-	if foundAll, _ := receivePackets(target, proto); foundAll {
-		// All replies found
-	} else {
-		// Not all replies found
+restartProbing:
+	createRecvChan(target)
+	recvCh, _ := getRecvChan(target)
+	recvCounter := 0
+	for seq := uint16(0); seq < config.ProbeCount; seq++ {
+		sendPacket(senderA, senderB, payloads[seq], target, seq)
+		if receivePacket(recvCh, target, seq, proto) {
+			recvCounter++
+		} else {
+			if attempts == 0 {
+				break
+			} else {
+				attempts--
+				goto restartProbing
+			}
+		}
 	}
 
 	deleteRecvChan(target)
@@ -320,21 +333,17 @@ func (l2 *Sender) Send(payload []byte) {
 	}
 }
 
-func sendPackets(senderA Sender, senderB Sender, payloads [][]byte, target string) {
-	for seq := uint16(0); seq < config.ProbeCount; seq++ {
-		time.Sleep(config.ProbeInterval)
-
-		var sender Sender
-		if seq%2 == 0 {
-			sender = senderA
-		} else {
-			sender = senderB
-		}
-
-		sender.Send(payloads[seq])
-		createProbe(target, seq, time.Now().UnixNano())
-		//log.Printf("Request: target=%s seq=%d\n", target, seq)
+func sendPacket(senderA Sender, senderB Sender, payload []byte, target string, seq uint16) {
+	var sender Sender
+	if seq%2 == 0 {
+		sender = senderA
+	} else {
+		sender = senderB
 	}
+
+	sender.Send(payload)
+	createProbe(target, seq, time.Now().UnixNano())
+	//log.Printf("Request: target=%s seq=%d\n", target, seq)
 }
 
 // Receive
@@ -380,19 +389,14 @@ func setupReceiver(iface Iface, proto Protocol) {
 	}
 }
 
-func receivePackets(target string, proto Protocol) (bool, int) {
-	recvCounter := 0
-	repliesFound := make(chan struct{})
+func receivePacket(recvCh chan ReplyInfo, target string, seq uint16, proto Protocol) bool {
 	timeout := time.After(config.MaxRTT)
-	ch, _ := getRecvChan(target)
 	for {
 		select {
-		case replyInfo := <-ch:
-			go processPacket(recvCounter, repliesFound, replyInfo, target, proto)
-		case <-repliesFound:
-			return true, recvCounter
+		case replyInfo := <-recvCh:
+			return processPacket(replyInfo, target, seq, proto)
 		case <-timeout:
-			return false, recvCounter
+			return false
 		}
 	}
 }
@@ -426,49 +430,51 @@ func addToRecvChan(replyInfo ReplyInfo) {
 }
 
 // Process
-func processPacket(recvCounter int, repliesFound chan struct{}, replyInfo ReplyInfo, expSrc string, proto Protocol) {
+func processPacket(replyInfo ReplyInfo, expSrc string, expSeq uint16, proto Protocol) bool {
 	ok, src, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
-		return
+		return false
 	}
 
 	if src != expSrc {
 		log.Println("Src is not expected")
-		return
+		return false
 	}
 
 	ok, seq := proto.CheckLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("Protocol layer invalid")
-		return
+		return false
+	}
+
+	if seq != expSeq {
+		log.Printf("Seq is not expected (seq=%d exp=%d)", seq, expSeq)
+		return false
 	}
 
 	probe, ok := getProbe(src, seq)
 	if !ok {
 		log.Println("No entry for probe")
-		return
+		return false
 	}
 
 	if probe.IsValid {
 		log.Println("Already received reply")
-		return
+		return false
 	}
 
 	rtt := time.Duration(replyInfo.Time - probe.SentTime)
 	if rtt >= config.MaxRTT {
 		log.Printf("RTT too high (rtt=%v, src=%s)", rtt, src)
-		return
+		return false
 	}
 
 	probe.ReceivedTime = replyInfo.Time
 	probe.IpId = ipId
 	probe.IsValid = true
 	//log.Printf("Reply: src=%s seq=%d rtt=%v ipid=%d\n", src, seq, rtt, ipId)
-	recvCounter++
-	if recvCounter == int(config.ProbeCount) {
-		close(repliesFound)
-	}
+	return true
 }
 
 // Output
@@ -496,21 +502,13 @@ func printResults() {
 }
 
 func createOutputDir() (string, string) {
-	protoInfo := config.Protocol
-	switch protoInfo {
-	case "tcp":
-		protoInfo += fmt.Sprintf("_%d", config.TcpDstPort)
-	case "udp":
-		protoInfo += "_53"
-	}
-
-	timeStamp := time.Now().Format("020106_150405")
-	msmId := fmt.Sprintf("fast/%s/%s/%s", config.Targets, protoInfo, timeStamp)
-	dir := fmt.Sprintf("../measurements/%s", msmId)
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+	timeStamp := time.Now().Format(time.DateTime)
+	outputId := fmt.Sprintf("seq/%s/%s", config.Targets, timeStamp)
+	outputDir := fmt.Sprintf("results/%s", outputId)
+	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
 		panic(err)
 	}
-	return dir, msmId
+	return outputDir, outputId
 }
 
 func createOutputFile(outputDir string) *os.File {
@@ -521,7 +519,10 @@ func createOutputFile(outputDir string) *os.File {
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
-	writer.Write([]string{"IP", "OS", "IPID-Sequence", "SentTime-Sequence", "ReceivedTime-Sequence", "IsValid-Sequence"})
+	err = writer.Write([]string{"IP", "OS", "IPID Sequence", "SentTime Sequence", "ReceivedTime Sequence", "IsValid Sequence"})
+	if err != nil {
+		panic(err)
+	}
 
 	return file
 }
@@ -583,8 +584,40 @@ func loadConfig() {
 	srcBIp = net.ParseIP(config.IfaceB.Ip).To4()
 }
 
-func loadTargets(fileName string) []string {
-	file, openErr := os.Open("../targets/" + fileName + ".csv")
+func getDirectories(dir string) []string {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		panic(err)
+	}
+
+	var dirList []string
+	for _, file := range files {
+		if file.IsDir() {
+			dirList = append(dirList, file.Name())
+		}
+	}
+	return dirList
+}
+
+func loadTargets(targetsPath string) []string {
+	if targetsPath == "latest" {
+		var configDir string
+		switch config.Protocol {
+		case "icmp":
+			configDir = fmt.Sprintf("%s", config.Protocol)
+		case "tcp":
+			configDir = fmt.Sprintf("%s/%s", config.Protocol, config.TcpDstPort)
+		case "udp":
+			configDir = fmt.Sprintf("%s/%s", config.Protocol, config.UdpDstPort)
+		default:
+			panic("Unknown protocol")
+		}
+		allDirs := getDirectories(configDir)
+		latestDir := allDirs[len(allDirs)-1]
+		targetsPath = fmt.Sprintf("%s/%s", configDir, latestDir)
+	}
+
+	file, openErr := os.Open("targets/" + targetsPath + "/targets.csv")
 	if openErr != nil {
 		panic(openErr)
 	}
@@ -668,9 +701,9 @@ func createRawIPLayers(proto Protocol) []layers.IPv4 {
 			srcIP = srcBIp
 		}
 
-		id := config.DefaultIpId
-		if config.DetectMirror {
-			id = config.MirrorIpIds[int(seq)%len(config.MirrorIpIds)]
+		id := config.DefaultSendIpIds[int(seq)%len(config.DefaultSendIpIds)]
+		if config.DetectReflectedIpIds {
+			id = config.ReflectionSendIpIds[int(seq)%len(config.ReflectionSendIpIds)]
 		}
 
 		ipLayer := layers.IPv4{
@@ -736,11 +769,12 @@ func createTCPLayers(ipLayers []layers.IPv4) [][]byte {
 	for seq := uint32(0); seq < uint32(config.ProbeCount); seq++ {
 		ipLayer := ipLayers[seq]
 		pLayer := layers.TCP{
-			SrcPort: layers.TCPPort(seq + config.TcpSrcPortOff),
+			SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
 			DstPort: config.TcpDstPort,
 			Seq:     seq,
-			SYN:     true,
-			ACK:     config.TcpSA,
+			SYN:     strings.Contains(config.TcpReqFlags, "S"),
+			ACK:     strings.Contains(config.TcpReqFlags, "A"),
+			RST:     strings.Contains(config.TcpReqFlags, "R"),
 		}
 		err := pLayer.SetNetworkLayerForChecksum(&ipLayer)
 		if err != nil {
@@ -772,8 +806,8 @@ func createUDPLayers(ipLayers []layers.IPv4) [][]byte {
 	for seq := uint16(0); seq < config.ProbeCount; seq++ {
 		ipLayer := ipLayers[seq]
 		pLayer := layers.UDP{
-			SrcPort: layers.UDPPort(seq + config.UdpSrcPortOff),
-			DstPort: 53,
+			SrcPort: layers.UDPPort(seq + config.UdpSrcPortOffset),
+			DstPort: config.UdpDstPort,
 		}
 		err := pLayer.SetNetworkLayerForChecksum(&ipLayer)
 		if err != nil {

@@ -1,7 +1,7 @@
 import os
 import random
 
-from utils import PROBE_COUNT, MAX_IPID, MAX_INC
+from core.utils import PROBE_COUNT, MAX_IPID, MAX_INC
 
 
 def create_samples_file(dir_name, file_name, class_fn, noise_fn, line_count):

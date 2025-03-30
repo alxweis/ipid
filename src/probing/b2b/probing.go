@@ -1,4 +1,4 @@
-package probing_slow
+package b2b
 
 import (
 	"encoding/csv"
@@ -30,7 +30,8 @@ type Config struct {
 	TcpDstPort    layers.TCPPort `yaml:"tcpDstPort"`
 	TcpSA         bool           `yaml:"tcpSA"`
 	RecTraffic    bool           `yaml:"recTraffic"`
-	ProbeCount    uint16         `yaml:"slowProbeCount"`
+	ProbeCount    uint16         `yaml:"fastProbeCount"`
+	ProbeInterval time.Duration  `yaml:"fastProbeInterval"`
 	IfaceA        Iface          `yaml:"IfaceA"`
 	IfaceB        Iface          `yaml:"IfaceB"`
 	MaxRTT        time.Duration  `yaml:"maxRTT"`
@@ -127,7 +128,6 @@ func Main() {
 
 	outputDir, msmId := createOutputDir()
 	outputFile := createOutputFile(outputDir)
-
 	if config.RecTraffic {
 		startRecording(outputDir)
 	}
@@ -136,7 +136,7 @@ func Main() {
 	go setupReceiver(config.IfaceA, proto)
 	go setupReceiver(config.IfaceB, proto)
 
-	sendRatePerTarget := float64(time.Second / (200 * time.Millisecond))
+	sendRatePerTarget := float64(time.Second / config.ProbeInterval)
 	batchSize := int(float64(config.MaxSendRate) / sendRatePerTarget)
 	batchCount := int(math.Ceil(float64(len(targets)) / float64(batchSize)))
 	runTime := time.Duration(0)
@@ -173,7 +173,7 @@ func Main() {
 	}
 
 	log.Println("Results saved to", outputFile.Name())
-	log.Println("Command for Postprocessing: sudo python3 postprocessing.py", msmId)
+	log.Println("Command for Postprocessing: sudo python3 main.py", msmId)
 	err := outputFile.Close()
 	if err != nil {
 		panic(err)
@@ -196,7 +196,7 @@ func getProbe(target string, key uint16) (*Probe, bool) {
 
 	probe, ok := probes.Load(key)
 	if !ok {
-		//log.Printf("Probe not created") // Commented out because it gets called frequently due to many incomplete target probes
+		log.Printf("Probe not created")
 		return nil, false
 	}
 
@@ -220,24 +220,13 @@ func probeTarget(senderA Sender, senderB Sender, rawIPLayers []layers.IPv4, targ
 	dstIP := net.ParseIP(target).To4()
 	payloads := buildPackets(rawIPLayers, dstIP, proto)
 
-	attempts := 3
-
-restartProbing:
 	createRecvChan(target)
-	recvCh, _ := getRecvChan(target)
-	recvCounter := 0
-	for seq := uint16(0); seq < config.ProbeCount; seq++ {
-		sendPacket(senderA, senderB, payloads[seq], target, seq)
-		if receivePacket(recvCh, target, seq, proto) {
-			recvCounter++
-		} else {
-			if attempts == 0 {
-				break
-			} else {
-				attempts--
-				goto restartProbing
-			}
-		}
+
+	sendPackets(senderA, senderB, payloads, target)
+	if foundAll, _ := receivePackets(target, proto); foundAll {
+		// All replies found
+	} else {
+		// Not all replies found
 	}
 
 	deleteRecvChan(target)
@@ -331,17 +320,21 @@ func (l2 *Sender) Send(payload []byte) {
 	}
 }
 
-func sendPacket(senderA Sender, senderB Sender, payload []byte, target string, seq uint16) {
-	var sender Sender
-	if seq%2 == 0 {
-		sender = senderA
-	} else {
-		sender = senderB
-	}
+func sendPackets(senderA Sender, senderB Sender, payloads [][]byte, target string) {
+	for seq := uint16(0); seq < config.ProbeCount; seq++ {
+		time.Sleep(config.ProbeInterval)
 
-	sender.Send(payload)
-	createProbe(target, seq, time.Now().UnixNano())
-	//log.Printf("Request: target=%s seq=%d\n", target, seq)
+		var sender Sender
+		if seq%2 == 0 {
+			sender = senderA
+		} else {
+			sender = senderB
+		}
+
+		sender.Send(payloads[seq])
+		createProbe(target, seq, time.Now().UnixNano())
+		//log.Printf("Request: target=%s seq=%d\n", target, seq)
+	}
 }
 
 // Receive
@@ -387,14 +380,19 @@ func setupReceiver(iface Iface, proto Protocol) {
 	}
 }
 
-func receivePacket(recvCh chan ReplyInfo, target string, seq uint16, proto Protocol) bool {
+func receivePackets(target string, proto Protocol) (bool, int) {
+	recvCounter := 0
+	repliesFound := make(chan struct{})
 	timeout := time.After(config.MaxRTT)
+	ch, _ := getRecvChan(target)
 	for {
 		select {
-		case replyInfo := <-recvCh:
-			return processPacket(replyInfo, target, seq, proto)
+		case replyInfo := <-ch:
+			go processPacket(recvCounter, repliesFound, replyInfo, target, proto)
+		case <-repliesFound:
+			return true, recvCounter
 		case <-timeout:
-			return false
+			return false, recvCounter
 		}
 	}
 }
@@ -428,51 +426,49 @@ func addToRecvChan(replyInfo ReplyInfo) {
 }
 
 // Process
-func processPacket(replyInfo ReplyInfo, expSrc string, expSeq uint16, proto Protocol) bool {
+func processPacket(recvCounter int, repliesFound chan struct{}, replyInfo ReplyInfo, expSrc string, proto Protocol) {
 	ok, src, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
-		return false
+		return
 	}
 
 	if src != expSrc {
 		log.Println("Src is not expected")
-		return false
+		return
 	}
 
 	ok, seq := proto.CheckLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("Protocol layer invalid")
-		return false
-	}
-
-	if seq != expSeq {
-		log.Printf("Seq is not expected (seq=%d exp=%d)", seq, expSeq)
-		return false
+		return
 	}
 
 	probe, ok := getProbe(src, seq)
 	if !ok {
 		log.Println("No entry for probe")
-		return false
+		return
 	}
 
 	if probe.IsValid {
 		log.Println("Already received reply")
-		return false
+		return
 	}
 
 	rtt := time.Duration(replyInfo.Time - probe.SentTime)
 	if rtt >= config.MaxRTT {
 		log.Printf("RTT too high (rtt=%v, src=%s)", rtt, src)
-		return false
+		return
 	}
 
 	probe.ReceivedTime = replyInfo.Time
 	probe.IpId = ipId
 	probe.IsValid = true
 	//log.Printf("Reply: src=%s seq=%d rtt=%v ipid=%d\n", src, seq, rtt, ipId)
-	return true
+	recvCounter++
+	if recvCounter == int(config.ProbeCount) {
+		close(repliesFound)
+	}
 }
 
 // Output
@@ -509,7 +505,7 @@ func createOutputDir() (string, string) {
 	}
 
 	timeStamp := time.Now().Format("020106_150405")
-	msmId := fmt.Sprintf("slow/%s/%s/%s", config.Targets, protoInfo, timeStamp)
+	msmId := fmt.Sprintf("fast/%s/%s/%s", config.Targets, protoInfo, timeStamp)
 	dir := fmt.Sprintf("../measurements/%s", msmId)
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		panic(err)
