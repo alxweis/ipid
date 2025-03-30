@@ -1,0 +1,4 @@
+from postproc import main
+
+if __name__ == "__main__":
+    main.start("result_dir")
