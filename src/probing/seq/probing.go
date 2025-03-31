@@ -172,14 +172,14 @@ func Main() {
 		}
 		batchRunTime := time.Since(startProbing)
 		batchSentRate := 0.0
-		if len(batch) > 0 {
-			batchSentRate = float64(batchRequestCount) / float64(len(batch))
+		if batchRunTime.Seconds() > 0 {
+			batchSentRate = float64(batchRequestCount) / batchRunTime.Seconds()
 		}
 		batchSendRateLoad := 0.0
 		if config.MaxSendRate > 0 {
 			batchSendRateLoad = batchSentRate / float64(config.MaxSendRate)
 		}
-		log.Printf("Finished Batch (%d/%d): sent_reqs=%d recvd_replies=%d probed_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchRequestCount, batchReplyCount, batchProbedPortion*100, batchRunTime, batchSendRateLoad*100)
+		log.Printf("Finished Batch (%d/%d): probed_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchProbedPortion*100, batchRunTime, batchSendRateLoad*100)
 		batchSize = adjustBatchSize(batchSendRateLoad, batchSize)
 		runTime += batchRunTime
 
@@ -495,7 +495,7 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expSeq uint16, proto Prot
 	}
 
 	if seq != expSeq {
-		log.Printf("Seq is not expected (seq=%d exp=%d)", seq, expSeq)
+		//log.Printf("Seq is not expected (seq=%d exp=%d)", seq, expSeq)
 		return false
 	}
 
