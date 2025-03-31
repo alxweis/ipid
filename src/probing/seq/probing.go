@@ -17,6 +17,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -502,7 +504,7 @@ func printResults() {
 }
 
 func createOutputDir() (string, string) {
-	timeStamp := time.Now().Format(time.DateTime)
+	timeStamp := time.Now().Format("2006-01-02_15-04-05")
 	outputId := fmt.Sprintf("seq/%s/%s", config.Targets, timeStamp)
 	outputDir := fmt.Sprintf("results/%s", outputId)
 	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
@@ -584,10 +586,10 @@ func loadConfig() {
 	srcBIp = net.ParseIP(config.IfaceB.Ip).To4()
 }
 
-func getDirectories(dir string) []string {
+func getSortedDirectories(dir string) ([]string, error) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	var dirList []string
@@ -596,28 +598,43 @@ func getDirectories(dir string) []string {
 			dirList = append(dirList, file.Name())
 		}
 	}
-	return dirList
+
+	sort.Slice(dirList, func(i, j int) bool {
+		return dirList[i] < dirList[j]
+	})
+
+	return dirList, nil
 }
 
 func loadTargets(targetsPath string) []string {
 	if targetsPath == "latest" {
-		var configDir string
+		configDir := filepath.Join("targets", config.Protocol)
+
 		switch config.Protocol {
 		case "icmp":
-			configDir = fmt.Sprintf("%s", config.Protocol)
+			// No subdirectories needed for ICMP
 		case "tcp":
-			configDir = fmt.Sprintf("%s/%s", config.Protocol, config.TcpDstPort)
+			configDir = filepath.Join(configDir, strconv.Itoa(int(config.TcpDstPort)))
 		case "udp":
-			configDir = fmt.Sprintf("%s/%s", config.Protocol, config.UdpDstPort)
+			configDir = filepath.Join(configDir, strconv.Itoa(int(config.UdpDstPort)))
 		default:
-			panic("Unknown protocol")
+			panic("unknown protocol: " + config.Protocol)
 		}
-		allDirs := getDirectories(configDir)
+
+		allDirs, err := getSortedDirectories(configDir)
+		if err != nil {
+			panic("failed to read directories: " + err.Error())
+		}
+		if len(allDirs) == 0 {
+			panic("no directories found in: " + configDir)
+		}
+
 		latestDir := allDirs[len(allDirs)-1]
-		targetsPath = fmt.Sprintf("%s/%s", configDir, latestDir)
+
+		targetsPath = filepath.Join(configDir, latestDir)
 	}
 
-	file, openErr := os.Open("targets/" + targetsPath + "/targets.csv")
+	file, openErr := os.Open(filepath.Join(targetsPath, "targets.csv"))
 	if openErr != nil {
 		panic(openErr)
 	}

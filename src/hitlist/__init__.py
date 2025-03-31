@@ -12,7 +12,7 @@ DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
 def create_output_dir(protocol: str, port: str):
-    timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     dir_path = f"targets/{protocol}"
     if protocol in ["tcp", "udp"]:
         dir_path += f"/{port}"
@@ -34,10 +34,10 @@ def convert_metric(value: str) -> str:
     return str(int(num) * factor)
 
 
-def create(protocol: str, port: str, max_count: str):
+def create(protocol: str, port: str, max_ips: str):
     output_dir = create_output_dir(protocol, port)
     if protocol == "icmp":
-        subprocess.run(["bash", os.path.join(DIR_PATH, "icmp/scan.sh"), output_dir, convert_metric(max_count)])
+        subprocess.run(["bash", os.path.join(DIR_PATH, "icmp/scan.sh"), output_dir, convert_metric(max_ips)])
     elif protocol == "tcp":
         pass
     elif protocol == "udp":

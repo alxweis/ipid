@@ -8,7 +8,7 @@ if __name__ == "__main__":
     filename = os.path.basename(__file__)
 
     if len(sys.argv) != 2:
-        print(f"Usage: python f{filename} [{'|'.join(MODES)}]")
+        print(f"Usage: python {filename} [{'|'.join(MODES)}]")
         sys.exit(1)
 
     mode = sys.argv[1]
