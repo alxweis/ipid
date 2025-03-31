@@ -114,10 +114,10 @@ var (
 )
 
 var (
-	recordingProcesses   []*exec.Cmd
-	batchReplyCount      int
-	batchRequestCount    int
-	batchValidReplyCount int
+	recordingProcesses []*exec.Cmd
+	batchReplyCount    int
+	batchRequestCount  int
+	batchProbedCount   int
 )
 
 func Main() {
@@ -144,9 +144,9 @@ func Main() {
 
 	sendRatePerTarget := float64(time.Second / (200 * time.Millisecond))
 	batchSize := int(float64(config.MaxSendRate) / sendRatePerTarget)
-	batchCount := int(math.Ceil(float64(len(targets)) / float64(batchSize)))
 	runTime := time.Duration(0)
 	for i := 0; i < len(targets); i += batchSize {
+		batchCount := int(math.Ceil(float64(len(targets)) / float64(batchSize)))
 		end := i + batchSize
 		if end > len(targets) {
 			end = len(targets)
@@ -157,7 +157,7 @@ func Main() {
 
 		batchRequestCount = 0
 		batchReplyCount = 0
-		batchValidReplyCount = 0
+		batchProbedCount = 0
 		startProbing := time.Now()
 
 		probingWg.Add(len(batch))
@@ -166,20 +166,21 @@ func Main() {
 		}
 		probingWg.Wait()
 
-		batchValidReplyPortion := 0.0
-		if batchReplyCount > 0 {
-			batchValidReplyPortion = float64(batchValidReplyCount) / float64(batchReplyCount)
+		batchProbedPortion := 0.0
+		if len(batch) > 0 {
+			batchProbedPortion = float64(batchProbedCount) / float64(len(batch))
 		}
 		batchRunTime := time.Since(startProbing)
 		batchSentRate := 0.0
-		if batchCount > 0 {
-			batchSentRate = float64(batchRequestCount) / float64(batchCount)
+		if len(batch) > 0 {
+			batchSentRate = float64(batchRequestCount) / float64(len(batch))
 		}
 		batchSentRateLoad := 0.0
 		if config.MaxSendRate > 0 {
 			batchSentRateLoad = batchSentRate / float64(config.MaxSendRate)
 		}
-		log.Printf("Finished Batch (%d/%d): valid_reply_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchValidReplyPortion*100, batchRunTime, batchSentRateLoad*100)
+		log.Printf("Finished Batch (%d/%d): probed_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchProbedPortion*100, batchRunTime, batchSentRateLoad*100)
+		batchSize = adjustBatchSize(batchSentRateLoad, batchSize)
 		runTime += batchRunTime
 
 		//printResults()
@@ -203,6 +204,25 @@ func Main() {
 	if err != nil {
 		panic(err)
 	}
+}
+
+func adjustBatchSize(batchSentRateLoad float64, currentBatchSize int) int {
+	fmt.Printf("Batch Sent Rate Load: %.2f\n", batchSentRateLoad)
+
+	newBatchSize := currentBatchSize
+
+	if batchSentRateLoad < 0.8 {
+		newBatchSize = int(float64(currentBatchSize) * 1.2)
+		fmt.Printf("Increasing batch size to: %d\n", newBatchSize)
+	} else if batchSentRateLoad > 1.2 {
+		newBatchSize = int(float64(currentBatchSize) * 0.8)
+		fmt.Printf("Decreasing batch size to: %d\n", newBatchSize)
+	} else {
+		fmt.Printf("Keeping batch size: %d\n", newBatchSize)
+	}
+
+	newBatchSize = max(newBatchSize, 1)
+	return newBatchSize
 }
 
 // Probe
@@ -266,6 +286,7 @@ restartProbing:
 	}
 
 	deleteRecvChan(target)
+	batchProbedCount++
 	//log.Printf("Finished probing target=%s received=%d/%d", target, recvCounter, config.ProbeCount)
 }
 
@@ -498,7 +519,6 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expSeq uint16, proto Prot
 	probe.ReceivedTime = replyInfo.Time
 	probe.IpId = ipId
 	probe.IsValid = true
-	batchValidReplyCount++
 	//log.Printf("Reply: src=%s seq=%d rtt=%v ipid=%d\n", src, seq, rtt, ipId)
 	return true
 }
