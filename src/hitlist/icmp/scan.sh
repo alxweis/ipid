@@ -13,7 +13,7 @@ BANDWIDTH=100M
 MAX_TARGETS=1000000
 
 cleanup() {
-    awk 'NR==1 {print "IP"} NR>1 {!seen[$0]++}' "$OUTPUT_FILE" > temp && mv temp "$OUTPUT_FILE"
+    awk '!seen[$0]++' "$OUTPUT_FILE" > temp && mv temp "$OUTPUT_FILE"
     echo "Scan completed. Results saved in $OUTPUT_FILE."
 }
 
@@ -22,7 +22,7 @@ trap cleanup SIGINT SIGTERM
 # Ensure ZMap is installed
 if ! command -v zmap &> /dev/null
 then
-    echo "ZMap not found. Please install it with: sudo apt install zmap"
+    echo "ZMap not found. Please install it with: apt install zmap"
     exit 1
 fi
 
@@ -34,7 +34,7 @@ echo "Scanning..."
 zmap -M icmp_echoscan -o "$OUTPUT_FILE" -B $BANDWIDTH -f "saddr" --max-targets=$MAX_TARGETS
 
 if [ $? -ne 0 ]; then
-    echo "[!] Zmap scan failed."
+    echo "Zmap scan failed."
     cleanup
     exit 1
 fi

@@ -11,7 +11,7 @@ DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
 def create_output_dir(protocol, port):
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     dir_path = f"targets/{protocol}"
     if protocol in ["tcp", "udp"]:
         dir_path += f"/{port}"
