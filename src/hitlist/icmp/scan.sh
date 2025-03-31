@@ -13,7 +13,8 @@ BANDWIDTH=100M
 MAX_TARGETS=1000000
 
 cleanup() {
-    awk 'NR==1 {print "IP"} NR>1 {!seen[$0]++}' "$OUTPUT_FILE" > temp && mv temp "$OUTPUT_FILE"
+    sed -i '1s/^saddr/IP/' "$OUTPUT_FILE"
+    awk '!seen[$0]++' "$OUTPUT_FILE" > temp && mv temp "$OUTPUT_FILE"
     echo "Scan completed. Results saved in $OUTPUT_FILE."
 }
 
