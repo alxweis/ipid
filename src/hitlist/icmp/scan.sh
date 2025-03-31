@@ -1,19 +1,19 @@
 #!/bin/bash
 
-# Ensure OUTPUT_DIR is provided
-if [ -z "$1" ]; then
-    echo "Usage: $0 <OUTPUT_DIR>"
+# Ensure OUTPUT_DIR and MAX_TARGETS are provided
+if [ -z "$1" ] || [ -z "$2" ]; then
+    echo "Usage: $0 <OUTPUT_DIR> <MAX_TARGETS>"
     exit 1
 fi
 
 # Configuration
 OUTPUT_DIR=$1
+MAX_TARGETS=$2
 OUTPUT_FILE="${OUTPUT_DIR}/targets.csv"
 BANDWIDTH=100M
 
 cleanup() {
     sed -i '1s/^saddr/IP/' "$OUTPUT_FILE"
-    awk '!seen[$0]++' "$OUTPUT_FILE" > temp && mv temp "$OUTPUT_FILE"
     echo "Scan completed. Results saved in $OUTPUT_FILE."
 }
 
@@ -31,10 +31,10 @@ mkdir -p "$OUTPUT_DIR"
 
 # Start ICMP scan and save only responding IPs
 echo "Scanning..."
-zmap -M icmp_echoscan -o "$OUTPUT_FILE" -B $BANDWIDTH -f "saddr"
+zmap -M icmp_echoscan -o "$OUTPUT_FILE" -B $BANDWIDTH -f "saddr" --max-targets=$MAX_TARGETS
 
 if [ $? -ne 0 ]; then
-    echo "Zmap scan failed."
+    echo "ZMap scan failed."
     cleanup
     exit 1
 fi
