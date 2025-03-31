@@ -175,12 +175,12 @@ func Main() {
 		if len(batch) > 0 {
 			batchSentRate = float64(batchRequestCount) / float64(len(batch))
 		}
-		batchSentRateLoad := 0.0
+		batchSendRateLoad := 0.0
 		if config.MaxSendRate > 0 {
-			batchSentRateLoad = batchSentRate / float64(config.MaxSendRate)
+			batchSendRateLoad = batchSentRate / float64(config.MaxSendRate)
 		}
-		log.Printf("Finished Batch (%d/%d): probed_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchProbedPortion*100, batchRunTime, batchSentRateLoad*100)
-		batchSize = adjustBatchSize(batchSentRateLoad, batchSize)
+		log.Printf("Finished Batch (%d/%d): sent_reqs=%d recvd_replies=%d probed_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchRequestCount, batchReplyCount, batchProbedPortion*100, batchRunTime, batchSendRateLoad*100)
+		batchSize = adjustBatchSize(batchSendRateLoad, batchSize)
 		runTime += batchRunTime
 
 		//printResults()
