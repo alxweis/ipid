@@ -180,7 +180,7 @@ func Main() {
 			batchSendRateLoad = batchSentRate / float64(config.MaxSendRate)
 		}
 		log.Printf("Finished Batch (%d/%d): probed_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchProbedPortion*100, batchRunTime, batchSendRateLoad*100)
-		batchSize = adjustBatchSize(batchSendRateLoad, batchSize)
+		batchSize = adjustBatchSize(batchSendRateLoad, batchSize, config.MaxSendRate)
 		runTime += batchRunTime
 
 		//printResults()
@@ -206,22 +206,39 @@ func Main() {
 	}
 }
 
-func adjustBatchSize(batchSentRateLoad float64, currentBatchSize int) int {
+func adjustBatchSize(batchSentRateLoad float64, currentBatchSize int, maxBatchSize int) int {
 	fmt.Printf("Batch Sent Rate Load: %.2f\n", batchSentRateLoad)
+
+	// Determine the adjustment factor (how strongly we want to adjust).
+	// The further batchSentRateLoad is from 1.0, the larger the factor.
+	// The factor is squared to achieve exponential adjustment.
+	deviation := math.Abs(batchSentRateLoad - 1.0) // Absolute deviation from 1.0
+
+	// Scaling of the deviation.  Depending on the range of your batchSentRateLoad,
+	// you may need to experiment with different values.
+	scalingFactor := 2.0 // Experiment with 1.0, 2.0, 3.0 etc.
+
+	adjustmentFactor := math.Pow(1+(deviation*scalingFactor), 2) // Exponential scaling
 
 	newBatchSize := currentBatchSize
 
-	if batchSentRateLoad < 0.8 {
-		newBatchSize = int(float64(currentBatchSize) * 1.2)
-		fmt.Printf("Increasing batch size to: %d\n", newBatchSize)
-	} else if batchSentRateLoad > 1.2 {
-		newBatchSize = int(float64(currentBatchSize) * 0.8)
-		fmt.Printf("Decreasing batch size to: %d\n", newBatchSize)
+	if batchSentRateLoad < 1.0 {
+		// Increase exponentially
+		newBatchSize = int(float64(currentBatchSize) * adjustmentFactor)
+		fmt.Printf("Increasing batch size to: %d, Adjustment Factor: %.2f\n", newBatchSize, adjustmentFactor)
+	} else if batchSentRateLoad > 1.0 {
+		// Decrease exponentially
+		newBatchSize = int(float64(currentBatchSize) / adjustmentFactor) // Division for decrease
+		fmt.Printf("Decreasing batch size to: %d, Adjustment Factor: %.2f\n", newBatchSize, adjustmentFactor)
 	} else {
+		// Keep it stable
 		fmt.Printf("Keeping batch size: %d\n", newBatchSize)
 	}
 
-	newBatchSize = max(newBatchSize, 1)
+	// Ensure newBatchsize does not become greater than maxBatchSize
+	newBatchSize = min(newBatchSize, maxBatchSize)
+
+	newBatchSize = max(newBatchSize, 1) // Ensure minimum size
 	return newBatchSize
 }
 
