@@ -16,13 +16,13 @@ from core.utils import (
     create_logger,
     get_percent_str,
     log_df,
-    DETECT_MIRROR,
-    MIRROR_IPIDS,
+    DETECT_REFLECTED_IPIDS,
+    REFLECTION_SEND_IPIDS,
     MAX_INC,
-    MAX_IPID, get_ip_info, get_msm
+    MAX_IPID
 )
 
-logger = create_logger(__name__)
+logger = create_logger(__file__)
 
 
 # region Pattern Recognition
@@ -56,11 +56,11 @@ def is_uniform(seq, alpha):
 
 
 def is_mirror(parts):
-    if not DETECT_MIRROR:
+    if not DETECT_REFLECTED_IPIDS:
         return False
 
     for i, ipid in enumerate(parts.s):
-        if ipid != MIRROR_IPIDS[i % len(MIRROR_IPIDS)]:
+        if ipid != REFLECTION_SEND_IPIDS[i % len(REFLECTION_SEND_IPIDS)]:
             return False
     return True
 
@@ -731,18 +731,15 @@ class Plotter:
         plt.show()
 
 
-def start(result: str):
-    if len(sys.argv) != 2:
-        logger.error("Usage: python3 main.py <msm>")
-        sys.exit(1)
-
-    msm_path = get_msm(sys.argv[1])
-    probing_file = f"{msm_path}/probing.csv"
+def start(result_id: str):
+    result_dir = f"results/{result_id}"
+    probing_file = f"{result_dir }/probing.csv"
 
     logger.info(f"Start Post-Processing")
-    proc_probes_df = pd.read_csv(probing_file)
 
     # region Load Probing Data
+    proc_probes_df = pd.read_csv(probing_file)
+
     logger.info(f"Probe data loading...")
     start_time = time.time()
 
@@ -751,10 +748,10 @@ def start(result: str):
 
     ips = proc_probes_df["IP"]
     oses = proc_probes_df["OS"]
-    ipid_seqs = proc_probes_df["IPID-Sequence"].apply(eval)
-    sent_time_seqs = proc_probes_df["SentTime-Sequence"].apply(eval_timestamps)
-    recv_time_seqs = proc_probes_df["ReceivedTime-Sequence"].apply(eval_timestamps)
-    isvalid_seqs = proc_probes_df["IsValid-Sequence"].apply(eval)
+    ipid_seqs = proc_probes_df["IPID Sequence"].apply(eval)
+    sent_time_seqs = proc_probes_df["SentTime Sequence"].apply(eval_timestamps)
+    recv_time_seqs = proc_probes_df["ReceivedTime Sequence"].apply(eval_timestamps)
+    isvalid_seqs = proc_probes_df["IsValid Sequence"].apply(eval)
 
     valid = isvalid_seqs.apply(lambda lst: all(x == 1 for x in lst))
     invalid = ~valid
@@ -789,20 +786,20 @@ def start(result: str):
     # endregion
 
     # region Dataframes
-    quantity_df(total_requested_ips, total_valid_ips, total_invalid_ips, log=True, save_dir=msm_path)
+    quantity_df(total_requested_ips, total_valid_ips, total_invalid_ips, log=True, save_dir=result_dir)
     ip_to_pattern, pattern_to_ips, _ = ipid_classification(
-        ip_to_ipids, total_valid_ips, log=True, save_dir=msm_path
+        ip_to_ipids, total_valid_ips, log=True, save_dir=result_dir
     )
-    eval_df = evaluation_df(ip_to_os, ip_to_pattern, ip_to_rtts, log=True, save_dir=msm_path)
-    continent_stats_df(eval_df, log=True, save_dir=msm_path)
-    asn_stats_df(eval_df, log=True, save_dir=msm_path)
+    eval_df = evaluation_df(ip_to_os, ip_to_pattern, ip_to_rtts, log=True, save_dir=result_dir)
+    continent_stats_df(eval_df, log=True, save_dir=result_dir)
+    asn_stats_df(eval_df, log=True, save_dir=result_dir)
     # endregion
 
-    if os.name == 'posix':
-        return
-
-    plotter = Plotter(ip_to_ipids, pattern_to_ips, ip_to_sent_times, ip_to_recv_times, ip_to_rtts, eval_df,
-                      total_valid_ips)
+    # if os.name == 'posix':
+    #     return
+    #
+    # plotter = Plotter(ip_to_ipids, pattern_to_ips, ip_to_sent_times, ip_to_recv_times, ip_to_rtts, eval_df,
+    #                   total_valid_ips)
 
     # plotter.pattern_distribution()
     # plotter.distribution_local_global_inc()

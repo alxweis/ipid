@@ -16,9 +16,9 @@ from src.postproc import (
 )
 from core.utils import (
     MAX_IPID,
-    MIRROR_IPIDS,
+    REFLECTION_SEND_IPIDS,
     create_logger,
-    PROBE_COUNT, DETECT_MIRROR,
+    PROBE_COUNT, DETECT_REFLECTED_IPIDS,
 )
 
 logger = create_logger(__name__)
@@ -152,12 +152,12 @@ class TestClassifier(unittest.TestCase):
             self.fail("")
 
     def test_mirror_probe(self):
-        mirror_probe = MIRROR_IPIDS[:PROBE_COUNT]
+        mirror_probe = REFLECTION_SEND_IPIDS[:PROBE_COUNT]
         parts = IPIDParts(mirror_probe)
         # Check if probe itself has pattern
         self.assertTrue(not has_pattern(parts))
         # Check if probe is recognized as mirror
-        if DETECT_MIRROR:
+        if DETECT_REFLECTED_IPIDS:
             self.assertTrue(is_mirror(parts))
             self.assert_probe(mirror_probe, on_all_patterns=True, correct_patterns={Patterns.MIRROR.value})
         else:
@@ -237,7 +237,7 @@ class TestClassifier(unittest.TestCase):
         )
 
     def test_odd_pattern(self):
-        case_1 = tuple(x + 1 for x in MIRROR_IPIDS)
+        case_1 = tuple(x + 1 for x in REFLECTION_SEND_IPIDS)
         self.assert_probe(case_1, on_all_patterns=False, correct_patterns={Patterns.ODD.value})
 
         self.assert_sample_probes(

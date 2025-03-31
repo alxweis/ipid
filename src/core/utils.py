@@ -4,21 +4,17 @@ import os
 
 import yaml
 
-
 # region Constants
 def load_config(config_file):
     with open(config_file, 'r') as file:
         return yaml.safe_load(file)
 
-
-ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-config = load_config(os.path.join(ROOT_PATH, "src/config.yaml"))
-FAST_PROBE_COUNT = config['fastProbeCount']
-SLOW_PROBE_COUNT = config['slowProbeCount']
+config = load_config("config.yaml")
+B2B_PROBE_COUNT = config['b2bProbeCount']
+SEQ_PROBE_COUNT = config['seqProbeCount']
 TCP_DST_PORT = config['tcpDstPort']
-DETECT_MIRROR = config['detectMirror']
-MIRROR_IPIDS = tuple(config['mirrorIpIds'])
-PROBE_COUNT = 20
+DETECT_REFLECTED_IPIDS = config['detectReflectedIpIds']
+REFLECTION_SEND_IPIDS = tuple(config['reflectionSendIpIds'])
 
 MAX_IPID = 65535  # 2^16 - 1
 
@@ -29,26 +25,41 @@ MAX_INC = math.ceil((MAX_IPID + 1) / MIN_STEPS_BEFORE_WRAPAROUND) - 1
 # endregion
 
 
-def create_logger(name):
-    logger = logging.getLogger(name)
+def create_logger(file_path):
+    def get_logger_name(path):
+        if "src" in path.split(os.sep):
+            return (
+                path.split("src", 1)[-1]
+                .lstrip(os.sep)
+                .replace(os.sep, ".")
+                .replace(".py", "")
+            )
+        else:
+            return os.path.splitext(os.path.basename(path))[0]
+
+    name = get_logger_name(file_path)
+
+    logger = logging.getLogger(name.upper())
     logger.setLevel(logging.DEBUG)
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
 
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    stream_handler.setFormatter(formatter)
+    # file_handler = logging.FileHandler("app.log")
+    # file_handler.setLevel(logging.DEBUG)
 
-    logger.addHandler(stream_handler)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    console_handler.setFormatter(formatter)
+    # file_handler.setFormatter(formatter)
+
+    logger.addHandler(console_handler)
+    # logger.addHandler(file_handler)
+
     return logger
-
-
-def get_msm(msm_path):
-    return os.path.join(ROOT_PATH, "measurements", msm_path)
-
-
-def get_ip_info(database_name):
-    return os.path.join(ROOT_PATH, "maxmind", database_name)
 
 
 def log_df(logger, df, sub_headline=""):

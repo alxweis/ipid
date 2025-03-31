@@ -180,7 +180,7 @@ func Main() {
 			batchSendRateLoad = batchSentRate / float64(config.MaxSendRate)
 		}
 		log.Printf("Finished Batch (%d/%d): probed_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchProbedPortion*100, batchRunTime, batchSendRateLoad*100)
-		batchSize = adjustBatchSize(batchSendRateLoad, batchSize, config.MaxSendRate)
+		batchSize = adjustBatchSize(batchSendRateLoad, batchSize, 15000)
 		runTime += batchRunTime
 
 		//printResults()
