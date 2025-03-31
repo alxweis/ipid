@@ -1,14 +1,14 @@
 #!/bin/bash
 
-# Ensure OUTPUT_DIR and MAX_TARGETS are provided
+# Ensure OUTPUT_DIR and MAX_IPS are provided
 if [ -z "$1" ] || [ -z "$2" ]; then
-    echo "Usage: $0 <OUTPUT_DIR> <MAX_TARGETS>"
+    echo "Usage: $0 <OUTPUT_DIR> <MAX_IPS>"
     exit 1
 fi
 
 # Configuration
 OUTPUT_DIR=$1
-MAX_TARGETS=$2
+MAX_IPS=$2
 OUTPUT_FILE="${OUTPUT_DIR}/targets.csv"
 BANDWIDTH=100M
 
@@ -31,7 +31,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # Start ICMP scan and save only responding IPs
 echo "Scanning..."
-zmap -M icmp_echoscan -o "$OUTPUT_FILE" -B $BANDWIDTH -f "saddr" --max-targets=$MAX_TARGETS
+zmap -M icmp_echoscan -o "$OUTPUT_FILE" -B $BANDWIDTH -f "saddr" -N $MAX_IPS
 
 if [ $? -ne 0 ]; then
     echo "ZMap scan failed."
