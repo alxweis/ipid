@@ -22,12 +22,12 @@ def create_output_dir(protocol, port):
 
 
 def convert_metric(value):
-    if isinstance(value, int) and value > 0:  # If it's already a positive integer, return it
+    if isinstance(value, int) and value >= 0:  # Allow 0 as a valid input
         return value
 
     match = re.fullmatch(r'(\d+)([KkMm]?)', value)
     if not match:
-        raise ValueError("Only positive integers with an optional K or M suffix are allowed")
+        raise ValueError("Only positive integers (including 0) with an optional K or M suffix are allowed")
 
     num, suffix = match.groups()
     factor = {'K': 1_000, 'M': 1_000_000}.get(suffix.upper(), 1)
