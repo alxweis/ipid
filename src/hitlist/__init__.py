@@ -21,8 +21,8 @@ def create_output_dir(protocol: str, port: str):
     return dir_path
 
 
-def convert_metric(value: str):
-    if isinstance(value, int) and value >= 0:  # Allow 0 as a valid input
+def convert_metric(value: str) -> str:
+    if value.isdigit() and int(value) >= 0:  # Check if the input is a positive integer string, including "0"
         return value
 
     match = re.fullmatch(r'(\d+)([KkMm]?)', value)
@@ -31,7 +31,7 @@ def convert_metric(value: str):
 
     num, suffix = match.groups()
     factor = {'K': 1_000, 'M': 1_000_000}.get(suffix.upper(), 1)
-    return int(num) * factor
+    return str(int(num) * factor)
 
 
 def create(protocol: str, port: str, max_count: str):
