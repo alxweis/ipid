@@ -10,6 +10,14 @@ fi
 OUTPUT_DIR=$1
 OUTPUT_FILE="${OUTPUT_DIR}/targets.csv"
 BANDWIDTH=100M
+MAX_TARGETS=1000000
+
+cleanup() {
+    awk 'NR==1 {print "IP"} NR>1 {!seen[$0]++}' "$OUTPUT_FILE" > temp && mv temp "$OUTPUT_FILE"
+    echo "Scan completed. Results saved in $OUTPUT_FILE."
+}
+
+trap cleanup SIGINT SIGTERM
 
 # Ensure ZMap is installed
 if ! command -v zmap &> /dev/null
@@ -22,8 +30,13 @@ fi
 mkdir -p "$OUTPUT_DIR"
 
 # Start ICMP scan and save only responding IPs
-echo "IP" > "$OUTPUT_FILE"
 echo "Scanning..."
-zmap -M icmp_echoscan -o "$OUTPUT_FILE" -B $BANDWIDTH -f "saddr" --quiet
+zmap -M icmp_echoscan -o "$OUTPUT_FILE" -B $BANDWIDTH -f "saddr" --max-targets=$MAX_TARGETS
 
-echo "Scan completed. Results saved in $OUTPUT_FILE."
+if [ $? -ne 0 ]; then
+    echo "[!] Zmap scan failed."
+    cleanup
+    exit 1
+fi
+
+cleanup
