@@ -11,7 +11,7 @@ import re
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
-def create_output_dir(protocol, port):
+def create_output_dir(protocol: str, port: str):
     timestamp = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     dir_path = f"targets/{protocol}"
     if protocol in ["tcp", "udp"]:
@@ -21,7 +21,7 @@ def create_output_dir(protocol, port):
     return dir_path
 
 
-def convert_metric(value):
+def convert_metric(value: str):
     if isinstance(value, int) and value >= 0:  # Allow 0 as a valid input
         return value
 
@@ -34,7 +34,7 @@ def convert_metric(value):
     return int(num) * factor
 
 
-def create(protocol, port, max_count):
+def create(protocol: str, port: str, max_count: str):
     output_dir = create_output_dir(protocol, port)
     if protocol == "icmp":
         subprocess.run(["bash", os.path.join(DIR_PATH, "icmp/scan.sh"), output_dir, convert_metric(max_count)])

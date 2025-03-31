@@ -9,33 +9,28 @@ def print_usage(filename):
 
 
 def parse_args():
+    filename = os.path.basename(__file__)
+
     if len(sys.argv) < 2:
-        print_usage(os.path.basename(__file__))
+        print_usage(filename)
 
     protocol = sys.argv[1]
     port = ""
-    max_count = 0
+    max_count = "0"
 
     if protocol == "icmp":
         if len(sys.argv) == 3:
-            max_count = parse_max_count(sys.argv[2])
+            max_count = sys.argv[2]
     elif protocol in ["tcp", "udp"]:
         if len(sys.argv) < 3:
-            print_usage(os.path.basename(__file__))
+            print_usage(filename)
         port = sys.argv[2]
         if len(sys.argv) == 4:
-            max_count = parse_max_count(sys.argv[3])
+            max_count = sys.argv[3]
     else:
-        print_usage(os.path.basename(__file__))
+        print_usage(filename)
 
     return protocol, port, max_count
-
-
-def parse_max_count(arg):
-    try:
-        return int(arg)
-    except ValueError:
-        print_usage(os.path.basename(__file__))
 
 
 def main():
