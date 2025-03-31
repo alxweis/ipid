@@ -114,7 +114,10 @@ var (
 )
 
 var (
-	recordingProcesses []*exec.Cmd
+	recordingProcesses   []*exec.Cmd
+	batchReplyCount      int
+	batchRequestCount    int
+	batchValidReplyCount int
 )
 
 func Main() {
@@ -152,14 +155,32 @@ func Main() {
 		batchIndex := int(math.Ceil(float64(end) / float64(batchSize)))
 		log.Printf("Processing Batch (%d/%d): len=%d start=%d end=%d", batchIndex, batchCount, len(batch), i, end)
 
+		batchRequestCount = 0
+		batchReplyCount = 0
+		batchValidReplyCount = 0
 		startProbing := time.Now()
+
 		probingWg.Add(len(batch))
 		for _, target := range batch {
 			go probeTarget(senderA, senderB, rawIPLayers, target, proto)
 		}
 		probingWg.Wait()
-		runTime += time.Since(startProbing)
-		log.Printf("Finished Batch (%d/%d): requests=%d replies=%d valid_replies_portion=%d runtime=%v send_rate=%d send_rate_load=%d", batchIndex, batchCount, 0, 0, time.Since(startProbing), 0, 0)
+
+		batchValidReplyPortion := 0.0
+		if batchReplyCount > 0 {
+			batchValidReplyPortion = float64(batchValidReplyCount) / float64(batchReplyCount)
+		}
+		batchRunTime := time.Since(startProbing)
+		batchSentRate := 0.0
+		if batchCount > 0 {
+			batchSentRate = float64(batchRequestCount) / float64(batchCount)
+		}
+		batchSentRateLoad := 0.0
+		if config.MaxSendRate > 0 {
+			batchSentRateLoad = batchSentRate / float64(config.MaxSendRate)
+		}
+		log.Printf("Finished Batch (%d/%d): valid_reply_portion=%.2f runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchValidReplyPortion, batchRunTime, batchSentRateLoad*100)
+		runTime += batchRunTime
 
 		//printResults()
 		saveResults(outputFile)
@@ -344,6 +365,7 @@ func sendPacket(senderA Sender, senderB Sender, payload []byte, target string, s
 	}
 
 	sender.Send(payload)
+	batchRequestCount++
 	createProbe(target, seq, time.Now().UnixNano())
 	//log.Printf("Request: target=%s seq=%d\n", target, seq)
 }
@@ -396,6 +418,7 @@ func receivePacket(recvCh chan ReplyInfo, target string, seq uint16, proto Proto
 	for {
 		select {
 		case replyInfo := <-recvCh:
+			batchReplyCount++
 			return processPacket(replyInfo, target, seq, proto)
 		case <-timeout:
 			return false
@@ -475,6 +498,7 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expSeq uint16, proto Prot
 	probe.ReceivedTime = replyInfo.Time
 	probe.IpId = ipId
 	probe.IsValid = true
+	batchValidReplyCount++
 	//log.Printf("Reply: src=%s seq=%d rtt=%v ipid=%d\n", src, seq, rtt, ipId)
 	return true
 }
