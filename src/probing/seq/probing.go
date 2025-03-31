@@ -179,7 +179,7 @@ func Main() {
 		if config.MaxSendRate > 0 {
 			batchSentRateLoad = batchSentRate / float64(config.MaxSendRate)
 		}
-		log.Printf("Finished Batch (%d/%d): valid_reply_portion=%.2f runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchValidReplyPortion, batchRunTime, batchSentRateLoad*100)
+		log.Printf("Finished Batch (%d/%d): valid_reply_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchValidReplyPortion*100, batchRunTime, batchSentRateLoad*100)
 		runTime += batchRunTime
 
 		//printResults()
