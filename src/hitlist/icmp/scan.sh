@@ -10,7 +10,6 @@ fi
 OUTPUT_DIR=$1
 OUTPUT_FILE="${OUTPUT_DIR}/targets.csv"
 BANDWIDTH=100M
-MAX_TARGETS=1000000
 
 cleanup() {
     sed -i '1s/^saddr/IP/' "$OUTPUT_FILE"
@@ -32,7 +31,7 @@ mkdir -p "$OUTPUT_DIR"
 
 # Start ICMP scan and save only responding IPs
 echo "Scanning..."
-zmap -M icmp_echoscan -o "$OUTPUT_FILE" -B $BANDWIDTH -f "saddr" --max-targets=$MAX_TARGETS
+zmap -M icmp_echoscan -o "$OUTPUT_FILE" -B $BANDWIDTH -f "saddr"
 
 if [ $? -ne 0 ]; then
     echo "Zmap scan failed."
