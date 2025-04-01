@@ -27,7 +27,7 @@ import (
 )
 
 type Config struct {
-	Targets              string         `yaml:"targets"`
+	Targets              string         `yaml:"targets"` // TODO Change yaml to python format
 	Protocol             string         `yaml:"protocol"`
 	RecTraffic           bool           `yaml:"recTraffic"`
 	TcpDstPort           layers.TCPPort `yaml:"tcpDstPort"`
@@ -36,8 +36,8 @@ type Config struct {
 	UdpDstPort           layers.UDPPort `yaml:"udpDstPort"`
 	UdpSrcPortOffset     uint16         `yaml:"udpSrcPortOffset"`
 	ProbeCount           uint16         `yaml:"seqProbeCount"`
-	IfaceA               Iface          `yaml:"IfaceA"`
-	IfaceB               Iface          `yaml:"IfaceB"`
+	IfaceA               Iface          `yaml:"ifaceA"`
+	IfaceB               Iface          `yaml:"ifaceB"`
 	MaxRTT               time.Duration  `yaml:"maxRTT"`
 	MaxSendRate          int            `yaml:"maxSendRate"`
 	DefaultSendIpIds     []uint16       `yaml:"defaultSendIpIds"`
@@ -101,19 +101,15 @@ var (
 )
 
 var (
-	config        Config
-	srcAIp        net.IP
-	srcBIp        net.IP
-	probingWg     sync.WaitGroup
-	recvWg        sync.WaitGroup
-	stopReceiving = make(chan struct{})
-	results       sync.Map
-	recvChans     sync.Map
-	opts          = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
-	targetsToOs   = make(map[string]string)
-)
-
-var (
+	config             Config
+	srcAIp             net.IP
+	srcBIp             net.IP
+	probingWg          sync.WaitGroup
+	recvWg             sync.WaitGroup
+	stopReceiving      = make(chan struct{})
+	results            sync.Map
+	recvChans          sync.Map
+	opts               = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
 	recordingProcesses []*exec.Cmd
 	batchReplyCount    int
 	batchRequestCount  int
@@ -123,7 +119,10 @@ var (
 func Main() {
 	loadConfig()
 
-	targets := loadTargets(config.Targets)
+	basePath := getBasePath()
+	outputDir, outputId := createOutputDir(basePath)
+
+	targets := loadTargets(config.Targets, basePath, outputDir)
 
 	proto := loadProtocol(config.Protocol)
 	rawIPLayers := createRawIPLayers(proto)
@@ -131,7 +130,6 @@ func Main() {
 	senderA := setupSender(config.IfaceA)
 	senderB := setupSender(config.IfaceB)
 
-	outputDir, outputId := createOutputDir()
 	outputFile := createOutputFile(outputDir)
 
 	if config.RecTraffic {
@@ -142,7 +140,7 @@ func Main() {
 	go setupReceiver(config.IfaceA, proto)
 	go setupReceiver(config.IfaceB, proto)
 
-	sendRatePerTarget := float64(time.Second / (200 * time.Millisecond))
+	sendRatePerTarget := float64(time.Second / (200 * time.Millisecond)) // TODO better implementation
 	batchSize := int(float64(config.MaxSendRate) / sendRatePerTarget)
 	runTime := time.Duration(0)
 	for i := 0; i < len(targets); i += batchSize {
@@ -403,8 +401,8 @@ func sendPacket(senderA Sender, senderB Sender, payload []byte, target string, s
 	}
 
 	sender.Send(payload)
-	batchRequestCount++
 	createProbe(target, seq, time.Now().UnixNano())
+	batchRequestCount++
 	//log.Printf("Request: target=%s seq=%d\n", target, seq)
 }
 
@@ -564,10 +562,10 @@ func printResults() {
 	})
 }
 
-func createOutputDir() (string, string) {
+func createOutputDir(basePath string) (string, string) {
 	timeStamp := time.Now().Format("2006-01-02_15-04-05")
-	outputId := fmt.Sprintf("seq/%s/%s", config.Targets, timeStamp)
-	outputDir := fmt.Sprintf("results/%s", outputId)
+	outputId := filepath.Join("seq", basePath, timeStamp)
+	outputDir := filepath.Join("results", outputId) // TODO Use constants for "results" or "targets"
 	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
 		panic(err)
 	}
@@ -575,14 +573,14 @@ func createOutputDir() (string, string) {
 }
 
 func createOutputFile(outputDir string) *os.File {
-	file, err := os.Create(fmt.Sprintf("%s/probing.csv", outputDir))
+	file, err := os.Create(filepath.Join(outputDir, "probing.csv"))
 	if err != nil {
 		panic(err)
 	}
 
 	writer := csv.NewWriter(file)
 	defer writer.Flush()
-	err = writer.Write([]string{"IP", "OS", "IPID Sequence", "SentTime Sequence", "ReceivedTime Sequence", "IsValid Sequence"})
+	err = writer.Write([]string{"IP", "IPID Sequence", "SentTime Sequence", "ReceivedTime Sequence", "IsValid Sequence"})
 	if err != nil {
 		panic(err)
 	}
@@ -596,7 +594,6 @@ func saveResults(outputFile *os.File) {
 
 	results.Range(func(targetKey, resultMap interface{}) bool {
 		target := targetKey.(string)
-		operatingSystem := targetsToOs[target]
 		var ipIds, sentTimes, receivedTimes, isValids []string
 		for seq := uint16(0); seq < config.ProbeCount; seq++ {
 			probe, ok := getProbe(target, seq)
@@ -612,7 +609,7 @@ func saveResults(outputFile *os.File) {
 		}
 
 		err := writer.Write([]string{
-			target, operatingSystem,
+			target,
 			fmt.Sprintf("(%s)", joinWithComma(ipIds)),
 			fmt.Sprintf("(%s)", joinWithComma(sentTimes)),
 			fmt.Sprintf("(%s)", joinWithComma(receivedTimes)),
@@ -667,39 +664,51 @@ func getSortedDirectories(dir string) ([]string, error) {
 	return dirList, nil
 }
 
-func loadTargets(targetsPath string) []string {
-	if targetsPath == "latest" {
-		configDir := filepath.Join("targets", config.Protocol)
+func getBasePath() string {
+	switch config.Protocol {
+	case "icmp":
+		return filepath.Join(config.Protocol)
+	case "tcp":
+		return filepath.Join(config.Protocol, strconv.Itoa(int(config.TcpDstPort)))
+	case "udp":
+		return filepath.Join(config.Protocol, strconv.Itoa(int(config.UdpDstPort)))
+	default:
+		panic("unknown protocol: " + config.Protocol)
+	}
+}
 
-		switch config.Protocol {
-		case "icmp":
-			// No subdirectories needed for ICMP
-		case "tcp":
-			configDir = filepath.Join(configDir, strconv.Itoa(int(config.TcpDstPort)))
-		case "udp":
-			configDir = filepath.Join(configDir, strconv.Itoa(int(config.UdpDstPort)))
-		default:
-			panic("unknown protocol: " + config.Protocol)
-		}
-
-		allDirs, err := getSortedDirectories(configDir)
+func loadTargets(targetsBasePath string, basePath string, outputDir string) []string {
+	if targetsBasePath == "latest" {
+		dir := filepath.Join("targets", basePath)
+		allDirs, err := getSortedDirectories(dir)
 		if err != nil {
 			panic("failed to read directories: " + err.Error())
 		}
 		if len(allDirs) == 0 {
-			panic("no directories found in: " + configDir)
+			panic("no directories found in: " + dir)
 		}
-
 		latestDir := allDirs[len(allDirs)-1]
 
-		targetsPath = filepath.Join(configDir, latestDir)
+		targetsBasePath = filepath.Join(basePath, latestDir)
 	}
 
-	file, openErr := os.Open(filepath.Join(targetsPath, "targets.csv"))
+	sourceTargetsPath := filepath.Join("targets", targetsBasePath, "targets.csv")
+	linkTargetsPath := filepath.Join(outputDir, "targets.csv")
+	linkErr := os.Symlink(sourceTargetsPath, linkTargetsPath)
+	if linkErr != nil {
+		panic(linkErr)
+	}
+
+	file, openErr := os.Open(linkTargetsPath)
 	if openErr != nil {
 		panic(openErr)
 	}
-	defer file.Close()
+	defer func(file *os.File) {
+		err := file.Close()
+		if err != nil {
+
+		}
+	}(file)
 
 	reader := csv.NewReader(file)
 
@@ -714,19 +723,12 @@ func loadTargets(targetsPath string) []string {
 	}
 
 	var targets []string
-	targetsToOs = make(map[string]string)
 	for _, record := range records {
 		ip := net.ParseIP(record[0])
 		if ip == nil || ip.To4() == nil {
 			continue
 		}
-
 		targets = append(targets, record[0])
-		if len(record) > 1 {
-			targetsToOs[record[0]] = record[1]
-		} else {
-			targetsToOs[record[0]] = ""
-		}
 	}
 
 	rand.Seed(time.Now().UnixNano())
@@ -740,7 +742,7 @@ func loadTargets(targetsPath string) []string {
 func loadProtocol(protocol string) Protocol {
 	switch protocol {
 	case "icmp":
-		return ICMP
+		return ICMP // TODO Make "icmp", "tcp", "udp" constants
 	case "tcp":
 		return TCP
 	case "udp":
@@ -940,7 +942,7 @@ func checkUDPLayer(packet gopacket.Packet) (bool, uint16) {
 func startRecording(outputDir string) {
 	interfaces := []Iface{config.IfaceA, config.IfaceB}
 	for _, iface := range interfaces {
-		outputFile := fmt.Sprintf("%s/%s.pcap", outputDir, iface.Name)
+		outputFile := filepath.Join(outputDir, iface.Name+".pcap")
 		cmd := exec.Command("tcpdump", "-i", iface.Name, "-w", outputFile, "-U", "-p")
 		err := cmd.Start()
 		if err != nil {

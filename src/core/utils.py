@@ -4,25 +4,42 @@ import os
 
 import yaml
 
-# region Constants
-def load_config(config_file):
-    with open(config_file, 'r') as file:
-        return yaml.safe_load(file)
 
-config = load_config("config.yaml")
-B2B_PROBE_COUNT = config['b2bProbeCount']
-SEQ_PROBE_COUNT = config['seqProbeCount']
-TCP_DST_PORT = config['tcpDstPort']
-DETECT_REFLECTED_IPIDS = config['detectReflectedIpIds']
-REFLECTION_SEND_IPIDS = tuple(config['reflectionSendIpIds'])
+class Config(dict):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for key, value in self.items():
+            if isinstance(value, dict):
+                self[key] = Config(value)  # Recursion for nested dictionaries
+
+    def __getattr__(self, name):
+        if name in self:
+            return self[name]
+        else:
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def __setattr__(self, name, value):
+        self[name] = value
+
+
+def load_config(filepath):
+    with open(filepath, 'r') as f:
+        data = yaml.safe_load(f)
+    return Config(data)
+
+
+config = load_config('config.yaml')
+
+# B2B_PROBE_COUNT = config['b2bProbeCount']
+# SEQ_PROBE_COUNT = config['seqProbeCount']
+# TCP_DST_PORT = config['tcpDstPort']
+# DETECT_REFLECTED_IPIDS = config['detectReflectedIpIds']
+# REFLECTION_SEND_IPIDS = tuple(config['reflectionSendIpIds'])
 
 MAX_IPID = 65535  # 2^16 - 1
 
 MIN_STEPS_BEFORE_WRAPAROUND = 3
 MAX_INC = math.ceil((MAX_IPID + 1) / MIN_STEPS_BEFORE_WRAPAROUND) - 1
-
-
-# endregion
 
 
 def create_logger(file_path):
