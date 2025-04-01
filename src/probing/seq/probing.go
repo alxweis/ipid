@@ -693,8 +693,12 @@ func loadTargets(targetsBasePath string, basePath string, outputDir string) []st
 	}
 
 	sourceTargetsPath := filepath.Join("targets", targetsBasePath, "targets.csv")
+	absSourceTargetsPath, absErr := filepath.Abs(sourceTargetsPath)
+	if absErr != nil {
+		panic(absErr)
+	}
 	linkTargetsPath := filepath.Join(outputDir, "targets.csv")
-	linkErr := os.Symlink(sourceTargetsPath, linkTargetsPath)
+	linkErr := os.Symlink(absSourceTargetsPath, linkTargetsPath)
 	if linkErr != nil {
 		panic(linkErr)
 	}

@@ -14,6 +14,7 @@ BANDWIDTH=100M
 
 cleanup() {
     sed -i '1s/^saddr/IP/' "$OUTPUT_FILE"
+  # TODO Unique Check
     echo "Scan completed. Results saved in $OUTPUT_FILE."
 }
 
