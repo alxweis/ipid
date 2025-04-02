@@ -119,47 +119,68 @@ var (
 	recvChans             sync.Map
 	opts                  = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
 	recordingProcesses    []*exec.Cmd
+	cpuMeasuringInterval  = 100 * time.Millisecond
 	batchReplyCount       int
 	batchRequestCount     int
 	batchValidProbesCount int
 )
 
-func getCPULoad(stop <-chan struct{}, interval time.Duration) CPULoadData {
+func getCPULoad(stop <-chan struct{}, result chan CPULoadData) {
 	var (
 		totalCPULoad float64
-		minCPULoad   float64 = 1.0 // Initialize to maximum value so later values can be smaller
-		maxCPULoad   float64 = 0.0 // Initialize to minimum value so later values can be larger
+		minCPULoad   = 1.0 // Start at max value
+		maxCPULoad   = 0.0 // Start at min value
 		numSamples   int
-		err          error
 	)
 
-	// Perform initial measurement to get baseline values.
 	prevIdle, prevTotal, err := getCPUStats()
 	if err != nil {
-		panic(err)
+		log.Printf("Error getting initial CPU stats: %v", err)
+		close(result)
+		return
 	}
 
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(cpuMeasuringInterval)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-stop:
-			goto end
+			avgCPULoad := 0.0
+			if numSamples > 0 {
+				avgCPULoad = totalCPULoad / float64(numSamples)
+			} else {
+				minCPULoad = 0 // If no samples, avoid misleading values
+			}
+
+			log.Println("CPU measurement finished.")
+
+			result <- CPULoadData{
+				AvgCPULoad: avgCPULoad,
+				MinCPULoad: minCPULoad,
+				MaxCPULoad: maxCPULoad,
+				NumSamples: numSamples,
+			}
+			close(result)
+			return
+
 		case <-ticker.C:
-			// Measure CPU load at regular intervals.
 			idle, total, err := getCPUStats()
 			if err != nil {
-				log.Printf("Error getting CPU stats: %v\n", err) // Log the error but continue
-				continue                                         // Skip this iteration
+				log.Printf("Error getting CPU stats: %v", err)
+				continue
 			}
 
 			idleDelta := idle - prevIdle
 			totalDelta := total - prevTotal
 
+			if totalDelta == 0 {
+				continue // Avoid division by zero
+			}
+
 			cpuLoad := 1.0 - float64(idleDelta)/float64(totalDelta)
 			if cpuLoad < 0 {
-				cpuLoad = 0 // Safety buffer to avoid negative values (can happen in virtualization)
+				cpuLoad = 0 // Prevent negative values
 			}
 
 			totalCPULoad += cpuLoad
@@ -176,23 +197,9 @@ func getCPULoad(stop <-chan struct{}, interval time.Duration) CPULoadData {
 			prevTotal = total
 		}
 	}
+}
 
-end: //Jumpmark to guarantee clean exit.
-	avgCPULoad := 0.0
-	if numSamples > 0 {
-		avgCPULoad = totalCPULoad / float64(numSamples)
-	}
-	log.Printf("CPU Measuring finished!")
-
-	return CPULoadData{
-		AvgCPULoad: avgCPULoad,
-		MinCPULoad: minCPULoad,
-		MaxCPULoad: maxCPULoad,
-		NumSamples: numSamples,
-	}
-} // TODO not working => returns 0%/0%/0%
-
-// getCPUStats reads CPU statistics from /proc/stat and returns the idle and total ticks.
+// Reads CPU statistics from /proc/stat and returns idle and total ticks.
 func getCPUStats() (idle, total uint64, err error) {
 	contents, err := os.ReadFile("/proc/stat")
 	if err != nil {
@@ -207,48 +214,20 @@ func getCPUStats() (idle, total uint64, err error) {
 				return 0, 0, fmt.Errorf("unexpected /proc/stat format: %s", line)
 			}
 
-			user, err := strconv.ParseUint(fields[1], 10, 64)
-			if err != nil {
-				return 0, 0, err
-			}
-			nice, err := strconv.ParseUint(fields[2], 10, 64)
-			if err != nil {
-				return 0, 0, err
-			}
-			system, err := strconv.ParseUint(fields[3], 10, 64)
-			if err != nil {
-				return 0, 0, err
-			}
-			idle, err := strconv.ParseUint(fields[4], 10, 64)
-			if err != nil {
-				return 0, 0, err
-			}
-			iowait, err := strconv.ParseUint(fields[5], 10, 64)
-			if err != nil {
-				return 0, 0, err
-			}
-			irq, err := strconv.ParseUint(fields[6], 10, 64)
-			if err != nil {
-				return 0, 0, err
-			}
-			softirq, err := strconv.ParseUint(fields[7], 10, 64)
-			if err != nil {
-				return 0, 0, err
-			}
-			steal, err := strconv.ParseUint(fields[8], 10, 64)
-			if err != nil {
-				return 0, 0, err
-			}
-			guest, err := strconv.ParseUint(fields[9], 10, 64)
-			if err != nil {
-				return 0, 0, err
-			}
-			guestNice, err := strconv.ParseUint(fields[10], 10, 64)
-			if err != nil {
-				return 0, 0, err
+			values := make([]uint64, len(fields)-1)
+			for i := 1; i < len(fields); i++ {
+				values[i-1], err = strconv.ParseUint(fields[i], 10, 64)
+				if err != nil {
+					return 0, 0, err
+				}
 			}
 
-			total = user + nice + system + idle + iowait + irq + softirq + steal + guest + guestNice
+			idle = values[3]
+			total = 0
+			for _, v := range values {
+				total += v
+			}
+
 			return idle, total, nil
 		}
 	}
@@ -300,12 +279,9 @@ func Main() {
 		batchValidProbesCount = 0
 		startProbing := time.Now()
 
-		stopCPUMeasuring := make(chan struct{})
-		interval := 100 * time.Millisecond
-		var cpuLoadData CPULoadData
-		go func() {
-			cpuLoadData = getCPULoad(stopCPUMeasuring, interval)
-		}()
+		stopCPUMsm := make(chan struct{})
+		cpuMsmResultChan := make(chan CPULoadData)
+		go getCPULoad(stopCPUMsm, cpuMsmResultChan)
 
 		probingWg.Add(len(batch))
 		for _, target := range batch {
@@ -313,7 +289,8 @@ func Main() {
 		}
 		probingWg.Wait()
 
-		close(stopCPUMeasuring)
+		close(stopCPUMsm)
+		cpuLoadData := <-cpuMsmResultChan
 
 		batchValidProbesPortion := 0.0
 		if len(batch) > 0 {
