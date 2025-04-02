@@ -77,6 +77,13 @@ type Sender struct {
 	Addr      syscall.SockaddrLinklayer
 }
 
+type CPULoadData struct {
+	AvgCPULoad float64
+	MinCPULoad float64
+	MaxCPULoad float64
+	NumSamples int
+}
+
 var (
 	ICMP = Protocol{
 		Id:           "icmp",
@@ -117,13 +124,6 @@ var (
 	batchValidProbesCount int
 )
 
-type CPULoadData struct {
-	AvgCPULoad float64
-	MinCPULoad float64
-	MaxCPULoad float64
-	NumSamples int
-}
-
 func getCPULoad(stop <-chan struct{}, interval time.Duration) CPULoadData {
 	var (
 		totalCPULoad float64
@@ -145,7 +145,7 @@ func getCPULoad(stop <-chan struct{}, interval time.Duration) CPULoadData {
 	for {
 		select {
 		case <-stop:
-			goto EndLoop
+			goto end
 		case <-ticker.C:
 			// Measure CPU load at regular intervals.
 			idle, total, err := getCPUStats()
@@ -177,11 +177,12 @@ func getCPULoad(stop <-chan struct{}, interval time.Duration) CPULoadData {
 		}
 	}
 
-EndLoop: //Jumpmark to guarantee clean exit.
+end: //Jumpmark to guarantee clean exit.
 	avgCPULoad := 0.0
 	if numSamples > 0 {
 		avgCPULoad = totalCPULoad / float64(numSamples)
 	}
+	log.Printf("CPU Measuring finished!")
 
 	return CPULoadData{
 		AvgCPULoad: avgCPULoad,
@@ -189,7 +190,7 @@ EndLoop: //Jumpmark to guarantee clean exit.
 		MaxCPULoad: maxCPULoad,
 		NumSamples: numSamples,
 	}
-}
+} // TODO not working => returns 0%/0%/0%
 
 // getCPUStats reads CPU statistics from /proc/stat and returns the idle and total ticks.
 func getCPUStats() (idle, total uint64, err error) {
