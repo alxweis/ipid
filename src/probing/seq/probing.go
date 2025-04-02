@@ -102,19 +102,19 @@ var (
 )
 
 var (
-	config             Config
-	srcAIp             net.IP
-	srcBIp             net.IP
-	probingWg          sync.WaitGroup
-	recvWg             sync.WaitGroup
-	stopReceiving      = make(chan struct{})
-	results            sync.Map
-	recvChans          sync.Map
-	opts               = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
-	recordingProcesses []*exec.Cmd
-	batchReplyCount    int
-	batchRequestCount  int
-	batchProbedCount   int
+	config                Config
+	srcAIp                net.IP
+	srcBIp                net.IP
+	probingWg             sync.WaitGroup
+	recvWg                sync.WaitGroup
+	stopReceiving         = make(chan struct{})
+	results               sync.Map
+	recvChans             sync.Map
+	opts                  = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
+	recordingProcesses    []*exec.Cmd
+	batchReplyCount       int
+	batchRequestCount     int
+	batchValidProbesCount int
 )
 
 type CPULoadData struct {
@@ -296,7 +296,7 @@ func Main() {
 
 		batchRequestCount = 0
 		batchReplyCount = 0
-		batchProbedCount = 0
+		batchValidProbesCount = 0
 		startProbing := time.Now()
 
 		stopCPUMeasuring := make(chan struct{})
@@ -316,19 +316,19 @@ func Main() {
 
 		batchValidProbesPortion := 0.0
 		if len(batch) > 0 {
-			batchValidProbesPortion = float64(batchProbedCount) / float64(len(batch))
+			batchValidProbesPortion = float64(batchValidProbesCount) / float64(len(batch))
 		}
 		batchRunTime := time.Since(startProbing)
-		batchSentRate := 0.0
-		if batchRunTime.Seconds() > 0 {
-			batchSentRate = float64(batchRequestCount) / batchRunTime.Seconds()
-		}
-		batchSendRateLoad := 0.0
-		if config.MaxSendRate > 0 {
-			batchSendRateLoad = batchSentRate / float64(config.MaxSendRate)
-		}
-		log.Printf("Finished Batch (%d/%d): valid_probes=%.0f%% runtime=%s cpu_load(avg/min/max)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.AvgCPULoad*100, cpuLoadData.MinCPULoad*100, cpuLoadData.MaxCPULoad*100)
-		batchSize = adjustBatchSize(batchSendRateLoad, batchSize, 15000)
+		//batchSentRate := 0.0
+		//if batchRunTime.Seconds() > 0 {
+		//	batchSentRate = float64(batchRequestCount) / batchRunTime.Seconds()
+		//}
+		//batchSendRateLoad := 0.0
+		//if config.MaxSendRate > 0 {
+		//	batchSendRateLoad = batchSentRate / float64(config.MaxSendRate)
+		//}
+		log.Printf("Finished Batch (%d/%d): valid_probes_portion=%.0f%% runtime=%s cpu_load(avg/min/max)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.AvgCPULoad*100, cpuLoadData.MinCPULoad*100, cpuLoadData.MaxCPULoad*100)
+		//batchSize = adjustBatchSize(batchSendRateLoad, batchSize, 15000)
 		runTime += batchRunTime
 
 		//printResults()
@@ -452,7 +452,7 @@ restartProbing:
 
 	deleteRecvChan(target)
 	if recvCounter == int(config.ProbeCount) {
-		batchProbedCount++
+		batchValidProbesCount++
 	}
 	//log.Printf("Finished probing target=%s received=%d/%d", target, recvCounter, config.ProbeCount)
 }
