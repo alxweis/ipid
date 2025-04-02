@@ -27,7 +27,7 @@ ifaceB:
   name: "eth1"
   ip: "141.76.94.15"
 maxRTT: "2s"
-maxSendRate: 25000 # TODO Make Script to calculate maxSendRate
+maxSendRate: 10000 # TODO Make Script to calculate maxSendRate
 defaultSendIpIds: [0] # Sends [0,0,0,...]
 detectReflectedIpIds: false
 reflectionSendIpIds: [3717,3718,3719] # Sequence must not match with any known pattern

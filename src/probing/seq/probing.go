@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -116,7 +117,147 @@ var (
 	batchProbedCount   int
 )
 
+type CPULoadData struct {
+	AvgCPULoad float64
+	MinCPULoad float64
+	MaxCPULoad float64
+	NumSamples int
+}
+
+func getCPULoad(stop <-chan struct{}, interval time.Duration) CPULoadData {
+	var (
+		totalCPULoad float64
+		minCPULoad   float64 = 1.0 // Initialize to maximum value so later values can be smaller
+		maxCPULoad   float64 = 0.0 // Initialize to minimum value so later values can be larger
+		numSamples   int
+		err          error
+	)
+
+	// Perform initial measurement to get baseline values.
+	prevIdle, prevTotal, err := getCPUStats()
+	if err != nil {
+		panic(err)
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-stop:
+			goto EndLoop
+		case <-ticker.C:
+			// Measure CPU load at regular intervals.
+			idle, total, err := getCPUStats()
+			if err != nil {
+				log.Printf("Error getting CPU stats: %v\n", err) // Log the error but continue
+				continue                                         // Skip this iteration
+			}
+
+			idleDelta := idle - prevIdle
+			totalDelta := total - prevTotal
+
+			cpuLoad := 1.0 - float64(idleDelta)/float64(totalDelta)
+			if cpuLoad < 0 {
+				cpuLoad = 0 // Safety buffer to avoid negative values (can happen in virtualization)
+			}
+
+			totalCPULoad += cpuLoad
+			numSamples++
+
+			if cpuLoad < minCPULoad {
+				minCPULoad = cpuLoad
+			}
+			if cpuLoad > maxCPULoad {
+				maxCPULoad = cpuLoad
+			}
+
+			prevIdle = idle
+			prevTotal = total
+		}
+	}
+
+EndLoop: //Jumpmark to guarantee clean exit.
+	avgCPULoad := 0.0
+	if numSamples > 0 {
+		avgCPULoad = totalCPULoad / float64(numSamples)
+	}
+
+	return CPULoadData{
+		AvgCPULoad: avgCPULoad,
+		MinCPULoad: minCPULoad,
+		MaxCPULoad: maxCPULoad,
+		NumSamples: numSamples,
+	}
+}
+
+// getCPUStats reads CPU statistics from /proc/stat and returns the idle and total ticks.
+func getCPUStats() (idle, total uint64, err error) {
+	contents, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return 0, 0, err
+	}
+
+	lines := strings.Split(string(contents), "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "cpu ") {
+			fields := strings.Fields(line)
+			if len(fields) < 5 {
+				return 0, 0, fmt.Errorf("unexpected /proc/stat format: %s", line)
+			}
+
+			user, err := strconv.ParseUint(fields[1], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			nice, err := strconv.ParseUint(fields[2], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			system, err := strconv.ParseUint(fields[3], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			idle, err := strconv.ParseUint(fields[4], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			iowait, err := strconv.ParseUint(fields[5], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			irq, err := strconv.ParseUint(fields[6], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			softirq, err := strconv.ParseUint(fields[7], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			steal, err := strconv.ParseUint(fields[8], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			guest, err := strconv.ParseUint(fields[9], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+			guestNice, err := strconv.ParseUint(fields[10], 10, 64)
+			if err != nil {
+				return 0, 0, err
+			}
+
+			total = user + nice + system + idle + iowait + irq + softirq + steal + guest + guestNice
+			return idle, total, nil
+		}
+	}
+
+	return 0, 0, fmt.Errorf("no CPU line found in /proc/stat")
+}
+
 func Main() {
+	runtime.GOMAXPROCS(runtime.NumCPU()) // Utilize all available CPUs
+
 	loadConfig()
 
 	basePath := getBasePath()
@@ -141,7 +282,7 @@ func Main() {
 	go setupReceiver(config.IfaceB, proto)
 
 	sendRatePerTarget := float64(time.Second / (200 * time.Millisecond)) // TODO better implementation
-	batchSize := int(float64(config.MaxSendRate) / sendRatePerTarget)
+	batchSize := int(float64(config.MaxSendRate) / sendRatePerTarget)    // TODO passe automatisch an CPU Auslastung an
 	runTime := time.Duration(0)
 	for i := 0; i < len(targets); i += batchSize {
 		batchCount := int(math.Ceil(float64(len(targets)) / float64(batchSize)))
@@ -158,15 +299,24 @@ func Main() {
 		batchProbedCount = 0
 		startProbing := time.Now()
 
+		stopCPUMeasuring := make(chan struct{})
+		interval := 100 * time.Millisecond
+		var cpuLoadData CPULoadData
+		go func() {
+			cpuLoadData = getCPULoad(stopCPUMeasuring, interval)
+		}()
+
 		probingWg.Add(len(batch))
 		for _, target := range batch {
 			go probeTarget(senderA, senderB, rawIPLayers, target, proto)
 		}
 		probingWg.Wait()
 
-		batchProbedPortion := 0.0
+		close(stopCPUMeasuring)
+
+		batchValidProbesPortion := 0.0
 		if len(batch) > 0 {
-			batchProbedPortion = float64(batchProbedCount) / float64(len(batch))
+			batchValidProbesPortion = float64(batchProbedCount) / float64(len(batch))
 		}
 		batchRunTime := time.Since(startProbing)
 		batchSentRate := 0.0
@@ -177,7 +327,7 @@ func Main() {
 		if config.MaxSendRate > 0 {
 			batchSendRateLoad = batchSentRate / float64(config.MaxSendRate)
 		}
-		log.Printf("Finished Batch (%d/%d): probed_portion=%.2f%% runtime=%s send_rate_load=%.2f%%", batchIndex, batchCount, batchProbedPortion*100, batchRunTime, batchSendRateLoad*100)
+		log.Printf("Finished Batch (%d/%d): valid_probes=%.0f%% runtime=%s cpu_load(avg/min/max)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.AvgCPULoad*100, cpuLoadData.MinCPULoad*100, cpuLoadData.MaxCPULoad*100)
 		batchSize = adjustBatchSize(batchSendRateLoad, batchSize, 15000)
 		runTime += batchRunTime
 
@@ -301,7 +451,9 @@ restartProbing:
 	}
 
 	deleteRecvChan(target)
-	batchProbedCount++
+	if recvCounter == int(config.ProbeCount) {
+		batchProbedCount++
+	}
 	//log.Printf("Finished probing target=%s received=%d/%d", target, recvCounter, config.ProbeCount)
 }
 
