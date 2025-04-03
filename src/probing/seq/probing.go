@@ -79,6 +79,7 @@ type Sender struct {
 
 type CPULoadData struct {
 	AvgCPULoad float64
+	StdCPULoad float64
 	MinCPULoad float64
 	MaxCPULoad float64
 	NumSamples int
@@ -131,6 +132,7 @@ func getCPULoad(stop <-chan struct{}, result chan CPULoadData) {
 		minCPULoad   = 1.0 // Start at max value
 		maxCPULoad   = 0.0 // Start at min value
 		numSamples   int
+		values       []float64
 	)
 
 	prevIdle, prevTotal, err := getCPUStats()
@@ -147,8 +149,15 @@ func getCPULoad(stop <-chan struct{}, result chan CPULoadData) {
 		select {
 		case <-stop:
 			avgCPULoad := 0.0
+			stdCPULoad := 0.0
 			if numSamples > 0 {
 				avgCPULoad = totalCPULoad / float64(numSamples)
+
+				var sumSquares float64
+				for _, v := range values {
+					sumSquares += (v - avgCPULoad) * (v - avgCPULoad)
+				}
+				stdCPULoad = math.Sqrt(sumSquares / float64(numSamples))
 			} else {
 				minCPULoad = 0 // If no samples, avoid misleading values
 			}
@@ -157,6 +166,7 @@ func getCPULoad(stop <-chan struct{}, result chan CPULoadData) {
 
 			result <- CPULoadData{
 				AvgCPULoad: avgCPULoad,
+				StdCPULoad: stdCPULoad,
 				MinCPULoad: minCPULoad,
 				MaxCPULoad: maxCPULoad,
 				NumSamples: numSamples,
@@ -184,6 +194,7 @@ func getCPULoad(stop <-chan struct{}, result chan CPULoadData) {
 			}
 
 			totalCPULoad += cpuLoad
+			values = append(values, cpuLoad)
 			numSamples++
 
 			if cpuLoad < minCPULoad {
@@ -305,7 +316,7 @@ func Main() {
 		//if config.MaxSendRate > 0 {
 		//	batchSendRateLoad = batchSentRate / float64(config.MaxSendRate)
 		//}
-		log.Printf("Finished Batch (%d/%d): valid_probes_portion=%.0f%% runtime=%s cpu_load(avg/min/max)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.AvgCPULoad*100, cpuLoadData.MinCPULoad*100, cpuLoadData.MaxCPULoad*100)
+		log.Printf("Finished Batch (%d/%d): valid_probes_portion=%.0f%% runtime=%s cpu_load(avg/std/min/max)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.AvgCPULoad*100, cpuLoadData.StdCPULoad*100, cpuLoadData.MinCPULoad*100, cpuLoadData.MaxCPULoad*100)
 		//batchSize = adjustBatchSize(batchSendRateLoad, batchSize, 15000)
 		runTime += batchRunTime
 
