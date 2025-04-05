@@ -7,11 +7,42 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 func removeDuplicateIPs(inputFile, outputFile string) error {
-	// 1. Sort the input file using the 'sort' command.  The '-u' option tells sort to only output unique lines
-	cmd := exec.Command("sort", "-u", inputFile)
+	// Read the header from the input file
+	inFile, err := os.Open(inputFile)
+	if err != nil {
+		return fmt.Errorf("failed to open input file: %w", err)
+	}
+	defer inFile.Close()
+
+	reader := bufio.NewReader(inFile)
+	header, err := reader.ReadString('\n')
+	if err != nil && err != io.EOF { // io.EOF is expected at the end when file is one line long
+		return fmt.Errorf("failed to read header line: %w", err)
+	}
+	header = strings.TrimSpace(header)
+
+	// Create the output file and write the header
+	outFile, err := os.Create(outputFile)
+	if err != nil {
+		return fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outFile.Close()
+
+	writer := bufio.NewWriter(outFile)
+	defer writer.Flush()
+
+	_, err = writer.WriteString(header + "\n") // Write the header
+	if err != nil {
+		return fmt.Errorf("failed to write header to output file: %w", err)
+	}
+
+	//Create command for sorting without header
+	cmd := exec.Command("sort", "-u")
+	cmd.Stdin = inFile // Set input to the file
 	sortedOutput, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe for sort: %w", err)
@@ -26,16 +57,6 @@ func removeDuplicateIPs(inputFile, outputFile string) error {
 		errContent, _ := io.ReadAll(cmdErr)
 		return fmt.Errorf("failed to start sort command: %w, sort standarderror shows: %s", err, string(errContent))
 	}
-
-	// 2. Process the sorted output, writing unique lines to the output file
-	outFile, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outFile.Close()
-
-	writer := bufio.NewWriter(outFile)
-	defer writer.Flush()
 
 	scanner := bufio.NewScanner(sortedOutput)
 	for scanner.Scan() {
