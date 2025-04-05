@@ -2,7 +2,7 @@
 
 # Ensure OUTPUT_DIR and MAX_IPS are provided
 if [ -z "$1" ] || [ -z "$2" ]; then
-    echo "Usage: $0 <OUTPUT_DIR> <MAX_IPS>"
+    echo "Usage: $0 <output_dir> <max_ips>"
     exit 1
 fi
 
@@ -14,7 +14,7 @@ BANDWIDTH=100M
 
 cleanup() {
     sed -i '1s/^saddr/IP/' "$OUTPUT_FILE"
-  # TODO Unique Check
+    go run src/hitlist/dedup_ips.go "$OUTPUT_FILE"
     echo "Scan completed. Results saved in $OUTPUT_FILE."
 }
 

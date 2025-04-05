@@ -4,7 +4,10 @@ from hitlist import create
 
 
 def print_usage(filename):
-    print(f"Usage:\npython {filename} icmp (max_ips)\npython {filename} tcp [port] (max_ips)\npython {filename} udp [port] (max_ips)")
+    print("Usage:")
+    print(f"python {filename} icmp (max_ips)")
+    print(f"python {filename} tcp [port] (max_ips)")
+    print(f"python {filename} udp [port] (max_ips)")
     sys.exit(1)
 
 
