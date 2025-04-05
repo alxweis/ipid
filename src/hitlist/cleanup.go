@@ -9,8 +9,17 @@ import (
 	"os/exec"
 )
 
-func removeDuplicateIPs(inputFile, outputFile string) error {
-	// 1. Read the header from the input file
+func removeDuplicateIPsInPlace(inputFile string) error {
+	//Create a temporary file
+	tmpFile, err := os.CreateTemp("", "deduped-")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpFileName := tmpFile.Name()
+	defer os.Remove(tmpFileName) // cleanup temp file on exit
+	defer tmpFile.Close()
+
+	// Open the input file
 	inFile, err := os.Open(inputFile)
 	if err != nil {
 		return fmt.Errorf("failed to open input file: %w", err)
@@ -18,39 +27,20 @@ func removeDuplicateIPs(inputFile, outputFile string) error {
 	defer inFile.Close()
 
 	reader := bufio.NewReader(inFile)
+
+	// Read and write the header , the original header is required to restore original csv
 	header, err := reader.ReadString('\n')
 	if err != nil && err != io.EOF {
-		return fmt.Errorf("failed to read header: %w", err)
+		return fmt.Errorf("failed to read header row: %w", err)
 	}
-
-	// 2. Create the output file and write the header
-	outFile, err := os.Create(outputFile)
+	_, err = tmpFile.WriteString(header)
 	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer outFile.Close()
-
-	_, err = outFile.WriteString(header)
-	if err != nil {
-		return fmt.Errorf("failed to write header to output file: %w", err)
+		return fmt.Errorf("failed to write header to temporary file: %w", err)
 	}
 
-	// 3. Create a temporary file for the body (without header) to be sorted
-	tmpFile, err := os.CreateTemp("", "sorted-body-")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name()) // Clean up after
-	defer tmpFile.Close()
-
-	// Copy the rest of the input file (without header) to the temp file
-	_, err = io.Copy(tmpFile, reader)
-	if err != nil {
-		return fmt.Errorf("failed to copy remaining data to temporary file: %w", err)
-	}
-
-	// 4. Sort the temporary file using the 'sort' command
-	cmd := exec.Command("sort", "-u", tmpFile.Name())
+	// Run sort on the rest of the inputfile content, skipping the header
+	cmd := exec.Command("sort", "-u")
+	cmd.Stdin = reader
 	sortedOutput, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe for sort: %w", err)
@@ -61,22 +51,21 @@ func removeDuplicateIPs(inputFile, outputFile string) error {
 	}
 
 	err = cmd.Start()
-
 	if err != nil {
 		errContent, _ := io.ReadAll(cmdErr)
 		return fmt.Errorf("failed to start sort command: %w, sort standarderror shows: %s", err, string(errContent))
 	}
 
-	// 5. Process the sorted output and append to output file
-	writer := bufio.NewWriter(outFile)
+	// write the sorted content into the temporary file
+	writer := bufio.NewWriter(tmpFile)
 	defer writer.Flush()
-
 	scanner := bufio.NewScanner(sortedOutput)
+
 	for scanner.Scan() {
 		line := scanner.Text()
-		_, err := writer.WriteString(line + "\n") // Add newline back
+		_, err := writer.WriteString(line + "\n")
 		if err != nil {
-			return fmt.Errorf("failed to write to output file: %w", err)
+			return fmt.Errorf("failed to write to temporary file: %w", err)
 		}
 	}
 
@@ -85,13 +74,22 @@ func removeDuplicateIPs(inputFile, outputFile string) error {
 	}
 
 	err = cmd.Wait()
-
 	if err != nil {
 		errContent, _ := io.ReadAll(cmdErr)
 		return fmt.Errorf("sort command finished with error: %w, sort standarderror shows: %s", err, string(errContent))
 	}
 
-	fmt.Printf("Duplicate IP addresses removed and saved to '%s'\n", outputFile)
+	err = inFile.Close()
+	if err != nil {
+		return fmt.Errorf("failed closing input file: %w", err)
+	}
+	// Replace the original file with the temporary file
+	err = os.Rename(tmpFileName, inputFile)
+	if err != nil {
+		return fmt.Errorf("failed to replace original file with temporary file: %w", err)
+	}
+
+	fmt.Printf("Duplicate IP addresses removed and saved back to '%s'\n", inputFile)
 	return nil
 }
 
@@ -101,9 +99,8 @@ func main() {
 		os.Exit(1)
 	}
 	inputFile := os.Args[1]
-	outputFile := "output.csv"
 
-	err := removeDuplicateIPs(inputFile, outputFile)
+	err := removeDuplicateIPsInPlace(inputFile)
 	if err != nil {
 		log.Fatalf("Error: %v", err)
 	}

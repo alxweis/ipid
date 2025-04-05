@@ -14,7 +14,7 @@ BANDWIDTH=100M
 
 cleanup() {
     sed -i '1s/^saddr/IP/' "$OUTPUT_FILE"
-    go run src/hitlist/dedup_ips.go "$OUTPUT_FILE"
+    go run src/hitlist/cleanup.go "$OUTPUT_FILE"
     echo "Scan completed. Results saved in $OUTPUT_FILE."
 }
 
