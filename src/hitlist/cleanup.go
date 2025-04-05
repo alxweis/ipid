@@ -7,11 +7,18 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 func removeDuplicateIPsInPlace(inputFile string) error {
-	//Create a temporary file
-	tmpFile, err := os.CreateTemp("", "deduped-")
+	// Determine the directory of the input file
+	inputDir := filepath.Dir(inputFile)
+	if inputDir == "" {
+		inputDir = "." // Use the current directory if inputFile is just a filename
+	}
+
+	// Create a temporary file in the same directory as the input file
+	tmpFile, err := os.CreateTemp(inputDir, "deduped-")
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)
 	}
