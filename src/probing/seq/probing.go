@@ -336,7 +336,7 @@ func Main() {
 		//}
 		// TODO Maybe median is better?
 		log.Printf("Finished Batch (%d/%d): valid_probes_portion=%.0f%% runtime=%s cpu_load(med/avg/std)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.MedCPULoad*100, cpuLoadData.AvgCPULoad*100, cpuLoadData.StdCPULoad*100)
-		batchSize = adjustBatchSize(cpuLoadData.AvgCPULoad, cpuLoadData.StdCPULoad, 0.5, 0, 15000, batchSize)
+		batchSize = adjustBatchSize(cpuLoadData.AvgCPULoad, cpuLoadData.StdCPULoad, 0.8, 0, 15000, batchSize)
 		runTime += batchRunTime
 
 		//printResults()
