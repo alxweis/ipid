@@ -290,8 +290,8 @@ func Main() {
 	go setupReceiver(config.IfaceA, proto)
 	go setupReceiver(config.IfaceB, proto)
 
-	sendRatePerTarget := float64(time.Second / (200 * time.Millisecond)) // TODO better implementation
-	batchSize := int(float64(config.MaxSendRate) / sendRatePerTarget)    // TODO passe automatisch an CPU Auslastung an
+	//sendRatePerTarget := float64(time.Second / (200 * time.Millisecond)) // TODO better implementation
+	batchSize := 1000 // TODO passe automatisch an CPU Auslastung an
 	runTime := time.Duration(0)
 	for i := 0; i < len(targets); i += batchSize {
 		batchCount := int(math.Ceil(float64(len(targets)) / float64(batchSize)))
@@ -336,7 +336,7 @@ func Main() {
 		//}
 		// TODO Maybe median is better?
 		log.Printf("Finished Batch (%d/%d): valid_probes_portion=%.0f%% runtime=%s cpu_load(med/avg/std)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.MedCPULoad*100, cpuLoadData.AvgCPULoad*100, cpuLoadData.StdCPULoad*100)
-		batchSize = adjustBatchSize(cpuLoadData.AvgCPULoad, cpuLoadData.StdCPULoad, 0.8, 0, 15000, batchSize)
+		batchSize = batchSize + 1000 //adjustBatchSize(cpuLoadData.AvgCPULoad, cpuLoadData.StdCPULoad, 0.8, 0, 15000, batchSize)
 		runTime += batchRunTime
 
 		//printResults()
