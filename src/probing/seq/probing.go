@@ -336,7 +336,7 @@ func Main() {
 		//}
 		// TODO Maybe median is better?
 		log.Printf("Finished Batch (%d/%d): valid_probes_portion=%.0f%% runtime=%s cpu_load(med/avg/std)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.MedCPULoad*100, cpuLoadData.AvgCPULoad*100, cpuLoadData.StdCPULoad*100)
-		batchSize = adjustBatchSize(cpuLoadData.MedCPULoad, cpuLoadData.StdCPULoad, 0.8, 0, 25000, batchSize)
+		batchSize = adjustBatchSize(cpuLoadData.AvgCPULoad, cpuLoadData.StdCPULoad, 0.5, 0, 15000, batchSize)
 		runTime += batchRunTime
 
 		//printResults()
@@ -362,7 +362,7 @@ func Main() {
 	}
 }
 
-func adjustBatchSize(medCPULoad float64, stdCPULoad float64, targetCPULoad float64, minBatchSize int, maxBatchSize, currentBatchSize int) int {
+func adjustBatchSize(avgCPULoad float64, stdCPULoad float64, targetCPULoad float64, minBatchSize int, maxBatchSize, currentBatchSize int) int {
 	// Dynamic safety margin based on the standard deviation of the CPU load
 	safetyMargin := math.Min(0.5, stdCPULoad) // Max. 50% safety margin
 
@@ -370,7 +370,7 @@ func adjustBatchSize(medCPULoad float64, stdCPULoad float64, targetCPULoad float
 	adjustedTarget := targetCPULoad * (1 - safetyMargin)
 
 	// Ratio between the adjusted target and the average CPU load
-	ratio := adjustedTarget / medCPULoad
+	ratio := adjustedTarget / avgCPULoad
 
 	// Calculate the new batch size
 	newBatchSizeFloat := float64(currentBatchSize) * ratio
