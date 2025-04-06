@@ -79,6 +79,7 @@ type Sender struct {
 
 type CPULoadData struct {
 	AvgCPULoad float64
+	MedCPULoad float64
 	StdCPULoad float64
 	MinCPULoad float64
 	MaxCPULoad float64
@@ -149,10 +150,26 @@ func getCPULoad(stop <-chan struct{}, result chan CPULoadData) {
 		select {
 		case <-stop:
 			avgCPULoad := 0.0
+			medCPULoad := 0.0
 			stdCPULoad := 0.0
+
 			if numSamples > 0 {
 				avgCPULoad = totalCPULoad / float64(numSamples)
 
+				// Calculate Median
+				sortedValues := make([]float64, len(values))
+				copy(sortedValues, values)
+				sort.Float64s(sortedValues)
+
+				if len(sortedValues)%2 == 0 {
+					// Even number of elements: average of the two middle values
+					medCPULoad = (sortedValues[len(sortedValues)/2-1] + sortedValues[len(sortedValues)/2]) / 2.0
+				} else {
+					// Odd number of elements: the middle value
+					medCPULoad = sortedValues[len(sortedValues)/2]
+				}
+
+				// Calculate Standard Deviation
 				var sumSquares float64
 				for _, v := range values {
 					sumSquares += (v - avgCPULoad) * (v - avgCPULoad)
@@ -166,6 +183,7 @@ func getCPULoad(stop <-chan struct{}, result chan CPULoadData) {
 
 			result <- CPULoadData{
 				AvgCPULoad: avgCPULoad,
+				MedCPULoad: medCPULoad,
 				StdCPULoad: stdCPULoad,
 				MinCPULoad: minCPULoad,
 				MaxCPULoad: maxCPULoad,
@@ -316,8 +334,9 @@ func Main() {
 		//if config.MaxSendRate > 0 {
 		//	batchSendRateLoad = batchSentRate / float64(config.MaxSendRate)
 		//}
-		log.Printf("Finished Batch (%d/%d): valid_probes_portion=%.0f%% runtime=%s cpu_load(avg/std/min/max)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.AvgCPULoad*100, cpuLoadData.StdCPULoad*100, cpuLoadData.MinCPULoad*100, cpuLoadData.MaxCPULoad*100)
-		//batchSize = adjustBatchSize(batchSendRateLoad, batchSize, 15000)
+		// TODO Maybe median is better?
+		log.Printf("Finished Batch (%d/%d): valid_probes_portion=%.0f%% runtime=%s cpu_load(med/avg/std)=%.0f%%/%.0f%%/%.0f%%", batchIndex, batchCount, batchValidProbesPortion*100, batchRunTime, cpuLoadData.MedCPULoad*100, cpuLoadData.AvgCPULoad*100, cpuLoadData.StdCPULoad*100)
+		batchSize = adjustBatchSize(cpuLoadData.MedCPULoad, cpuLoadData.StdCPULoad, 0.8, 0, 25000, batchSize)
 		runTime += batchRunTime
 
 		//printResults()
@@ -343,39 +362,29 @@ func Main() {
 	}
 }
 
-func adjustBatchSize(batchSentRateLoad float64, currentBatchSize int, maxBatchSize int) int {
-	fmt.Printf("Batch Sent Rate Load: %.2f\n", batchSentRateLoad)
+func adjustBatchSize(medCPULoad float64, stdCPULoad float64, targetCPULoad float64, minBatchSize int, maxBatchSize, currentBatchSize int) int {
+	// Dynamic safety margin based on the standard deviation of the CPU load
+	safetyMargin := math.Min(0.5, stdCPULoad) // Max. 50% safety margin
 
-	// Determine the adjustment factor (how strongly we want to adjust).
-	// The further batchSentRateLoad is from 1.0, the larger the factor.
-	// The factor is squared to achieve exponential adjustment.
-	deviation := math.Abs(batchSentRateLoad - 1.0) // Absolute deviation from 1.0
+	// Target CPU load adjusted for the safety margin
+	adjustedTarget := targetCPULoad * (1 - safetyMargin)
 
-	// Scaling of the deviation.  Depending on the range of your batchSentRateLoad,
-	// you may need to experiment with different values.
-	scalingFactor := 2.0 // Experiment with 1.0, 2.0, 3.0 etc.
+	// Ratio between the adjusted target and the average CPU load
+	ratio := adjustedTarget / medCPULoad
 
-	adjustmentFactor := math.Pow(1+(deviation*scalingFactor), 2) // Exponential scaling
+	// Calculate the new batch size
+	newBatchSizeFloat := float64(currentBatchSize) * ratio
 
-	newBatchSize := currentBatchSize
+	// Limit the new batch size to the min and max boundaries
+	newBatchSize := int(math.Round(newBatchSizeFloat))
 
-	if batchSentRateLoad < 1.0 {
-		// Increase exponentially
-		newBatchSize = int(float64(currentBatchSize) * adjustmentFactor)
-		fmt.Printf("Increasing batch size to: %d, Adjustment Factor: %.2f\n", newBatchSize, adjustmentFactor)
-	} else if batchSentRateLoad > 1.0 {
-		// Decrease exponentially
-		newBatchSize = int(float64(currentBatchSize) / adjustmentFactor) // Division for decrease
-		fmt.Printf("Decreasing batch size to: %d, Adjustment Factor: %.2f\n", newBatchSize, adjustmentFactor)
-	} else {
-		// Keep it stable
-		fmt.Printf("Keeping batch size: %d\n", newBatchSize)
+	if newBatchSize < minBatchSize {
+		newBatchSize = minBatchSize
+	}
+	if newBatchSize > maxBatchSize {
+		newBatchSize = maxBatchSize
 	}
 
-	// Ensure newBatchsize does not become greater than maxBatchSize
-	newBatchSize = min(newBatchSize, maxBatchSize)
-
-	newBatchSize = max(newBatchSize, 1) // Ensure minimum size
 	return newBatchSize
 }
 
