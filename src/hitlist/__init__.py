@@ -41,6 +41,6 @@ def create(protocol: str, port: str, max_ips: str):
     elif protocol == "tcp":
         subprocess.run(["bash", os.path.join(DIR_PATH, "tcp/scan.sh"), port, output_dir, convert_metric(max_ips)])
     elif protocol == "udp":
-        pass
+        subprocess.run(["bash", os.path.join(DIR_PATH, "udp/scan.sh"), port, output_dir, convert_metric(max_ips)])
     else:
-        pass
+        print(f"Unknown protocol: {protocol}")
