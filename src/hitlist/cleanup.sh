@@ -19,9 +19,7 @@ cleanup() {
     # Deduplicate
     start_dedup=$(date +%s)
     TEMP_FILE=$(mktemp "${OUTPUT_FILE}.dedup.XXXXXX")
-    {
-      tail -n +2 "$OUTPUT_FILE" | LC_ALL=C sort -u --temporary-directory=.
-    } > "$TEMP_FILE"
+    sort -u -T . "$OUTPUT_FILE" | LC_ALL=C > "$TEMP_FILE"
     mv "$TEMP_FILE" "$OUTPUT_FILE"
     end_dedup=$(date +%s)
     dedup_time=$((end_dedup - start_dedup))
@@ -33,9 +31,7 @@ cleanup() {
     # Shuffle
     start_shuffle=$(date +%s)
     TEMP_FILE=$(mktemp "${OUTPUT_FILE}.shuffle.XXXXXX")
-    {
-      tail -n +2 "$OUTPUT_FILE" | shuf;
-    } > "$TEMP_FILE"
+    shuf "$OUTPUT_FILE" > "$TEMP_FILE"
     mv "$TEMP_FILE" "$OUTPUT_FILE"
     end_shuffle=$(date +%s)
     shuffle_time=$((end_shuffle - start_shuffle))
@@ -44,7 +40,7 @@ cleanup() {
     echo "Final number of IPs: $final_count"
 
     # Add header
-    sed -i '1s/^/IP\n/' "$OUTPUT_FILE"
+    sed -i '1i IP' "$OUTPUT_FILE"
 
     echo "Deduplication took: $dedup_time seconds"
     echo "Shuffling took: $shuffle_time seconds"
