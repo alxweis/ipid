@@ -33,7 +33,7 @@ echo "IP" > "$OUTPUT_FILE"
 
 # Start scan and save only responding IPs
 echo "Scanning..."
-zmap -p "$PORT" -o "$OUTPUT_FILE" -N "$MAX_IPS" -B "$BANDWIDTH" -M tcp_synscan --output-fields=saddr --output-filter='success=1 && repeat=0' --no-header-row --summary
+zmap -p "$PORT" -o "$OUTPUT_FILE" -N "$MAX_IPS" -B "$BANDWIDTH" -M tcp_synscan --output-fields=saddr --output-filter='success=1 && repeat=0' --no-header-row
 
 if [ $? -ne 0 ]; then
     echo "ZMap scan failed."
