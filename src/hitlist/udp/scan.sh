@@ -21,7 +21,7 @@ if [[ ! "$SERVICE" =~ ^(dns|ntp|snmp)$ ]]; then
 fi
 
 # Ensure the corresponding .bin file exists
-SERVICE_BIN="${SERVICE}.bin"
+SERVICE_BIN="src/hitlist/udp/${SERVICE}.bin"
 if [ ! -f "$SERVICE_BIN" ]; then
     echo "Error: The file '$SERVICE_BIN' does not exist. Please generate the payload first."
     exit 1
