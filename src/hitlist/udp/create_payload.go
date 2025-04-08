@@ -28,9 +28,7 @@ func main() {
 
 // Generate the DNS request as a byte slice
 func generateDNSRequest() []byte {
-	seq := uint16(1)
 	dnsLayer := layers.DNS{
-		ID:      seq,
 		OpCode:  layers.DNSOpCodeQuery,
 		RD:      false,
 		QDCount: 1,
@@ -53,9 +51,20 @@ func generateDNSRequest() []byte {
 
 // Generate the NTP request as a byte slice
 func generateNTPRequest() []byte {
-	return []byte{
-		0x1b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // NTP Request Header
+	ntpLayer := layers.NTP{
+		Version:   3,
+		Mode:      3, // Client mode
+		Stratum:   0, // Undefined stratum
+		Poll:      0,
+		Precision: -6, // Precision value
 	}
+
+	// Serialize the NTP request
+	ntpRequest, err := serializeLayer(&ntpLayer)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return ntpRequest
 }
 
 // Generate the SNMP request as a byte slice
