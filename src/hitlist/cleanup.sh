@@ -36,10 +36,11 @@ cleanup() {
     shuffle_time=$((end_shuffle - start_shuffle))
     echo "Shuffle: runtime=$shuffle_time seconds"
 
+    final_count=$(count_lines "$OUTPUT_FILE")
+    echo "Final number of IP addresses: $final_count"
+
     # Add header
     sed -i '1i IP' "$OUTPUT_FILE"
 
-    final_count=$(count_lines "$OUTPUT_FILE")
-    echo "Final number of IP addresses: $final_count"
     echo "Results saved in $OUTPUT_FILE"
 }
