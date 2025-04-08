@@ -1,17 +1,31 @@
 #!/bin/bash
 
 # Ensure PORT, OUTPUT_DIR and MAX_IPS are provided
-if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
+if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ] || [ -z "$4" ]; then
     echo "Usage: $0 <port> <output_dir> <max_ips>"
     exit 1
 fi
 
 # Configuration
 PORT="$1"
-OUTPUT_DIR="$2"
-MAX_IPS="$3"
+SERVICE="$2"
+OUTPUT_DIR="$3"
+MAX_IPS="$4"
 OUTPUT_FILE="${OUTPUT_DIR}/targets.csv"
 BANDWIDTH="100M"
+
+# Validate SERVICE argument
+if [[ ! "$SERVICE" =~ ^(dns|ntp|snmp)$ ]]; then
+    echo "Error: Invalid service. Allowed values are 'dns', 'ntp', or 'snmp'."
+    exit 1
+fi
+
+# Ensure the corresponding .bin file exists
+SERVICE_BIN="${SERVICE}.bin"
+if [ ! -f "$SERVICE_BIN" ]; then
+    echo "Error: The file '$SERVICE_BIN' does not exist. Please generate the payload first."
+    exit 1
+fi
 
 # Include Cleanup functions
 source src/hitlist/cleanup.sh
@@ -30,11 +44,12 @@ mkdir -p "$OUTPUT_DIR"
 
 # Start scan and save only responding IPs
 echo "Scanning..."
-zmap -p "$PORT" -o "$OUTPUT_FILE" -N "$MAX_IPS" -B "$BANDWIDTH" -M udp --output-fields=saddr --output-filter='success=1 && repeat=0' --no-header-row
+zmap -p "$PORT" -o "$OUTPUT_FILE" -N "$MAX_IPS" -B "$BANDWIDTH" -M udp --probe-args="file:$SERVICE_BIN" --output-fields=saddr --output-filter='success=1 && repeat=0' --no-header-row
 
 if [ $? -ne 0 ]; then
     echo "ZMap scan failed."
     exit 1
 fi
 
+echo "Scan completed successfully"
 exit 0

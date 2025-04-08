@@ -37,4 +37,5 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+echo "Scan completed successfully"
 exit 0

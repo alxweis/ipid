@@ -34,13 +34,13 @@ def convert_metric(value: str) -> str:
     return str(int(num) * factor)
 
 
-def create(protocol: str, port: str, max_ips: str):
+def create(protocol: str, port: str, service: str, max_ips: str):
     output_dir = create_output_dir(protocol, port)
     if protocol == "icmp":
         subprocess.run(["bash", os.path.join(DIR_PATH, "icmp/scan.sh"), output_dir, convert_metric(max_ips)])
     elif protocol == "tcp":
         subprocess.run(["bash", os.path.join(DIR_PATH, "tcp/scan.sh"), port, output_dir, convert_metric(max_ips)])
     elif protocol == "udp":
-        subprocess.run(["bash", os.path.join(DIR_PATH, "udp/scan.sh"), port, output_dir, convert_metric(max_ips)])
+        subprocess.run(["bash", os.path.join(DIR_PATH, "udp/scan.sh"), port, service, output_dir, convert_metric(max_ips)])
     else:
         print(f"Unknown protocol: {protocol}")
