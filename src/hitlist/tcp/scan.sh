@@ -28,9 +28,6 @@ fi
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
 
-# Write header row in output file
-echo "IP" > "$OUTPUT_FILE"
-
 # Start scan and save only responding IPs
 echo "Scanning..."
 zmap -p "$PORT" -o "$OUTPUT_FILE" -N "$MAX_IPS" -B "$BANDWIDTH" -M tcp_synscan --output-fields=saddr --output-filter='success=1 && repeat=0' --no-header-row
