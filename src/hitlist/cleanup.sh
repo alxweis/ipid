@@ -18,7 +18,7 @@ cleanup() {
 
     # Deduplicate
     start_dedup=$(date +%s)
-    TEMP_FILE=$(mktemp "${OUTPUT_FILE}.dedup.XXXXXX")
+    TEMP_FILE=$(mktemp "${OUTPUT_FILE}.dedup.XXXXXX" -T .)
     sort -u -T . "$OUTPUT_FILE" | LC_ALL=C > "$TEMP_FILE"
     mv "$TEMP_FILE" "$OUTPUT_FILE"
     end_dedup=$(date +%s)
@@ -30,7 +30,7 @@ cleanup() {
 
     # Shuffle
     start_shuffle=$(date +%s)
-    TEMP_FILE=$(mktemp "${OUTPUT_FILE}.shuffle.XXXXXX")
+    TEMP_FILE=$(mktemp "${OUTPUT_FILE}.shuffle.XXXXXX" -T .)
     shuf "$OUTPUT_FILE" > "$TEMP_FILE"
     mv "$TEMP_FILE" "$OUTPUT_FILE"
     end_shuffle=$(date +%s)
