@@ -17,7 +17,7 @@ BANDWIDTH="100M"
 source src/hitlist/cleanup.sh
 
 # Trap definition to call the cleanup function properly
-trap cleanup SIGINT SIGTERM
+trap cleanup SIGINT SIGTERM EXIT
 
 # Ensure ZMap is installed
 if ! command -v zmap &> /dev/null; then
@@ -28,15 +28,16 @@ fi
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
 
-# Start ICMP scan and save only responding IPs
+# Write header row in output file
+echo "IP" > "$OUTPUT_FILE"
+
+# Start scan and save only responding IPs
 echo "Scanning..."
-zmap -M tcp_synscan -p "$PORT" -o "$OUTPUT_FILE" -B "$BANDWIDTH" -f "saddr" -N "$MAX_IPS" # TODO -b black_list
+zmap -p "$PORT" -o "$OUTPUT_FILE" -N "$MAX_IPS" -B "$BANDWIDTH" -M tcp_synscan --output-fields=saddr --output-filter='success=1 && repeat=0' --no-header-row --summary
 
 if [ $? -ne 0 ]; then
     echo "ZMap scan failed."
     exit 1
 fi
-
-cleanup
 
 exit 0

@@ -12,18 +12,20 @@ count_lines() {
 }
 
 cleanup() {
-    # Replace 'saddr' with 'IP' in the header
-    sed -i '1s/^saddr/IP/' "$OUTPUT_FILE"
-
     # Count initial IPs
     initial_count=$(count_lines "$OUTPUT_FILE")
     echo "Initial number of IPs (including header): $initial_count"
 
-    # Deduplicate using sort -u
+    # Extract header once
+    header=$(head -n 1 "$OUTPUT_FILE")
+
+    # Deduplicate
     start_dedup=$(date +%s)
     TEMP_FILE=$(mktemp "${OUTPUT_FILE}.dedup.XXXXXX")
-    header=$(head -n 1 "$OUTPUT_FILE")
-    { echo "$header"; tail -n +2 "$OUTPUT_FILE" | sort -u; } > "$TEMP_FILE"
+    {
+      echo "$header";
+      tail -n +2 "$OUTPUT_FILE" | LC_ALL=C sort -u --temporary-directory=.
+    } > "$TEMP_FILE"
     mv "$TEMP_FILE" "$OUTPUT_FILE"
     end_dedup=$(date +%s)
     dedup_time=$((end_dedup - start_dedup))
@@ -32,11 +34,13 @@ cleanup() {
     deduped_diff=$((initial_count - deduped_count))
     echo "Number of IPs removed by deduplication: $deduped_diff"
 
-    # Shuffle using shuf
+    # Shuffle
     start_shuffle=$(date +%s)
     TEMP_FILE=$(mktemp "${OUTPUT_FILE}.shuffle.XXXXXX")
-    header=$(head -n 1 "$OUTPUT_FILE")
-    { echo "$header"; tail -n +2 "$OUTPUT_FILE" | shuf; } > "$TEMP_FILE"
+    {
+      echo "$header";
+      tail -n +2 "$OUTPUT_FILE" | shuf;
+    } > "$TEMP_FILE"
     mv "$TEMP_FILE" "$OUTPUT_FILE"
     end_shuffle=$(date +%s)
     shuffle_time=$((end_shuffle - start_shuffle))
@@ -47,5 +51,5 @@ cleanup() {
     echo "Deduplication took: $dedup_time seconds"
     echo "Shuffling took: $shuffle_time seconds"
 
-    echo "Cleanup completed. Results saved in $OUTPUT_FILE."
+    echo "Results saved in $OUTPUT_FILE"
 }
