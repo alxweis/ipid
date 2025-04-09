@@ -11,11 +11,13 @@ import re
 DIR_PATH = os.path.dirname(os.path.abspath(__file__))
 
 
-def create_output_dir(protocol: str, port: str):
+def create_output_dir(protocol: str, port: str, service: str):
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     dir_path = f"targets/{protocol}"
     if protocol in ["tcp", "udp"]:
         dir_path += f"/{port}"
+    if protocol == "udp":
+        dir_path += f"/{service}"
     dir_path += f"/{timestamp}"
     os.makedirs(dir_path, exist_ok=True)
     return dir_path
@@ -34,13 +36,15 @@ def convert_metric(value: str) -> str:
     return str(int(num) * factor)
 
 
-def create(protocol: str, port: str, service: str, max_ips: str):
-    output_dir = create_output_dir(protocol, port)
+def create(protocol: str, port: str, service: str, max_ips: str, targets_path: str):
+    output_dir = create_output_dir(protocol, port, service)
     if protocol == "icmp":
         subprocess.run(["bash", os.path.join(DIR_PATH, "icmp/scan.sh"), output_dir, convert_metric(max_ips)])
     elif protocol == "tcp":
         subprocess.run(["bash", os.path.join(DIR_PATH, "tcp/scan.sh"), port, output_dir, convert_metric(max_ips)])
     elif protocol == "udp":
         subprocess.run(["bash", os.path.join(DIR_PATH, "udp/scan.sh"), port, service, output_dir, convert_metric(max_ips)])
+    elif protocol == "os_detection":
+        subprocess.run(["bash", os.path.join(DIR_PATH, "os_detection.sh"), targets_path])
     else:
         print(f"Unknown protocol: {protocol}")

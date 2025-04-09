@@ -42,5 +42,8 @@ cleanup() {
     # Add header
     sed -i '1i IP' "$OUTPUT_FILE"
 
+    # Compress output file
+    xz -9 "$OUTPUT_FILE"
+
     echo "Results saved in $OUTPUT_FILE"
 }
