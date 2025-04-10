@@ -25,7 +25,6 @@ sed -i '1d' "$INPUT_FILE" || { echo "Failed to remove header"; exit 1; }
 
 # Get initial line count and export
 INITIAL_COUNT=$(wc -l < "$INPUT_FILE")
-echo "INITIAL_COUNT SETUP: $INITIAL_COUNT"
 export INITIAL_COUNT
 
 # Store start time and export

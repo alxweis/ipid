@@ -20,5 +20,6 @@ zmap -p "$PORT" -o "$OUTPUT_FILE" -N "$MAX_IPS" -B "$BANDWIDTH" -M udp --probe-a
 source src/hitlist/ip_scan/cleanup.sh "$OUTPUT_FILE"
 
 if [ "$ENABLE_OS_SCAN" == "True" ]; then
+  echo "Executing: python3 0_hitlist.py os_scan $OUTPUT_FILE"
   python3 0_hitlist.py os_scan "$OUTPUT_FILE"
 fi

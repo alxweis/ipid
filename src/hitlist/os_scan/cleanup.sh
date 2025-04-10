@@ -12,8 +12,6 @@ RUNTIME=$((END_TIME - START_TIME))
 
 # Get the final line count and calculate the difference
 FINAL_COUNT=$(wc -l < "$OUTPUT_FILE")
-echo "INITIAL_COUNT CLEANUP: $INITIAL_COUNT"
-echo "FINAL_COUNT: $FINAL_COUNT"
 DIFF_COUNT=$((INITIAL_COUNT - FINAL_COUNT))
 
 # Output the results
