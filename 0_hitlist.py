@@ -124,7 +124,7 @@ def main():
         else:
             error()
     elif command == "os_scan":
-        targets_path, protocol, port = get_targets_path(3)
+        targets_path, protocol, port = get_targets_path(2)
         os_scan(targets_path, protocol, port)
     else:
         error()
