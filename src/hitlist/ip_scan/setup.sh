@@ -1,0 +1,7 @@
+BANDWIDTH="100M"
+export BANDWIDTH
+
+OUTPUT_FILE="${OUTPUT_DIR}/targets.csv"
+export OUTPUT_FILE
+
+mkdir -p "$OUTPUT_DIR"
