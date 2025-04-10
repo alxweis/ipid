@@ -9,6 +9,17 @@ zstd -d "$INPUT_FILE" || { echo "Failed to decompress file"; exit 1; }
 INPUT_FILE="${INPUT_FILE%.zst}"
 export INPUT_FILE
 
+# Check if already scanned
+HEADER=$(head -n 1 "$INPUT_FILE")
+if [[ "$HEADER" == *"IP,OS"* ]]; then
+  echo "OS already scanned. Recompressing file."
+  zstd "$INPUT_FILE" -o "${INPUT_FILE}.zst"
+  if [ $? -eq 0 ]; then
+    rm "$INPUT_FILE"
+  fi
+  exit 0
+fi
+
 # Remove the header row
 sed -i '1d' "$INPUT_FILE" || { echo "Failed to remove header"; exit 1; }
 
