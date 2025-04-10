@@ -15,7 +15,7 @@ FINAL_COUNT=$(wc -l < "$OUTPUT_FILE")
 DIFF_COUNT=$((INITIAL_COUNT - FINAL_COUNT))
 
 # Output the results
-echo "OS scan finished successfully: found=$FINAL_COUNT not_found=$DIFF_COUNT RUNTIME=$RUNTIME seconds"
+echo "OS scan finished successfully: found=$FINAL_COUNT not_found=$DIFF_COUNT runtime=$RUNTIME seconds"
 
 # Add header row to the file
 sed -i '1i IP,OS' "$OUTPUT_FILE" || { echo "Failed to add header"; exit 1; }
