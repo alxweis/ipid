@@ -64,7 +64,8 @@ def get_enable_os_scan(index: int) -> bool:
     if len(sys.argv) > index:
         value = sys.argv[index]
         return value.lower() in ["1", "t", "true"]
-    error()
+    else:
+        return False
 
 
 def get_targets_path(index: int) -> (str, str, str):
