@@ -5,7 +5,7 @@ OS_REGEX="ubuntu|centos|debian|redhat|ret hat|rhel|fedora|gentoo|opensuse|eulero
 export OS_REGEX
 
 # Decompress the file
-zstd -d "$INPUT_FILE" || { echo "Failed to decompress file"; exit 1; }
+zstd -f -d "$INPUT_FILE" || { echo "Failed to decompress file"; exit 1; }
 INPUT_FILE="${INPUT_FILE%.zst}"
 export INPUT_FILE
 
@@ -13,7 +13,7 @@ export INPUT_FILE
 HEADER=$(head -n 1 "$INPUT_FILE")
 if [[ "$HEADER" == *"IP,OS"* ]]; then
   echo "OS already scanned. Recompressing file."
-  zstd "$INPUT_FILE" -o "${INPUT_FILE}.zst"
+  zstd -f "$INPUT_FILE" -o "${INPUT_FILE}.zst"
   if [ $? -eq 0 ]; then
     rm "$INPUT_FILE"
   fi
