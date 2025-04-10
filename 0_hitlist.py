@@ -9,7 +9,7 @@ from hitlist import ICMP_IP_SCANNER, TCP_IP_SCANNER, UDP_IP_SCANNER, HTTP_OS_SCA
 filename = os.path.basename(__file__)
 
 
-def error():
+def print_usage():
     print("Usage:")
     print(f"python {filename} ip_scan icmp [max_ips]")
     print(f"python {filename} ip_scan tcp <port> [max_ips] [enable_os_scan]")
@@ -23,7 +23,7 @@ def get_command(index: int) -> str:
         value = sys.argv[index]
         if value in ["ip_scan", "os_scan"]:
             return value
-    error()
+    print_usage()
 
 
 def get_protocol(index: int) -> str:
@@ -31,7 +31,7 @@ def get_protocol(index: int) -> str:
         value = sys.argv[index]
         if value in ["icmp", "tcp", "udp"]:
             return value
-    error()
+    print_usage()
 
 
 def get_max_ips(index: int) -> int:
@@ -57,7 +57,7 @@ def get_port(index: int):
         value = sys.argv[index]
         if value.isdigit() and 0 <= int(value) <= 65535:
             return value
-    error()
+    print_usage()
 
 
 def get_enable_os_scan(index: int) -> bool:
@@ -78,7 +78,7 @@ def get_targets_path(index: int) -> (str, str, str):
             protocol = match.group(1)
             port = match.group(2)
             return targets_path, protocol, port
-    error()
+    print_usage()
 
 
 def create_output_dir(protocol: str, port: None | str) -> str:
@@ -100,7 +100,7 @@ def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool)
     elif protocol == "udp":
         subprocess.run(["bash", UDP_IP_SCANNER, output_dir, port, str(max_ips), str(enable_os_scan)])
     else:
-        error()
+        print_usage()
 
 
 def os_scan(targets_path: str, protocol: str, port: str):
@@ -122,12 +122,12 @@ def main():
         elif protocol in ["tcp", "udp"]:
             ip_scan(protocol, get_port(3), get_max_ips(4), get_enable_os_scan(5))
         else:
-            error()
+            print_usage()
     elif command == "os_scan":
         targets_path, protocol, port = get_targets_path(2)
         os_scan(targets_path, protocol, port)
     else:
-        error()
+        print_usage()
 
 
 if __name__ == "__main__":
