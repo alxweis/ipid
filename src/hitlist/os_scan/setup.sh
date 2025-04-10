@@ -4,11 +4,6 @@ INPUT_FILE="$1"
 OS_REGEX="ubuntu|centos|debian|redhat|ret hat|rhel|fedora|gentoo|opensuse|euleros|zorin|linux|windows server|windows|freebsd|openbsd|netbsd|bsd|macos|darwin|solaris|fritz|rasp|openwrt|lede|dd-wrt|ddwrt|wrt|vyos|vyatta|pfsense|routeros|mikrotik|edgeos|airos|unifi|ubiquiti|junos|juniper|cisco ios|ios-xe|nx-os|ios|cisco|fortios|fortinet|forti|sonicos|sonicwall|sonic|arubaos|aruba|draytek|drayos|vigor|dray|zynos|zyxel|aix|hp-ux|hpux|z/os|zos|openvms|vms|vrp|busybox|vxworks|qnx|freertos|openembedded|yocto|utm|gaia|router"
 export OS_REGEX
 
-# Get initial line count and export
-INITIAL_COUNT=$(wc -l < "$INPUT_FILE")
-echo "INITIAL_COUNT SETUP: $INITIAL_COUNT"
-export INITIAL_COUNT
-
 # Decompress the file
 zstd -d "$INPUT_FILE" || { echo "Failed to decompress file"; exit 1; }
 INPUT_FILE="${INPUT_FILE%.zst}"
@@ -16,6 +11,11 @@ export INPUT_FILE
 
 # Remove the header row
 sed -i '1d' "$INPUT_FILE" || { echo "Failed to remove header"; exit 1; }
+
+# Get initial line count and export
+INITIAL_COUNT=$(wc -l < "$INPUT_FILE")
+echo "INITIAL_COUNT SETUP: $INITIAL_COUNT"
+export INITIAL_COUNT
 
 # Store start time and export
 START_TIME=$(date +%s)
