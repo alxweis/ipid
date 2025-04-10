@@ -93,11 +93,11 @@ def create_output_dir(protocol: str, port: None | str) -> str:
 def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool):
     output_dir = create_output_dir(protocol, port)
     if protocol == "icmp":
-        subprocess.run(["bash", ICMP_IP_SCANNER, output_dir, max_ips])
+        subprocess.run(["bash", ICMP_IP_SCANNER, output_dir, str(max_ips)])
     elif protocol == "tcp":
-        subprocess.run(["bash", TCP_IP_SCANNER, output_dir, port, max_ips, enable_os_scan])
+        subprocess.run(["bash", TCP_IP_SCANNER, output_dir, port, str(max_ips), str(enable_os_scan)])
     elif protocol == "udp":
-        subprocess.run(["bash", UDP_IP_SCANNER, output_dir, port, max_ips, enable_os_scan])
+        subprocess.run(["bash", UDP_IP_SCANNER, output_dir, port, str(max_ips), str(enable_os_scan)])
     else:
         error()
 
