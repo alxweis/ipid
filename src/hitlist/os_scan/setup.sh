@@ -10,6 +10,8 @@ export INITIAL_COUNT
 
 # Decompress the file
 zstd -d "$INPUT_FILE" || { echo "Failed to decompress file"; exit 1; }
+INPUT_FILE="${INPUT_FILE%.zst}"
+export INPUT_FILE
 
 # Remove the header row
 sed -i '1d' "$INPUT_FILE" || { echo "Failed to remove header"; exit 1; }

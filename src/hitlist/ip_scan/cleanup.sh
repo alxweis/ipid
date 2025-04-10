@@ -38,7 +38,7 @@ echo "IP Scan finished successfully: final_count=$final_count"
 # Add header
 sed -i '1i IP' "$OUTPUT_FILE" || { echo "Failed to add header"; exit 1; }
 
-# Compress the file again
+# Compress the file
 OUTPUT_COMPRESSED_FILE="${OUTPUT_FILE}.zst"
 zstd "$OUTPUT_FILE" -o "$OUTPUT_COMPRESSED_FILE" || { echo "Failed to compress file"; exit 1; }
 

@@ -3,7 +3,6 @@
 INPUT_FILE="$1"
 
 source src/hitlist/os_scan/setup.sh "$INPUT_FILE"
-trap 'source src/hitlist/os_scan/cleanup.sh "$INPUT_FILE" "$TEMP_FILE"' EXIT
 
 process_ip_addr() {
     ip="$1"
