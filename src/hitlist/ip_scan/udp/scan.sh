@@ -1,7 +1,7 @@
 #!/bin/bash
 
-PORT="$1"
-OUTPUT_DIR="$2"
+OUTPUT_DIR="$1"
+PORT="$2"
 MAX_IPS="$3"
 ENABLE_OS_SCAN="$4"
 
