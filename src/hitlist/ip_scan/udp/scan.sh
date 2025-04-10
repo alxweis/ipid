@@ -6,7 +6,6 @@ MAX_IPS="$3"
 ENABLE_OS_SCAN="$4"
 
 source src/hitlist/ip_scan/setup.sh "$OUTPUT_DIR"
-trap 'source src/hitlist/ip_scan/cleanup.sh "$OUTPUT_FILE"' EXIT
 
 declare -A SERVICE_MAP=(
     [53]="dns"
