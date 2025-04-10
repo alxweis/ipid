@@ -28,4 +28,5 @@ if [ $? -eq 0 ]; then
   rm "$OUTPUT_FILE"
 fi
 
-echo "Results saved in $OUTPUT_COMPRESSED_FILE"
+OUTPUT_FILE=$OUTPUT_COMPRESSED_FILE
+echo "Results saved in $OUTPUT_FILE"
