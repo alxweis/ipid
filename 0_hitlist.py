@@ -80,7 +80,7 @@ def get_targets_path(index: int) -> (str, str, str):
     error()
 
 
-def create_output_dir(protocol: str, port: str) -> str:
+def create_output_dir(protocol: str, port: None | str) -> str:
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     dir_path = f"targets/{protocol}"
     if protocol in ["tcp", "udp"]:
