@@ -71,8 +71,8 @@ def get_enable_os_scan(index: int) -> bool:
 def get_targets_path(index: int) -> (str, str, str):
     if len(sys.argv) > index:
         targets_path = sys.argv[index]
-        # value has format: targets/<protocol>/<port>/<YYYY-MM-DD_HH-MM-SS>/targets.csv<*>
-        pattern = r"^targets/(icmp|tcp|udp)/(\d{1,5})/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/targets\.csv.*$"
+        # value has format: targets/<protocol>/<port>/<YYYY-MM-DD_HH-MM-SS>/targets.csv.zst
+        pattern = r"^targets/(icmp|tcp|udp)/(\d{1,5})/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/targets\.csv\.zst$"
         match = re.match(pattern, targets_path)
         if match:
             protocol = match.group(1)
