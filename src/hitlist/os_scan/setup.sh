@@ -6,6 +6,7 @@ export OS_REGEX
 
 # Get initial line count and export
 INITIAL_COUNT=$(wc -l < "$INPUT_FILE")
+echo "INITIAL_COUNT SETUP: $INITIAL_COUNT"
 export INITIAL_COUNT
 
 # Decompress the file
