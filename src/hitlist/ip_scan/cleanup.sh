@@ -25,7 +25,10 @@ echo "Deduplication finished successfully: removed_ips=$REMOVED_IPS runtime=$RUN
 START_TIME_SHUFFLE=$(date +%s)
 
 TEMP_FILE=$(mktemp "${OUTPUT_FILE}.shuffle.XXXXXX" -p .)
-shuf "$OUTPUT_FILE" > "$TEMP_FILE"
+split -l 1000000 "$OUTPUT_FILE" parts_
+for f in parts_*; do shuf "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+cat parts_* > "$TEMP_FILE"
+rm parts_*
 mv "$TEMP_FILE" "$OUTPUT_FILE"
 
 END_TIME_SHUFFLE=$(date +%s)
