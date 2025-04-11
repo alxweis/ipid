@@ -92,6 +92,12 @@ def create_output_dir(protocol: str, port: None | str) -> str:
 
 
 def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool):
+    print("Starting IP Scan:")
+    print(f"Protocol: {protocol}")
+    print(f"Port: {port}")
+    print(f"Max IPs: {max_ips}")
+    print(f"Enable OS scan: {enable_os_scan}")
+
     output_dir = create_output_dir(protocol, port)
     if protocol == "icmp":
         subprocess.run(["bash", ICMP_IP_SCANNER, output_dir, str(max_ips)])
@@ -104,6 +110,11 @@ def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool)
 
 
 def os_scan(targets_path: str, protocol: str, port: str):
+    print("Starting OS Scan:")
+    print(f"Targets Directory: {targets_path}")
+    print(f"Protocol: {protocol}")
+    print(f"Port: {port}")
+
     if port == "80":
         subprocess.run(["bash", HTTP_OS_SCANNER, targets_path])
     elif port == "53":
