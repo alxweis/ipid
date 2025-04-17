@@ -95,7 +95,7 @@ def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool)
     print("Starting IP Scan...")
     print(f"Protocol: {protocol.upper()}")
     print(f"Port: {port}")
-    print(f"Max IPs: {'no limit' if max_ips == 0 else max_ips}")
+    print(f"Max IPs: {'No Limit' if max_ips == 0 else max_ips}")
     print(f"Enable OS Scan: {enable_os_scan}")
 
     output_dir = create_output_dir(protocol, port)
