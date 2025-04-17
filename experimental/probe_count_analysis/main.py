@@ -1,6 +1,7 @@
 # We have a given random sequence: (A-B-C-D-E-F-...)
 import math
 import random
+from enum import Enum
 
 import numpy as np
 from scipy.stats import chisquare
@@ -53,6 +54,15 @@ class IPIDSequence:
         self.b = IPIDSubsequence(arr[1::2])
 
 
+class Pattern(Enum):
+    CONSTANT = "constant"
+    GLOBAL = "global"
+    LOCAL_EQ1 = "local_eq1"
+    LOCAL_GE1 = "local_ge1"
+    RANDOM = "random"
+    ANOMALOUS = "anomalous"
+
+
 def nrm_entropy(values: np.ndarray) -> float:
     unique_values, counts = np.unique(values, return_counts=True)
     probabilities = counts / counts.sum()
@@ -68,8 +78,8 @@ def p_value(values: np.ndarray) -> float:
     total_numbers = len(values)
     expected_frequencies = np.full(intervals, total_numbers / intervals)
 
-    chi2_stat, p_value = chisquare(f_obs=observed_frequencies, f_exp=expected_frequencies)
-    return p_value
+    chi2_stat, p = chisquare(f_obs=observed_frequencies, f_exp=expected_frequencies)
+    return p
 
 
 def is_uniform(values: np.ndarray, alpha: float) -> bool:
@@ -120,20 +130,20 @@ def has_pattern(seq: IPIDSequence) -> bool:
     )
 
 
-def get_pattern(seq: IPIDSequence, get_all=False):
+def get_pattern(seq: IPIDSequence, get_all=False) -> list[Pattern] | Pattern:
     result = []
     if is_constant(seq):
-        result.append("constant")
+        result.append(Pattern.CONSTANT)
     if is_global(seq):
-        result.append("global")
+        result.append(Pattern.GLOBAL)
     if is_local_eq1(seq):
-        result.append("local_eq1")
+        result.append(Pattern.LOCAL_EQ1)
     if is_local_ge1(seq):
-        result.append("local_ge1")
+        result.append(Pattern.LOCAL_GE1)
     if is_random(seq):
-        result.append("random")
+        result.append(Pattern.RANDOM)
     if is_anomalous(seq):
-        result.append("anomalous")
+        result.append(Pattern.ANOMALOUS)
     return result if get_all else result[0]
 
 
@@ -145,11 +155,11 @@ def random_ipid() -> int:
     return random.randint(0, MAX_IPID)
 
 
-def clamp(value, min_value, max_value):
+def clamp(value: int, min_value: int, max_value: int) -> int:
     return max(min_value, min(value, max_value))
 
 
-def increment_ipid(ipid, inc):
+def increment_ipid(ipid: int, inc: int) -> int:
     return (ipid + inc) % (MAX_IPID + 1)
 
 
@@ -209,29 +219,28 @@ def random_ipid_sequence() -> IPIDSequence:
     return IPIDSequence(seq)
 
 
+pattern_generation_map = {
+    Pattern.CONSTANT: constant_ipid_sequence,
+    Pattern.GLOBAL: global_ipid_sequence,
+    Pattern.LOCAL_EQ1: local_eq1_ipid_sequence,
+    Pattern.LOCAL_GE1: local_ge1_ipid_sequence,
+    Pattern.RANDOM: random_ipid_sequence
+}
 # endregion
 
 def main():
-    patterns = {
-        "constant": constant_ipid_sequence,
-        "global": global_ipid_sequence,
-        "local_eq1": local_eq1_ipid_sequence,
-        "local_ge1": local_ge1_ipid_sequence,
-        "random": random_ipid_sequence
-    }
-
     SAMPLES_PER_PATTERN = 500
 
-    for correct_pattern, create_seq in patterns.items():
+    for correct_pattern, create_seq in pattern_generation_map.items():
         min_stable_indicies = []
         for _ in range(SAMPLES_PER_PATTERN):
-            sequence = create_seq()
-            # print(f"{sequence.s.sequence}:")
+            seq = create_seq()
+            # print(f"{seq.s.sequence}:")
             min_stable_index = -1
             for i in range(MIN_SEQ_LEN, MAX_SEQ_LEN + 1):
-                sub_sequence = IPIDSequence(sequence.s.sequence.tolist()[:i])
-                classified_pattern = get_pattern(sub_sequence)
-                # print(f"{sub_sequence.s.sequence} => {classified_pattern}")
+                prefix_seq = IPIDSequence(seq.s.sequence.tolist()[:i])
+                classified_pattern = get_pattern(prefix_seq)
+                # print(f"{prefix_seq.s.sequence} => {classified_pattern}")
 
                 if classified_pattern == correct_pattern:
                     if min_stable_index == -1:
