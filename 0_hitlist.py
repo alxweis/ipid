@@ -18,7 +18,7 @@ def print_usage():
     sys.exit(1)
 
 
-def get_command(index: int) -> str:
+def get_command(index: int) -> str | None:
     if len(sys.argv) > index:
         value = sys.argv[index]
         if value in ["ip_scan", "os_scan"]:
@@ -26,7 +26,7 @@ def get_command(index: int) -> str:
     print_usage()
 
 
-def get_protocol(index: int) -> str:
+def get_protocol(index: int) -> str | None:
     if len(sys.argv) > index:
         value = sys.argv[index]
         if value in ["icmp", "tcp", "udp"]:
@@ -95,7 +95,7 @@ def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool)
     print("Starting IP Scan...")
     print(f"Protocol: {protocol.upper()}")
     print(f"Port: {port}")
-    print(f"Max IPs: {max_ips}")
+    print(f"Max IPs: {'no limit' if max_ips == 0 else max_ips}")
     print(f"Enable OS Scan: {enable_os_scan}")
 
     output_dir = create_output_dir(protocol, port)

@@ -229,7 +229,7 @@ pattern_generation_map = {
 # endregion
 
 
-def analyze_sequence_stability_lengths(sequence_count_per_pattern: int):
+def analyze_sequence_stable_lens(sequence_count_per_pattern: int):
     for _, create_seq in pattern_generation_map.items():
         pattern_to_min_stable_lens: dict[Pattern, list[int]] = {}
 
@@ -265,7 +265,7 @@ def analyze_sequence_stability_lengths(sequence_count_per_pattern: int):
 
 
 def main():
-    analyze_sequence_stability_lengths(sequence_count_per_pattern=1000)
+    analyze_sequence_stable_lens(sequence_count_per_pattern=1000)
 
 
 if __name__ == "__main__":
