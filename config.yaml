@@ -1,34 +1,34 @@
 # General
 targets: "latest" # Use e.g. "tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
 protocol: "icmp"
-recTraffic: false
+record_traffic: false
 
 # TCP
-tcpDstPort: 80
-tcpReqFlags: "S"
-tcpSrcPortOffset: 22570
+tcp_dst_port: 80
+tcp_request_flags: "S"
+tcp_src_port_offset: 22570
 
 # UDP
-udpDstPort: 53
-udpSrcPortOffset: 32570
+udp_dst_port: 53
+udp_src_port_offset: 32570
 
 # B2B Probing
-b2bProbeCount: 20
-b2bProbeInterval: "10ms"
+b2b_request_count: 20
+b2b_request_interval: "10ms"
 
 # SEQ Probing
-seqProbeCount: 20
+seq_request_count: 20
 
 # Other
-ifaceA:
+iface_a:
   name: "eth0"
   ip: "141.76.94.12"
-ifaceB:
+iface_b:
   name: "eth1"
   ip: "141.76.94.15"
-maxRTT: "2s"
-maxSendRate: 10000 # TODO Make Script to calculate maxSendRate
-defaultSendIpIds: [0] # Sends [0,0,0,...]
-detectReflectedIpIds: false
-reflectionSendIpIds: [3717,3718,3719] # Sequence must not match with any known pattern
+max_rtt: "2s"
+send_bandwidth: "30M" # TODO Make Script to calculate maxSendRate
+default_send_ip_ids: [0] # Sends [0,0,0,...]
+detect_reflected_ip_ids: false
+reflection_send_ip_ids: [3717,3718,3719] # Sequence must not match with any known pattern
 # TODO protocol: ["icmp","tcp","udp"] Sends ["icmp","tcp","udp"] packets to check protocol dependent behavior
