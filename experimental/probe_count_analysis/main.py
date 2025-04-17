@@ -48,9 +48,9 @@ class IPIDSubsequence:
 class IPIDSequence:
     def __init__(self, sequence: list[int]):
         arr = np.array(sequence, dtype=int)
-        self.s = IPIDSubsequence(arr)
-        self.a = IPIDSubsequence(arr[0::2])
-        self.b = IPIDSubsequence(arr[1::2])
+        self.full = IPIDSubsequence(arr)
+        self.even = IPIDSubsequence(arr[0::2])
+        self.odd = IPIDSubsequence(arr[1::2])
 
 
 class Pattern(Enum):
@@ -87,33 +87,33 @@ def is_uniform(values: np.ndarray, alpha: float) -> bool:
 
 
 def is_constant(seq: IPIDSequence) -> bool:
-    return np.all(seq.s.increments == 0)
+    return np.all(seq.full.increments == 0)
 
 
 def is_local(seq: IPIDSequence) -> bool:
-    return seq.a.is_increasing() and seq.b.is_increasing()
+    return seq.even.is_increasing() and seq.odd.is_increasing()
 
 
 def is_local_eq1(seq: IPIDSequence) -> bool:
     return (is_local(seq)
-            and np.all(seq.a.increments == 1)
-            and np.all(seq.b.increments == 1))
+            and np.all(seq.even.increments == 1)
+            and np.all(seq.odd.increments == 1))
 
 
 def is_local_ge1(seq: IPIDSequence) -> bool:
     return (is_local(seq)
-            and np.all(seq.a.increments >= 1)
-            and np.all(seq.b.increments >= 1))
+            and np.all(seq.even.increments >= 1)
+            and np.all(seq.odd.increments >= 1))
 
 
 def is_global(seq: IPIDSequence) -> bool:
-    return seq.s.is_increasing()
+    return seq.full.is_increasing()
 
 
 def is_random(seq: IPIDSequence) -> bool:
     alpha = 0.01
-    return is_uniform(seq.s.increments, alpha) and is_uniform(seq.a.increments, alpha) and is_uniform(seq.b.increments,
-                                                                                                      alpha)
+    return is_uniform(seq.full.increments, alpha) and is_uniform(seq.even.increments, alpha) and is_uniform(seq.odd.increments,
+                                                                                                            alpha)
 
 
 def is_anomalous(seq: IPIDSequence) -> bool:
@@ -240,7 +240,7 @@ def analyze_sequence_stability_lengths(sequence_count_per_pattern: int):
             last_classified_pattern = Pattern.NONE
 
             for i in range(2, MAX_SEQ_LEN + 1):
-                prefix_seq = IPIDSequence(seq.s.sequence.tolist()[:i])
+                prefix_seq = IPIDSequence(seq.full.sequence.tolist()[:i])
                 classified_pattern = get_pattern(prefix_seq)
                 # print(f"{prefix_seq.s.sequence} => {classified_pattern}")
 
