@@ -30,7 +30,7 @@ from scipy.stats import chisquare
 # Define threshold: Avg MinStableCorrectCount + 2 * Std MinStableCorrectCount
 
 MAX_IPID = 65535
-MAX_SEQ_LEN = 10
+MAX_SEQ_LEN = 20
 MIN_STEPS_BEFORE_WRAPAROUND = 3
 MAX_INC = math.ceil((MAX_IPID + 1) / MIN_STEPS_BEFORE_WRAPAROUND) - 1
 
