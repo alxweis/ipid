@@ -31,7 +31,6 @@ from scipy.stats import chisquare
 
 MAX_IPID = 65535
 MAX_SEQ_LEN = 10
-MIN_SEQ_LEN = 2
 MIN_STEPS_BEFORE_WRAPAROUND = 3
 MAX_INC = math.ceil((MAX_IPID + 1) / MIN_STEPS_BEFORE_WRAPAROUND) - 1
 
@@ -61,6 +60,7 @@ class Pattern(Enum):
     LOCAL_GE1 = "local_ge1"
     RANDOM = "random"
     ANOMALOUS = "anomalous"
+    NONE = "none"
 
 
 def nrm_entropy(values: np.ndarray) -> float:
@@ -228,35 +228,44 @@ pattern_generation_map = {
 }
 # endregion
 
-def main():
-    SAMPLES_PER_PATTERN = 500
 
-    for correct_pattern, create_seq in pattern_generation_map.items():
-        min_stable_indicies = []
-        for _ in range(SAMPLES_PER_PATTERN):
+def analyze_sequence_stability_lengths(sequence_count_per_pattern: int):
+    for _, create_seq in pattern_generation_map.items():
+        pattern_to_min_stable_lens: dict[Pattern, list[int]] = {}
+
+        for _ in range(sequence_count_per_pattern):
             seq = create_seq()
             # print(f"{seq.s.sequence}:")
-            min_stable_index = -1
-            for i in range(MIN_SEQ_LEN, MAX_SEQ_LEN + 1):
+            min_stable_len = 0
+            last_classified_pattern = Pattern.NONE
+
+            for i in range(2, MAX_SEQ_LEN + 1):
                 prefix_seq = IPIDSequence(seq.s.sequence.tolist()[:i])
                 classified_pattern = get_pattern(prefix_seq)
                 # print(f"{prefix_seq.s.sequence} => {classified_pattern}")
 
-                if classified_pattern == correct_pattern:
-                    if min_stable_index == -1:
-                        min_stable_index = i
+                if last_classified_pattern == Pattern.NONE or classified_pattern == last_classified_pattern:
+                    if min_stable_len == 0:
+                        min_stable_len = i
                 else:
-                    min_stable_index = -1
+                    min_stable_len = 0
 
-            if min_stable_index > -1:
-                min_stable_indicies.append(min_stable_index)
+                last_classified_pattern = classified_pattern
 
-        if min_stable_indicies:
-            avg = np.mean(min_stable_indicies)
-            std = np.std(min_stable_indicies)
-            print(f"{correct_pattern}: avg = {avg:.2f}, std = {std:.2f}")
-        else:
-            print(f"{correct_pattern}: no stable classification found.")
+            if min_stable_len > 0:
+                pattern_to_min_stable_lens.setdefault(last_classified_pattern, []).append(min_stable_len)
+
+        for stable_pattern, min_stable_lens in pattern_to_min_stable_lens.items():
+            if min_stable_lens:
+                avg = np.mean(min_stable_lens)
+                std = np.std(min_stable_lens)
+                print(f"{stable_pattern}: avg = {avg:.2f}, std = {std:.2f}")
+            else:
+                print(f"{stable_pattern}: no stable classification found.")
+
+
+def main():
+    analyze_sequence_stability_lengths(sequence_count_per_pattern=1000)
 
 
 if __name__ == "__main__":
