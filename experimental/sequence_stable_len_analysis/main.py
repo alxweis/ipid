@@ -54,10 +54,12 @@ class IPIDSequence:
 
 
 class Pattern(Enum):
+    REFLECTION = "reflection"
     CONSTANT = "constant"
     GLOBAL = "global"
-    LOCAL_EQ1 = "local_eq1"
-    LOCAL_GE1 = "local_ge1"
+    LOCAL_EQ1 = "local_eq1"  # per-destination/ per-connection counter
+    LOCAL_GE1 = "local_ge1"  # per-bucket counter
+    MULTI_GLOBAL = "multi_global"  # per-cpu counter
     RANDOM = "random"
     FALLBACK = "fallback"
     NONE = "none"
