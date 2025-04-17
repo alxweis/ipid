@@ -59,7 +59,7 @@ class Pattern(Enum):
     LOCAL_EQ1 = "local_eq1"
     LOCAL_GE1 = "local_ge1"
     RANDOM = "random"
-    ANOMALOUS = "anomalous"
+    FALLBACK = "fallback"
     NONE = "none"
 
 
@@ -143,7 +143,7 @@ def get_pattern(seq: IPIDSequence, get_all=False) -> list[Pattern] | Pattern:
     if is_random(seq):
         result.append(Pattern.RANDOM)
     if is_anomalous(seq):
-        result.append(Pattern.ANOMALOUS)
+        result.append(Pattern.FALLBACK)
     return result if get_all else result[0]
 
 
@@ -259,9 +259,9 @@ def analyze_sequence_stability_lengths(sequence_count_per_pattern: int):
             if min_stable_lens:
                 avg = np.mean(min_stable_lens)
                 std = np.std(min_stable_lens)
-                print(f"{stable_pattern}: avg = {avg:.2f}, std = {std:.2f}")
+                print(f"{stable_pattern.value}: avg = {avg:.2f}, std = {std:.2f}")
             else:
-                print(f"{stable_pattern}: no stable classification found.")
+                print(f"{stable_pattern.value}: no stable classification found.")
 
 
 def main():
