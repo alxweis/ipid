@@ -12,7 +12,7 @@ INITIAL_COUNT=$(count_lines "$OUTPUT_FILE")
 START_TIME_DEDUP=$(date +%s)
 
 TEMP_FILE=$(mktemp "${OUTPUT_FILE}.dedup.XXXXXX" -p .)
-LC_ALL=C sort -t',' -k1,1 -u "$OUTPUT_FILE" > "$TEMP_FILE"
+LC_ALL=C sort -t',' -k1,1 -u -T . "$OUTPUT_FILE" > "$TEMP_FILE"
 mv "$TEMP_FILE" "$OUTPUT_FILE"
 
 END_TIME_DEDUP=$(date +%s)
