@@ -24,12 +24,13 @@ echo "Deduplication finished successfully: removed_ips=$REMOVED_IPS runtime=$RUN
 # Shuffle
 START_TIME_SHUFFLE=$(date +%s)
 
-TEMP_FILE=$(mktemp "${OUTPUT_FILE}.shuffle.XXXXXX" -p .)
-split -l 1000000 "$OUTPUT_FILE" parts_
-for f in parts_*; do shuf "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
-cat parts_* > "$TEMP_FILE"
-rm parts_*
-mv "$TEMP_FILE" "$OUTPUT_FILE"
+TEMP_FILE_RND_IDX=$(mktemp "${OUTPUT_FILE}.rand_index.XXXXXX" -p .)
+awk -v OFS=',' '{print int(rand()*1e18), $0}' "$OUTPUT_FILE" > "$TEMP_FILE_RND_IDX"
+TEMP_FILE_SORTED_RND_IDX=$(mktemp "${OUTPUT_FILE}.sorted_rand_index.XXXXXX" -p .)
+LC_ALL=C sort -t',' -k1,1n -T . "$TEMP_FILE_RND_IDX" > "$TEMP_FILE_SORTED_RND_IDX"
+TEMP_FILE_SHUFFLED=$(mktemp "${OUTPUT_FILE}.shuffled.XXXXXX" -p .)
+cut -d',' -f2- "$TEMP_FILE_SORTED_RND_IDX" > "$TEMP_FILE_SHUFFLED"
+mv "$TEMP_FILE_SHUFFLED" "$OUTPUT_FILE"
 
 END_TIME_SHUFFLE=$(date +%s)
 RUNTIME_SHUFFLE=$((END_TIME_SHUFFLE - START_TIME_SHUFFLE))
