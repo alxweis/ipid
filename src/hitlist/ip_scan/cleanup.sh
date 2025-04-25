@@ -27,7 +27,7 @@ echo "Start shuffle..."
 START_TIME_SHUFFLE=$(date +%s)
 
 TEMP_FILE_RND_IDX=$(mktemp "${OUTPUT_FILE}.rnd_idx.XXXXXX" -p .)
-awk -v OFS=',' '{print int(rand()*1e18), $0}' "$OUTPUT_FILE" > "$TEMP_FILE_RND_IDX"
+awk -v OFS=',' '{print int(rand()*1e9), $0}' "$OUTPUT_FILE" > "$TEMP_FILE_RND_IDX"
 TEMP_FILE_SORTED_RND_IDX=$(mktemp "${OUTPUT_FILE}.sorted_rnd_idx.XXXXXX" -p .)
 LC_ALL=C sort -t',' -k1,1n -T . "$TEMP_FILE_RND_IDX" > "$TEMP_FILE_SORTED_RND_IDX"
 rm "$TEMP_FILE_RND_IDX"
