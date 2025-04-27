@@ -1,6 +1,6 @@
 # General
 targets: "latest" # Use e.g. "tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
-protocol: "icmp"
+protocol: ["icmp"]
 record_traffic: false
 
 # TCP
@@ -27,8 +27,7 @@ iface_b:
   name: "eth1"
   ip: "141.76.94.15"
 max_rtt: "2s"
-send_bandwidth: "30M" # TODO Make Script to calculate maxSendRate
+send_mbps: 100
 default_send_ip_ids: [0] # Sends [0,0,0,...]
 detect_reflected_ip_ids: false
 reflection_send_ip_ids: [3717,3718,3719] # Sequence must not match with any known pattern
-# TODO protocol: ["icmp","tcp","udp"] Sends ["icmp","tcp","udp"] packets to check protocol dependent behavior

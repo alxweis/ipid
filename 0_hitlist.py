@@ -4,7 +4,8 @@ import subprocess
 import sys
 from datetime import datetime
 
-from hitlist import ICMP_IP_SCANNER, TCP_IP_SCANNER, UDP_IP_SCANNER, HTTP_OS_SCANNER, DNS_OS_SCANNER
+from hitlist.ip_scan import icmp, tcp, udp
+from hitlist.os_scan import http, dns
 
 filename = os.path.basename(__file__)
 
@@ -99,12 +100,13 @@ def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool)
     print(f"Enable OS Scan: {enable_os_scan}")
 
     output_dir = create_output_dir(protocol, port)
+    output_file = os.path.join(output_dir, "targets.csv")
     if protocol == "icmp":
-        subprocess.run(["bash", ICMP_IP_SCANNER, output_dir, str(max_ips)])
+        icmp.scan.start(output_file=output_file, max_ips=max_ips)
     elif protocol == "tcp":
-        subprocess.run(["bash", TCP_IP_SCANNER, output_dir, port, str(max_ips), str(enable_os_scan)])
+        tcp.scan.start(output_file=output_file, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
     elif protocol == "udp":
-        subprocess.run(["bash", UDP_IP_SCANNER, output_dir, port, str(max_ips), str(enable_os_scan)])
+        udp.scan.start(output_file=output_file, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
     else:
         print_usage()
 
@@ -116,9 +118,9 @@ def os_scan(targets_path: str, protocol: str, port: str):
     print(f"Port: {port}")
 
     if port == "80":
-        subprocess.run(["bash", HTTP_OS_SCANNER, targets_path])
+        http.start(targets_path)
     elif port == "53":
-        subprocess.run(["bash", DNS_OS_SCANNER, targets_path])
+        dns.start(targets_path)
     else:
         print(f"OS scan is not supported for port {port}!")
 

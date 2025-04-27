@@ -1,34 +1,50 @@
 import logging
 import math
 import os
+from dataclasses import dataclass
+from typing import List
 
 import yaml
 
 
-class Config(dict):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for key, value in self.items():
-            if isinstance(value, dict):
-                self[key] = Config(value)  # Recursion for nested dictionaries
-
-    def __getattr__(self, name):
-        if name in self:
-            return self[name]
-        else:
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-
-    def __setattr__(self, name, value):
-        self[name] = value
+@dataclass
+class Interface:
+    name: str
+    ip: str
 
 
-def load_config(filepath):
-    with open(filepath, 'r') as f:
-        data = yaml.safe_load(f)
-    return Config(data)
+@dataclass
+class Config:
+    targets: str
+    protocol: List[str]
+    record_traffic: bool
+    tcp_dst_port: int
+    tcp_request_flags: str
+    tcp_src_port_offset: int
+    udp_dst_port: int
+    udp_src_port_offset: int
+    b2b_request_count: int
+    b2b_request_interval: str
+    seq_request_count: int
+    iface_a: Interface
+    iface_b: Interface
+    max_rtt: str
+    send_mbps: int
+    default_send_ip_ids: List[int]
+    detect_reflected_ip_ids: bool
+    reflection_send_ip_ids: List[int]
+
+
+def load_config(path: str) -> Config:
+    with open(path, 'r') as file:
+        data = yaml.safe_load(file)
+    data['iface_a'] = Interface(**data['iface_a'])
+    data['iface_b'] = Interface(**data['iface_b'])
+    return Config(**data)
 
 
 config = load_config('config.yaml')
+print(config)
 
 # B2B_PROBE_COUNT = config['b2bProbeCount']
 # SEQ_PROBE_COUNT = config['seqProbeCount']
