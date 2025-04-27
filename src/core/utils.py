@@ -44,7 +44,6 @@ def load_config(path: str) -> Config:
 
 
 config = load_config('config.yaml')
-print(config)
 
 # B2B_PROBE_COUNT = config['b2bProbeCount']
 # SEQ_PROBE_COUNT = config['seqProbeCount']
