@@ -1,6 +1,5 @@
 import os
 import re
-import subprocess
 import sys
 from datetime import datetime
 
@@ -102,11 +101,11 @@ def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool)
     output_dir = create_output_dir(protocol, port)
     output_file = os.path.join(output_dir, "targets.csv")
     if protocol == "icmp":
-        icmp.scan.start(output_file=output_file, max_ips=max_ips)
+        icmp.start(output_file=output_file, max_ips=max_ips)
     elif protocol == "tcp":
-        tcp.scan.start(output_file=output_file, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
+        tcp.start(output_file=output_file, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
     elif protocol == "udp":
-        udp.scan.start(output_file=output_file, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
+        udp.start(output_file=output_file, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
     else:
         print_usage()
 
