@@ -46,13 +46,7 @@ def cleanup(output_file: str):
         })
 
         # Write the cleaned data to a temporary file
-        with open(temp_output_file, 'w') as f:
-            f.write(f"{ip_col_name},{ts_col_name}\n")
-
-        with open(temp_output_file, 'a') as f:
-            for chunk in renamed_lf.iter_batches(batch_size=10000):
-                chunk_df = pl.from_batches(chunk)
-                chunk_df.write_csv(f, has_header=False)
+        renamed_lf.sink_csv(temp_output_file)
 
         # Check how many unique IPs were processed
         unique_count = renamed_lf.select(pl.count()).fetch().item()
