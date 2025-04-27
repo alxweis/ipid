@@ -4,8 +4,6 @@ import time
 
 import polars as pl
 
-from analysis.main import analyze_response_rate
-
 ip_zmap_name = "saddr"
 ts_zmap_name = "timestamp_ts"
 ip_col_name = "IP"
