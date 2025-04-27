@@ -23,7 +23,8 @@ def cleanup(output_file: str):
     # Verify required columns exist in the CSV file
     required_columns = [ip_zmap_name, ts_zmap_name]
     lf = pl.scan_csv(output_file)
-    missing_columns = [col for col in required_columns if col not in lf.columns]
+    schema = lf.collect_schema()
+    missing_columns = [col for col in required_columns if col not in schema.names()]
     if missing_columns:
         print(f"Error: Missing required columns: {', '.join(missing_columns)}")
         return
