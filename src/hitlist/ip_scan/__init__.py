@@ -5,11 +5,10 @@ import time
 import polars as pl
 
 from analysis.main import analyze_response_rate
+from core.utils import config
 
 ip_zmap_name = "saddr"
 ts_zmap_name = "timestamp_ts"
-ip_col_name = "IP"
-ts_col_name = "TS_IP"
 
 zmap_output_fields = ",".join([ip_zmap_name, ts_zmap_name])
 
@@ -68,8 +67,8 @@ def cleanup(output_file: str):
         start = time.time()
         print("Renaming columns...")
         lf = lf.rename({
-            ip_zmap_name: ip_col_name,
-            ts_zmap_name: ts_col_name
+            ip_zmap_name: config.ip_col_name,
+            ts_zmap_name: config.ts_ip_col_name
         })
         print(f"Renaming finished: {log_runtime(start)}")
 
@@ -103,7 +102,7 @@ def cleanup(output_file: str):
         # Analyze
         start = time.time()
         print("Analyzing ZMap response rate...")
-        analyze_response_rate(targets_file=compressed_output_file, ts_name=ts_col_name)
+        analyze_response_rate(targets_file=compressed_output_file, ts_name=config.ts_ip_col_name)
         print(f"Analyzing finished: {log_runtime(start)}")
 
         print(f"Cleanup finished: {log_runtime(overall_start)}")

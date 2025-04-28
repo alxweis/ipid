@@ -4,6 +4,7 @@ import subprocess
 import sys
 import time
 
+from core.utils import config
 from hitlist.os_scan import setup, cleanup, extract_os_name
 
 
@@ -14,7 +15,7 @@ def run_zgrab2_http_scan(ip_addr_file: str, os_scan_file: str):
     print(f"Results will be written to {os_scan_file}")
 
     with open(os_scan_file, 'w') as f:
-        f.write("IP,OS,TS_OS\n")
+        f.write(f"{config.ip_col_name},{config.os_col_name},{config.ts_os_col_name}\n")
 
     try:
         with subprocess.Popen(

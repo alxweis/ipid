@@ -6,12 +6,10 @@ import sys
 import polars as pl
 
 from analysis.main import analyze_response_rate
+from core.utils import config
 
 os_regex = "ubuntu|centos|debian|redhat|ret hat|rhel|fedora|gentoo|opensuse|euleros|zorin|linux|windows server|windows|freebsd|openbsd|netbsd|bsd|macos|darwin|solaris|fritz|rasp|openwrt|lede|dd-wrt|ddwrt|wrt|vyos|vyatta|pfsense|routeros|mikrotik|edgeos|airos|unifi|ubiquiti|junos|juniper|cisco ios|ios-xe|nx-os|ios|cisco|fortios|fortinet|forti|sonicos|sonicwall|sonic|arubaos|aruba|draytek|drayos|vigor|dray|zynos|zyxel|aix|hp-ux|hpux|z/os|zos|openvms|vms|vrp|busybox|vxworks|qnx|freertos|openembedded|yocto|utm|gaia|router"
 os_pattern = re.compile(os_regex, re.IGNORECASE)
-
-os_col_name = "OS"
-ts_col_name = "TS_OS"
 
 
 def setup(ip_scan_file: str) -> str:
@@ -23,18 +21,18 @@ def setup(ip_scan_file: str) -> str:
         # Check if OS column already exists
         lf = pl.scan_csv(ip_scan_file)
         columns = lf.columns
-        if os_col_name in columns:
-            print(f"Column '{os_col_name}' already exists in the CSV file.")
+        if config.os_col_name in columns:
+            print(f"Column '{config.os_col_name}' already exists in the CSV file.")
             print("OS fingerprinting will be skipped.")
             raise ValueError("OS column already exists")
 
         # Create file with unique IP addresses for OS scanning
         ip_addr_file = f"{ip_scan_file}.ip_addr.txt"
-        unique_ips = lf.select("IP").unique().collect()
+        unique_ips = lf.select(config.ip_col_name).unique().collect()
         print(f"Extracting {len(unique_ips)} unique IP addresses for OS fingerprinting...")
 
         with open(ip_addr_file, 'w') as f:
-            for ip in unique_ips["IP"]:
+            for ip in unique_ips[config.ip_col_name]:
                 f.write(f"{ip}\n")
 
         print(f"IP addresses written to {ip_addr_file}.")
@@ -56,7 +54,7 @@ def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> bool:
         # Join original data with OS scan results lazily
         merged_lf = ip_scan_lf.join(
             os_scan_lf,
-            on="IP",
+            on=config.ip_col_name,
             how="left"
         )
 
@@ -94,7 +92,7 @@ def cleanup(ip_scan_file: str, ip_addr_file: str, os_scan_file: str):
         except:
             print("Warning: Could not remove temporary files.")
 
-        analyze_response_rate(targets_file=ip_scan_file, ts_name=ts_col_name)
+        analyze_response_rate(targets_file=ip_scan_file, ts_name=config.ts_os_col_name)
         print(f"Results saved in {ip_scan_file}")
 
 

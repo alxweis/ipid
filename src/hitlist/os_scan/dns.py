@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import polars as pl
 
+from core.utils import config
 from hitlist.os_scan import setup, cleanup, extract_os_name
 
 
@@ -35,9 +36,9 @@ def run_dig_dns_scan(ip_addr_file: str, os_scan_file: str):
     print(f"Results will be written to {os_scan_file}")
 
     with open(os_scan_file, 'w') as f:
-        f.write("IP,OS,TS_OS\n")
+        f.write(f"{config.ip_col_name},{config.os_col_name},{config.ts_os_col_name}\n")
 
-    ip_lf = pl.scan_csv(ip_addr_file, has_header=False, new_columns=["IP"])
+    ip_lf = pl.scan_csv(ip_addr_file, has_header=False, new_columns=[config.ip_col_name])
 
     with ThreadPoolExecutor(max_workers=30) as executor:
         for ip_row in ip_lf.rows_streaming():
