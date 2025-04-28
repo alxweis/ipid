@@ -4,6 +4,8 @@ import time
 
 import polars as pl
 
+from analysis.main import analyze_response_rate
+
 ip_zmap_name = "saddr"
 ts_zmap_name = "timestamp_ts"
 ip_col_name = "IP"
@@ -90,7 +92,7 @@ def cleanup(output_file: str):
             print("ZSTD not found. Please install ZSTD or add it to your PATH.")
             print("The cleaned file was saved but not compressed.")
 
-        # analyze_response_rate(targets_file=compr_output_file, ts_name=ts_col_name)
+        analyze_response_rate(targets_file=compr_output_file, ts_name=ts_col_name)
 
         # Output processing time
         elapsed_time = time.time() - start_time

@@ -5,6 +5,8 @@ import sys
 
 import polars as pl
 
+from analysis.main import analyze_response_rate
+
 os_regex = "ubuntu|centos|debian|redhat|ret hat|rhel|fedora|gentoo|opensuse|euleros|zorin|linux|windows server|windows|freebsd|openbsd|netbsd|bsd|macos|darwin|solaris|fritz|rasp|openwrt|lede|dd-wrt|ddwrt|wrt|vyos|vyatta|pfsense|routeros|mikrotik|edgeos|airos|unifi|ubiquiti|junos|juniper|cisco ios|ios-xe|nx-os|ios|cisco|fortios|fortinet|forti|sonicos|sonicwall|sonic|arubaos|aruba|draytek|drayos|vigor|dray|zynos|zyxel|aix|hp-ux|hpux|z/os|zos|openvms|vms|vrp|busybox|vxworks|qnx|freertos|openembedded|yocto|utm|gaia|router"
 os_pattern = re.compile(os_regex, re.IGNORECASE)
 
@@ -92,7 +94,7 @@ def cleanup(ip_scan_file: str, ip_addr_file: str, os_scan_file: str):
         except:
             print("Warning: Could not remove temporary files.")
 
-        # analyze_response_rate(targets_file=ip_scan_file, ts_name=ts_col_name)
+        analyze_response_rate(targets_file=ip_scan_file, ts_name=ts_col_name)
         print(f"Results saved in {ip_scan_file}")
 
 
