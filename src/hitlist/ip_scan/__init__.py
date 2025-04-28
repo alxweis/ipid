@@ -14,15 +14,28 @@ ts_col_name = "TS_IP"
 zmap_output_fields = ",".join([ip_zmap_name, ts_zmap_name])
 
 
+def log_runtime(start: float) -> str:
+    elapsed = int(time.time() - start)
+    hours, remainder = divmod(elapsed, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours > 0:
+        runtime = f"{hours}h{minutes}m{seconds}s"
+    elif minutes > 0:
+        runtime = f"{minutes}m{seconds}s"
+    else:
+        runtime = f"{seconds}s"
+    return f"runtime=[{runtime}]"
+
+
 def cleanup(output_file: str):
-    start_time = time.time()
+    overall_start = time.time()
 
     temp_output_file = output_file + ".temp"
-    compr_output_file = output_file + ".zst"
+    compressed_output_file = output_file + ".zst"
 
-    print(f"Processing file: {output_file}")
+    print(f"Cleanup {output_file}")
 
-    # Verify required columns exist in the CSV file
+    print("Verifying required columns exist in the CSV file...")
     required_columns = [ip_zmap_name, ts_zmap_name]
     lf = pl.scan_csv(output_file)
     schema = lf.collect_schema()
@@ -31,77 +44,72 @@ def cleanup(output_file: str):
         print(f"Error: Missing required columns: {', '.join(missing_columns)}")
         return
 
-    # Count total rows in the file
+    print("Count total rows in the file...")
     total_rows = lf.select(pl.count()).fetch().item()
-    print(f"Total rows in original file: {total_rows}")
+    print(f"Total rows: {total_rows}")
 
     try:
-        # Deduplicate by IP address and keep the first occurrence
-        deduplicated_lf = lf.unique(subset=[ip_zmap_name], keep="first")
+        # Deduplicate
+        start = time.time()
+        print("Deduplicating by IP address...")
+        lf = lf.unique(subset=[ip_zmap_name], keep="first")
+        unique_rows = lf.select(pl.count()).fetch().item()
+        removed_rows = total_rows - unique_rows
+        removed_rows_percent = (removed_rows / total_rows * 100) if total_rows > 0 else 0
+        print(f"Deduplicating finished: {log_runtime(start)} removed_rows=[{removed_rows},{removed_rows_percent:.2f}%]")
 
-        # Sort rows by timestamp
-        sorted_lf = deduplicated_lf.sort(ts_zmap_name)
+        # Sort
+        start = time.time()
+        print("Sorting by timestamp...")
+        lf = lf.sort(ts_zmap_name)
+        print(f"Sorting finished: {log_runtime(start)}")
 
-        # Rename columns for clarity
-        renamed_lf = sorted_lf.rename({
+        # Rename
+        start = time.time()
+        print("Renaming columns...")
+        lf = lf.rename({
             ip_zmap_name: ip_col_name,
             ts_zmap_name: ts_col_name
         })
+        print(f"Renaming finished: {log_runtime(start)}")
 
-        # Write the cleaned data to a temporary file
-        renamed_lf.sink_csv(temp_output_file)
+        # Write temp file
+        start = time.time()
+        print("Writing the cleaned data to a temporary file...")
+        lf.sink_csv(temp_output_file)
+        print(f"Writing finished: {log_runtime(start)}")
 
-        # Check how many unique IPs were processed
-        unique_count = renamed_lf.select(pl.count()).fetch().item()
-
-        # Calculate and display duplicate statistics
-        duplicates = total_rows - unique_count
-        duplicate_percent = (duplicates / total_rows * 100) if total_rows > 0 else 0
-        print(f"Unique IP addresses: {unique_count}")
-        print(f"Removed duplicate rows: {duplicates} ({duplicate_percent:.2f}%)")
-
-        # Display timestamp range for verification
-        min_ts = renamed_lf.select(pl.col(ts_col_name).min()).fetch().item()
-        max_ts = renamed_lf.select(pl.col(ts_col_name).max()).fetch().item()
-        print(f"Timestamp range: {min_ts} to {max_ts}")
-
-        # Replace the original file with the cleaned data
+        # Replace file
+        start = time.time()
+        print("Replacing the original file with the cleaned version...")
         os.remove(output_file)
         os.rename(temp_output_file, output_file)
-        print(f"Original file replaced with the cleaned version.")
+        print(f"Replacing finished: {log_runtime(start)}")
 
-        # Compress the cleaned file with ZSTD
-        print(f"Compressing file with ZSTD...")
-
+        # Compress
+        start = time.time()
+        print("Compressing file with ZSTD...")
         try:
-            original_size = os.path.getsize(output_file) if os.path.exists(output_file) else 0
             subprocess.run(["zstd", "-T0", "--rm", output_file], check=True, stdout=subprocess.PIPE,
                            stderr=subprocess.PIPE)
-            print(f"Compression complete. File saved as: {compr_output_file}")
-
-            # Calculate and display compression ratio
-            compressed_size = os.path.getsize(compr_output_file)
-            compression_ratio = original_size / compressed_size if compressed_size > 0 else 0
-            print(f"Compression ratio: {compression_ratio:.2f}x")
-
+            print(f"Compressing finished: {log_runtime(start)} compressed_file=[{compressed_output_file}]")
         except subprocess.CalledProcessError as e:
             print(f"ZSTD compression failed: {e.stderr.decode() if e.stderr else str(e)}")
             print("The cleaned file was saved but not compressed.")
-
         except FileNotFoundError:
             print("ZSTD not found. Please install ZSTD or add it to your PATH.")
             print("The cleaned file was saved but not compressed.")
 
-        analyze_response_rate(targets_file=compr_output_file, ts_name=ts_col_name)
+        # Analyze
+        start = time.time()
+        print("Analyzing ZMap response rate...")
+        analyze_response_rate(targets_file=compressed_output_file, ts_name=ts_col_name)
+        print(f"Analyzing finished: {log_runtime(start)}")
 
-        # Output processing time
-        elapsed_time = time.time() - start_time
-        print(f"Total processing completed in {elapsed_time:.2f} seconds.")
-        print(f"Results saved in {compr_output_file}")
+        print(f"Cleanup finished: {log_runtime(overall_start)}")
+        print(f"Results saved in {compressed_output_file}")
 
     except Exception as e:
         print(f"Error during processing: {str(e)}")
-
-        # Clean up temporary file if it exists
         if os.path.exists(temp_output_file):
             os.remove(temp_output_file)

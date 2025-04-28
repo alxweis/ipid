@@ -31,4 +31,4 @@ def analyze_response_rate(targets_file: str, ts_name: str):
     image_file = os.path.join(os.path.dirname(targets_file),
                               f'{"ip" if ts_name == ts_col_name else "os"}_response_rate.png')
     plt.savefig(image_file)
-    print(f"Graph has been saved as: {image_file}")
+    print(f"Plot has been saved as: {image_file}")
