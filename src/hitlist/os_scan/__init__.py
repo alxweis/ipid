@@ -27,10 +27,9 @@ def setup(ip_scan_file: str) -> str:
             raise ValueError("OS column already exists")
 
         print("Creating file with IP addresses for OS scanning...")
-        ip_addr_file = f"{ip_scan_file}.ip_addr.csv"
+        ip_addr_file = f"{ip_scan_file}.ip_addr.txt"
         unique_ips = lf.select(config.ip_col_name).unique().collect()
         with open(ip_addr_file, 'w') as f:
-            f.write(f"{config.ip_col_name}\n")
             for ip in unique_ips[config.ip_col_name]:
                 f.write(f"{ip}\n")
 

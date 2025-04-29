@@ -1,12 +1,14 @@
 import datetime
 import subprocess
 import sys
-from concurrent.futures import ThreadPoolExecutor
-
-import polars as pl
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.utils import config
 from hitlist.os_scan import setup, cleanup, extract_os_name
+
+# Lock for synchronizing file writes
+write_lock = threading.Lock()
 
 
 def process_ip_addr(ip: str, os_scan_file: str):
@@ -22,8 +24,10 @@ def process_ip_addr(ip: str, os_scan_file: str):
         timestamp = int(datetime.datetime.now().timestamp())
 
         if result.returncode == 0 and os_name:
-            with open(os_scan_file, 'a') as f:
-                f.write(f"{ip},{os_name},{timestamp}\n")
+            # Synchronized writing to the file
+            with write_lock:
+                with open(os_scan_file, 'a') as f:
+                    f.write(f"{ip},{os_name},{timestamp}\n")
         else:
             print(f"Error: Unable to get OS for IP: {ip}", file=sys.stderr)
 
@@ -37,12 +41,17 @@ def run_dig_dns_scan(ip_addr_file: str, os_scan_file: str):
     with open(os_scan_file, 'w') as f:
         f.write(f"{config.ip_col_name},{config.os_col_name},{config.ts_os_col_name}\n")
 
-    lf = pl.scan_csv(ip_addr_file)
-
+    futures = []
     with ThreadPoolExecutor(max_workers=30) as executor:
-        for ip_row in lf.rows_streaming():
-            ip = ip_row[0]
-            executor.submit(process_ip_addr, ip, os_scan_file)
+        with open(ip_addr_file, 'r') as f:
+            for line in f:
+                ip = line.strip()
+                future = executor.submit(process_ip_addr, ip, os_scan_file)
+                futures.append(future)
+
+        # Wait for all futures to complete and handle any exceptions
+        for future in as_completed(futures):
+            future.result()  # Optional: can catch errors that occurred in the thread
 
 
 def start(ip_scan_file: str):
