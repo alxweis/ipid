@@ -54,25 +54,21 @@ def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> bool:
         merged_lf = ip_scan_lf.join(
             os_scan_lf,
             on=config.ip_col_name,
-            how="left"
+            how="inner"
         )
 
         print("Decompressing target file to temporary file...")
-        decompressed_ip_scan_file = ip_scan_file + "_decompressed.csv"
+        decompressed_ip_scan_file = ip_scan_file + "temp.csv"
         subprocess.run(["zstd", "-d", ip_scan_file, "-o", decompressed_ip_scan_file], check=True,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        print("Writing the merged results back to the temporary file...")
+        print("Writing the merged results to the temporary file...")
         merged_lf.sink_csv(decompressed_ip_scan_file)
 
         print("Compressing the temporary file to target file...")
-        subprocess.run(["zstd", decompressed_ip_scan_file, "-o", ip_scan_file], check=True, stdout=subprocess.PIPE,
-                       stderr=subprocess.PIPE)
+        subprocess.run(["zstd", "-T0", "--rm", decompressed_ip_scan_file, "-o", ip_scan_file], check=True,
+                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        print("Removing temporary file...")
-        os.remove(decompressed_ip_scan_file)
-
-        print("Merge finished")
         return True
 
     except Exception as e:
