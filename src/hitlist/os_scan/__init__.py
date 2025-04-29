@@ -18,24 +18,23 @@ def setup(ip_scan_file: str) -> str:
         if not os.path.exists(ip_scan_file):
             raise FileNotFoundError(f"Error: File {ip_scan_file} does not exist")
 
-        # Check if OS column already exists
+        print("Checking if OS scan was already made...")
         lf = pl.scan_csv(ip_scan_file)
-        columns = lf.columns
+        columns = lf.collect_schema().names()
         if config.os_col_name in columns:
             print(f"Column '{config.os_col_name}' already exists in the CSV file.")
             print("OS fingerprinting will be skipped.")
             raise ValueError("OS column already exists")
 
-        # Create file with unique IP addresses for OS scanning
+        print("Creating file with IP addresses for OS scanning...")
         ip_addr_file = f"{ip_scan_file}.ip_addr.txt"
         unique_ips = lf.select(config.ip_col_name).unique().collect()
-        print(f"Extracting {len(unique_ips)} unique IP addresses for OS fingerprinting...")
-
         with open(ip_addr_file, 'w') as f:
             for ip in unique_ips[config.ip_col_name]:
                 f.write(f"{ip}\n")
 
-        print(f"IP addresses written to {ip_addr_file}.")
+        print(f"Setup finished: ip_addr_count=[{len(unique_ips)}] ip_addr_file=[{ip_addr_file}]")
+
         return ip_addr_file
 
     except Exception as e:
@@ -45,35 +44,35 @@ def setup(ip_scan_file: str) -> str:
 
 def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> bool:
     try:
-        print(f"Merging {os_scan_file} into {ip_scan_file}")
+        print(f"Merging: {os_scan_file} => {ip_scan_file}")
 
-        # Read original CSV and scan results lazily
+        print("Reading files...")
         ip_scan_lf = pl.scan_csv(ip_scan_file)
         os_scan_lf = pl.scan_csv(os_scan_file)
 
-        # Join original data with OS scan results lazily
+        print("Joining files...")
         merged_lf = ip_scan_lf.join(
             os_scan_lf,
             on=config.ip_col_name,
             how="left"
         )
 
-        # Decompress original .zst file to a temporary uncompressed file
+        print("Decompressing target file to temporary file...")
         decompressed_ip_scan_file = ip_scan_file + "_decompressed.csv"
         subprocess.run(["zstd", "-d", ip_scan_file, "-o", decompressed_ip_scan_file], check=True,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        # Write the merged results back to the decompressed CSV file lazily
+        print("Writing the merged results back to the temporary file...")
         merged_lf.write_csv(decompressed_ip_scan_file)
 
-        # Recompress the file back into .zst format
+        print("Compressing the temporary file to target file...")
         subprocess.run(["zstd", decompressed_ip_scan_file, "-o", ip_scan_file], check=True, stdout=subprocess.PIPE,
                        stderr=subprocess.PIPE)
 
-        # Clean up temporary decompressed file
+        print("Removing temporary file...")
         os.remove(decompressed_ip_scan_file)
 
-        print(f"Successfully merged {os_scan_file} into {ip_scan_file}")
+        print("Merge finished")
         return True
 
     except Exception as e:
