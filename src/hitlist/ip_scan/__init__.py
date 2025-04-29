@@ -44,7 +44,7 @@ def cleanup(output_file: str):
         return
 
     print("Count total rows in the file...")
-    total_rows = lf.select(pl.count()).fetch().item()
+    total_rows = lf.select(pl.count()).collect().item()
     print(f"Total rows: {total_rows}")
 
     try:
@@ -52,7 +52,7 @@ def cleanup(output_file: str):
         start = time.time()
         print("Deduplicating by IP address...")
         lf = lf.unique(subset=[ip_zmap_name], keep="first")
-        unique_rows = lf.select(pl.count()).fetch().item()
+        unique_rows = lf.select(pl.count()).collect().item()
         removed_rows = total_rows - unique_rows
         removed_rows_percent = (removed_rows / total_rows * 100) if total_rows > 0 else 0
         print(f"Deduplicating finished: {log_runtime(start)} removed_rows=[{removed_rows},{removed_rows_percent:.2f}%]")
