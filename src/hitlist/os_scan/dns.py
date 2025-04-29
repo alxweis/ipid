@@ -32,16 +32,15 @@ def process_ip_addr(ip: str, os_scan_file: str):
 
 
 def run_dig_dns_scan(ip_addr_file: str, os_scan_file: str):
-    print(f"Starting DNS scan of IPs in {ip_addr_file}")
-    print(f"Results will be written to {os_scan_file}")
+    print(f"Starting DNS scan: input_file=[{ip_addr_file}] output_file=[{os_scan_file}]")
 
     with open(os_scan_file, 'w') as f:
         f.write(f"{config.ip_col_name},{config.os_col_name},{config.ts_os_col_name}\n")
 
-    ip_lf = pl.scan_csv(ip_addr_file, has_header=False, new_columns=[config.ip_col_name])
+    lf = pl.scan_csv(ip_addr_file)
 
     with ThreadPoolExecutor(max_workers=30) as executor:
-        for ip_row in ip_lf.rows_streaming():
+        for ip_row in lf.rows_streaming():
             ip = ip_row[0]
             executor.submit(process_ip_addr, ip, os_scan_file)
 
