@@ -29,7 +29,7 @@ class Config:
     iface_a: Interface
     iface_b: Interface
     max_rtt: str
-    send_mbps: int
+    send_bandwidth: str
     default_send_ip_ids: List[int]
     detect_reflected_ip_ids: bool
     reflection_send_ip_ids: List[int]
@@ -37,6 +37,17 @@ class Config:
     ts_ip_col_name: str
     os_col_name: str
     ts_os_col_name: str
+    ip_id_seq_col_name: str
+    send_ts_seq_col_name: str
+    received_ts_seq_col_name: str
+    check_seq_col_name: str
+    ip_id_pattern_col_name: str
+    avg_rtt_col_name: str
+    std_rtt_col_name: str
+    asn_col_name: str
+    as_org_col_name: str
+    country_col_name: str
+    continent_col_name: str
 
 
 def load_config(path: str) -> Config:

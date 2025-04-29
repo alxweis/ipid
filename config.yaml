@@ -27,12 +27,27 @@ iface_b:
   name: "eth1"
   ip: "141.76.94.15"
 max_rtt: "2s"
-send_mbps: 100
+send_bandwidth: "100M"
 default_send_ip_ids: [0] # Sends [0,0,0,...]
 detect_reflected_ip_ids: false
 reflection_send_ip_ids: [3717,3718,3719] # Sequence must not match with any known pattern
 
+# Dataframe column names
 ip_col_name: "IP"
 ts_ip_col_name: "TS_IP"
 os_col_name: "OS"
 ts_os_col_name: "TS_OS"
+
+ip_id_seq_col_name: "IP_ID_SEQUENCE"
+send_ts_seq_col_name: "SEND_TS_SEQUENCE"
+received_ts_seq_col_name: "RECEIVED_TS_SEQUENCE"
+check_seq_col_name: "CHECK_SEQUENCE"
+
+ip_id_pattern_col_name: "IP_ID_PATTERN"
+avg_rtt_col_name: "AVG_RTT"
+std_rtt_col_name: "STD_RTT"
+asn_col_name: "ASN"
+
+as_org_col_name: "AS_ORGANIZATION"
+country_col_name: "COUNTRY"
+continent_col_name: "CONTINENT"

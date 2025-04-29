@@ -19,7 +19,7 @@ def run_zgrab2_http_scan(ip_addr_file: str, os_scan_file: str):
 
     try:
         with subprocess.Popen(
-                ["zgrab2", "http", "--port", "80", "--input-file", ip_addr_file, "--timeout", "5"],
+                ["zgrab2", "http", "--port", "80", "--input-file", ip_addr_file, "--timeout", "5"],  # TODO Better approach
                 stdout=subprocess.PIPE,
                 text=True,
                 bufsize=1

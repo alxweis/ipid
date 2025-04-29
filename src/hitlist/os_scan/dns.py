@@ -66,7 +66,7 @@ def run_dig_dns_scan(ip_addr_file: str, os_scan_file: str):
         with open(ip_addr_file, 'r') as f:
             for line in f:
                 ip = line.strip()
-                future = executor.submit(process_ip_addr, ip, os_scan_file)
+                future = executor.submit(process_ip_addr, ip, os_scan_file)  # TODO Better approach
                 futures.append(future)
 
         # Wait for all futures to complete and handle any exceptions

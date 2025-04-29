@@ -28,22 +28,24 @@ import (
 )
 
 type Config struct {
-	Targets              string         `yaml:"targets"` // TODO Change yaml to python format
+	Targets              string         `yaml:"targets"`
 	Protocol             string         `yaml:"protocol"`
-	RecTraffic           bool           `yaml:"recTraffic"`
-	TcpDstPort           layers.TCPPort `yaml:"tcpDstPort"`
-	TcpReqFlags          string         `yaml:"tcpReqFlags"`
-	TcpSrcPortOffset     uint32         `yaml:"tcpSrcPortOffset"`
-	UdpDstPort           layers.UDPPort `yaml:"udpDstPort"`
-	UdpSrcPortOffset     uint16         `yaml:"udpSrcPortOffset"`
-	ProbeCount           uint16         `yaml:"seqProbeCount"`
-	IfaceA               Iface          `yaml:"ifaceA"`
-	IfaceB               Iface          `yaml:"ifaceB"`
-	MaxRTT               time.Duration  `yaml:"maxRTT"`
-	MaxSendRate          int            `yaml:"maxSendRate"`
-	DefaultSendIpIds     []uint16       `yaml:"defaultSendIpIds"`
-	DetectReflectedIpIds bool           `yaml:"detectReflectedIpIds"`
-	ReflectionSendIpIds  []uint16       `yaml:"reflectionSendIpIds"`
+	RecTraffic           bool           `yaml:"record_traffic"`
+	TcpDstPort           layers.TCPPort `yaml:"tcp_dst_port"`
+	TcpReqFlags          string         `yaml:"tcp_request_flags"`
+	TcpSrcPortOffset     uint32         `yaml:"tcp_src_port_offset"`
+	UdpDstPort           layers.UDPPort `yaml:"udp_dst_port"`
+	UdpSrcPortOffset     uint16         `yaml:"udp_src_port_offset"`
+	B2BReqCount          uint16         `yaml:"b2b_request_count"`
+	B2BReqInterval       uint16         `yaml:"b2b_request_interval"`
+	SEQReqCount          uint16         `yaml:"seq_request_count"`
+	IfaceA               Iface          `yaml:"iface_a"`
+	IfaceB               Iface          `yaml:"iface_b"`
+	MaxRTT               time.Duration  `yaml:"max_rtt"`
+	SendBandwidth        string         `yaml:"send_bandwidth"`
+	DefaultSendIpIds     []uint16       `yaml:"default_send_ip_ids"`
+	DetectReflectedIpIds bool           `yaml:"detect_reflected_ip_ids"`
+	ReflectionSendIpIds  []uint16       `yaml:"reflection_send_ip_ids"`
 }
 
 type Iface struct {
@@ -52,7 +54,7 @@ type Iface struct {
 }
 
 type Probe struct {
-	IsValid      bool   `json:"is_valid"`
+	Check        bool   `json:"check"`
 	SentTime     int64  `json:"sent_time"`
 	ReceivedTime int64  `json:"received_time"`
 	IpId         uint16 `json:"ip_id"`
@@ -75,15 +77,6 @@ type Sender struct {
 	EthHeader []byte
 	Fd        int
 	Addr      syscall.SockaddrLinklayer
-}
-
-type CPULoadData struct {
-	AvgCPULoad float64
-	MedCPULoad float64
-	StdCPULoad float64
-	MinCPULoad float64
-	MaxCPULoad float64
-	NumSamples int
 }
 
 var (
@@ -121,148 +114,10 @@ var (
 	recvChans             sync.Map
 	opts                  = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
 	recordingProcesses    []*exec.Cmd
-	cpuMeasuringInterval  = 100 * time.Millisecond
 	batchReplyCount       int
 	batchRequestCount     int
 	batchValidProbesCount int
 )
-
-func getCPULoad(stop <-chan struct{}, result chan CPULoadData) {
-	var (
-		totalCPULoad float64
-		minCPULoad   = 1.0 // Start at max value
-		maxCPULoad   = 0.0 // Start at min value
-		numSamples   int
-		values       []float64
-	)
-
-	prevIdle, prevTotal, err := getCPUStats()
-	if err != nil {
-		log.Printf("Error getting initial CPU stats: %v", err)
-		close(result)
-		return
-	}
-
-	ticker := time.NewTicker(cpuMeasuringInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-stop:
-			avgCPULoad := 0.0
-			medCPULoad := 0.0
-			stdCPULoad := 0.0
-
-			if numSamples > 0 {
-				avgCPULoad = totalCPULoad / float64(numSamples)
-
-				// Calculate Median
-				sortedValues := make([]float64, len(values))
-				copy(sortedValues, values)
-				sort.Float64s(sortedValues)
-
-				if len(sortedValues)%2 == 0 {
-					// Even number of elements: average of the two middle values
-					medCPULoad = (sortedValues[len(sortedValues)/2-1] + sortedValues[len(sortedValues)/2]) / 2.0
-				} else {
-					// Odd number of elements: the middle value
-					medCPULoad = sortedValues[len(sortedValues)/2]
-				}
-
-				// Calculate Standard Deviation
-				var sumSquares float64
-				for _, v := range values {
-					sumSquares += (v - avgCPULoad) * (v - avgCPULoad)
-				}
-				stdCPULoad = math.Sqrt(sumSquares / float64(numSamples))
-			} else {
-				minCPULoad = 0 // If no samples, avoid misleading values
-			}
-
-			log.Println("CPU measurement finished.")
-
-			result <- CPULoadData{
-				AvgCPULoad: avgCPULoad,
-				MedCPULoad: medCPULoad,
-				StdCPULoad: stdCPULoad,
-				MinCPULoad: minCPULoad,
-				MaxCPULoad: maxCPULoad,
-				NumSamples: numSamples,
-			}
-			close(result)
-			return
-
-		case <-ticker.C:
-			idle, total, err := getCPUStats()
-			if err != nil {
-				log.Printf("Error getting CPU stats: %v", err)
-				continue
-			}
-
-			idleDelta := idle - prevIdle
-			totalDelta := total - prevTotal
-
-			if totalDelta == 0 {
-				continue // Avoid division by zero
-			}
-
-			cpuLoad := 1.0 - float64(idleDelta)/float64(totalDelta)
-			if cpuLoad < 0 {
-				cpuLoad = 0 // Prevent negative values
-			}
-
-			totalCPULoad += cpuLoad
-			values = append(values, cpuLoad)
-			numSamples++
-
-			if cpuLoad < minCPULoad {
-				minCPULoad = cpuLoad
-			}
-			if cpuLoad > maxCPULoad {
-				maxCPULoad = cpuLoad
-			}
-
-			prevIdle = idle
-			prevTotal = total
-		}
-	}
-}
-
-// Reads CPU statistics from /proc/stat and returns idle and total ticks.
-func getCPUStats() (idle, total uint64, err error) {
-	contents, err := os.ReadFile("/proc/stat")
-	if err != nil {
-		return 0, 0, err
-	}
-
-	lines := strings.Split(string(contents), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "cpu ") {
-			fields := strings.Fields(line)
-			if len(fields) < 5 {
-				return 0, 0, fmt.Errorf("unexpected /proc/stat format: %s", line)
-			}
-
-			values := make([]uint64, len(fields)-1)
-			for i := 1; i < len(fields); i++ {
-				values[i-1], err = strconv.ParseUint(fields[i], 10, 64)
-				if err != nil {
-					return 0, 0, err
-				}
-			}
-
-			idle = values[3]
-			total = 0
-			for _, v := range values {
-				total += v
-			}
-
-			return idle, total, nil
-		}
-	}
-
-	return 0, 0, fmt.Errorf("no CPU line found in /proc/stat")
-}
 
 func Main() {
 	runtime.GOMAXPROCS(runtime.NumCPU()) // Utilize all available CPUs
