@@ -58,16 +58,19 @@ def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> bool:
         )
 
         print("Decompressing target file to temporary file...")
-        decompressed_ip_scan_file = ip_scan_file + "temp.csv"
-        subprocess.run(["zstd", "-d", ip_scan_file, "-o", decompressed_ip_scan_file], check=True,
+        temp_ip_scan_file = ip_scan_file + ".temp.csv"
+        subprocess.run(["zstd", "-d", ip_scan_file, "-o", temp_ip_scan_file], check=True,
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         print("Writing the merged results to the temporary file...")
-        merged_lf.sink_csv(decompressed_ip_scan_file)
+        merged_lf.sink_csv(temp_ip_scan_file)
 
-        print("Compressing the temporary file to target file...")
-        subprocess.run(["zstd", "-T0", "--rm", decompressed_ip_scan_file, "-o", ip_scan_file], check=True,
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print("Compressing the temporary file...")
+        subprocess.run(["zstd", "-T0", "--rm", temp_ip_scan_file], check=True, stdout=subprocess.PIPE,
+                       stderr=subprocess.PIPE)
+
+        print("Overwriting target file...")
+        os.rename(temp_ip_scan_file + ".zst", ip_scan_file)
 
         return True
 
