@@ -48,42 +48,42 @@ def cleanup(output_file: str):
     print(f"Total rows: {total_rows}")
 
     try:
-        # Deduplicate
-        start = time.time()
-        print("Deduplicating by IP address...")
-        lf = lf.unique(subset=[ip_zmap_name], keep="first")
-        unique_rows = lf.select(pl.count()).collect().item()
-        removed_rows = total_rows - unique_rows
-        removed_rows_percent = (removed_rows / total_rows * 100) if total_rows > 0 else 0
-        print(f"Deduplicating finished: {log_runtime(start)} removed_rows=[{removed_rows},{removed_rows_percent:.2f}%]")
-
-        # Sort
-        start = time.time()
-        print("Sorting by timestamp...")
-        lf = lf.sort(ts_zmap_name)
-        print(f"Sorting finished: {log_runtime(start)}")
-
-        # Rename
-        start = time.time()
-        print("Renaming columns...")
-        lf = lf.rename({
-            ip_zmap_name: config.ip_col_name,
-            ts_zmap_name: config.ts_ip_col_name
-        })
-        print(f"Renaming finished: {log_runtime(start)}")
-
-        # Write temp file
-        start = time.time()
-        print("Writing the cleaned data to a temporary file...")
-        lf.sink_csv(temp_output_file)
-        print(f"Writing finished: {log_runtime(start)}")
-
-        # Replace file
-        start = time.time()
-        print("Replacing the original file with the cleaned version...")
-        os.remove(output_file)
-        os.rename(temp_output_file, output_file)
-        print(f"Replacing finished: {log_runtime(start)}")
+        # # Deduplicate
+        # start = time.time()
+        # print("Deduplicating by IP address...")
+        # lf = lf.unique(subset=[ip_zmap_name], keep="first")
+        # unique_rows = lf.select(pl.count()).collect().item()
+        # removed_rows = total_rows - unique_rows
+        # removed_rows_percent = (removed_rows / total_rows * 100) if total_rows > 0 else 0
+        # print(f"Deduplicating finished: {log_runtime(start)} removed_rows=[{removed_rows},{removed_rows_percent:.2f}%]")
+        #
+        # # Sort
+        # start = time.time()
+        # print("Sorting by timestamp...")
+        # lf = lf.sort(ts_zmap_name)
+        # print(f"Sorting finished: {log_runtime(start)}")
+        #
+        # # Rename
+        # start = time.time()
+        # print("Renaming columns...")
+        # lf = lf.rename({
+        #     ip_zmap_name: config.ip_col_name,
+        #     ts_zmap_name: config.ts_ip_col_name
+        # })
+        # print(f"Renaming finished: {log_runtime(start)}")
+        #
+        # # Write temp file
+        # start = time.time()
+        # print("Writing the cleaned data to a temporary file...")
+        # lf.sink_csv(temp_output_file)
+        # print(f"Writing finished: {log_runtime(start)}")
+        #
+        # # Replace file
+        # start = time.time()
+        # print("Replacing the original file with the cleaned version...")
+        # os.remove(output_file)
+        # os.rename(temp_output_file, output_file)
+        # print(f"Replacing finished: {log_runtime(start)}")
 
         # Compress
         start = time.time()
@@ -99,11 +99,11 @@ def cleanup(output_file: str):
             print("ZSTD not found. Please install ZSTD or add it to your PATH.")
             print("The cleaned file was saved but not compressed.")
 
-        # Analyze
-        start = time.time()
-        print("Analyzing ZMap response rate...")
-        analyze_response_rate(targets_file=compressed_output_file, ts_name=config.ts_ip_col_name)
-        print(f"Analyzing finished: {log_runtime(start)}")
+        # # Analyze
+        # start = time.time()
+        # print("Analyzing ZMap response rate...")
+        # analyze_response_rate(targets_file=compressed_output_file, ts_name=config.ts_ip_col_name)
+        # print(f"Analyzing finished: {log_runtime(start)}")
 
         print(f"Cleanup finished: {log_runtime(overall_start)}")
         print(f"Results saved in {compressed_output_file}")

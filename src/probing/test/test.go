@@ -3,6 +3,7 @@ package test
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"strings"
@@ -11,14 +12,20 @@ import (
 )
 
 const (
-	numWorkers = 10000
+	targetBandwidthMbps = 100.0
+	maxWorkers          = 100_000
+	initialWorkers      = 1000
+	bitsPerProbe        = 6720
 )
 
 var (
-	totalProbes int
-	validProbes int
-	totalIPs    int
-	mu          sync.Mutex
+	mu             sync.Mutex
+	totalProbes    int
+	validProbes    int
+	totalIPs       int
+	currentWorkers = initialWorkers
+	ipChan         chan string
+	wg             sync.WaitGroup
 )
 
 func Main(csvFile string) {
@@ -29,41 +36,40 @@ func Main(csvFile string) {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
-
-	// Header überspringen
 	if scanner.Scan() {
-		// skip
+		// skip header
 	}
 
-	// Zähle die Gesamtzahl der IPs
+	// Count total IPs
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
+		if scanner.Text() != "" {
+			totalIPs++
 		}
-		totalIPs++
 	}
 
-	// Scanner zurücksetzen, um die Datei erneut zu lesen
+	// Reset scanner
 	f.Seek(0, 0)
 	scanner = bufio.NewScanner(f)
 	if scanner.Scan() {
-		// skip Header
+		// skip header
 	}
 
-	ipChan := make(chan string, numWorkers*10)
-	var wg sync.WaitGroup
+	if totalIPs < currentWorkers {
+		currentWorkers = totalIPs
+	}
 
-	// Workers starten
-	for i := 0; i < numWorkers; i++ {
+	ipChan = make(chan string, 10_000)
+
+	// Start initial workers
+	for i := 0; i < currentWorkers; i++ {
 		wg.Add(1)
-		go worker(ipChan, &wg)
+		go worker()
 	}
 
-	// Statistik-Goroutine starten
+	// Start statistics goroutine
 	go logStatistics()
 
-	// IPs lesen und an Channel schicken
+	// Send IPs to channel
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -79,7 +85,7 @@ func Main(csvFile string) {
 	wg.Wait()
 }
 
-func worker(ipChan <-chan string, wg *sync.WaitGroup) {
+func worker() {
 	defer wg.Done()
 	for ip := range ipChan {
 		probeTarget(ip)
@@ -87,20 +93,16 @@ func worker(ipChan <-chan string, wg *sync.WaitGroup) {
 }
 
 func probeTarget(ip string) {
-	// Simuliere zufällige Verzögerung zwischen 30ms und 800ms
-	// Simuliert die Zeit in der 10 ICMP Echo Requests gesendet und deren Replies empfangen werden
 	delay := time.Duration(30+rand.Intn(771)) * time.Millisecond
 	time.Sleep(delay)
 
-	// Beispiel für eine gültige Probe
-	valid := rand.Float32() > 0.1 // Angenommen, 90% der Pings sind gültig
+	valid := rand.Float32() > 0.1
 	updateStats(valid)
 }
 
 func updateStats(valid bool) {
 	mu.Lock()
 	defer mu.Unlock()
-
 	totalProbes++
 	if valid {
 		validProbes++
@@ -110,9 +112,9 @@ func updateStats(valid bool) {
 func logStatistics() {
 	startTime := time.Now()
 	lastProbes := 0
+	ticker := time.NewTicker(1 * time.Second)
 
-	for {
-		time.Sleep(1 * time.Second)
+	for range ticker.C {
 		mu.Lock()
 
 		// Fortschritt
@@ -123,13 +125,12 @@ func logStatistics() {
 		}
 
 		// Restlaufzeit
+		elapsed := time.Since(startTime)
 		remainingTime := time.Duration(0)
 		if totalProbes > 0 {
-			elapsed := time.Since(startTime)
 			remainingTime = time.Duration(float64(elapsed) / float64(totalProbes) * float64(totalIPs-totalProbes))
 		}
 
-		// Zeitformatierung
 		days := int(remainingTime.Hours()) / 24
 		hours := int(remainingTime.Hours()) % 24
 		minutes := int(remainingTime.Minutes()) % 60
@@ -149,24 +150,42 @@ func logStatistics() {
 			timeLeft += fmt.Sprintf("%02ds", seconds)
 		}
 
-		// Bandbreite in Mbps (6720 Bit pro IP × Anzahl neue IPs in der letzten Sekunde)
+		// Bandbreite berechnen
 		deltaProbes := totalProbes - lastProbes
 		lastProbes = totalProbes
-		bitsSent := deltaProbes * 6720
-		mbps := float64(bitsSent) / 1_000_000.0 // in Megabit
+		bitsSent := deltaProbes * bitsPerProbe
+		mbps := float64(bitsSent) / 1_000_000.0
 
-		// Ausgabe
-		fmt.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] used_bandwidth=[%.2f Mbps]\n",
-			timeLeft, totalProbes, probedPercentage, validProbes, validPercentage, mbps)
+		// Dynamische Anpassung
+		diff := mbps - targetBandwidthMbps
+		factor := diff / targetBandwidthMbps
+
+		if factor < -0.1 {
+			adjust := int(math.Round(float64(currentWorkers) * -factor))
+			addWorkers(adjust)
+		} else if factor > 0.1 {
+			adjust := int(math.Round(float64(currentWorkers) * factor))
+			removeWorkers(adjust)
+		}
+
+		fmt.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] used_bandwidth=[%.2f Mbps] workers=[%d]\n",
+			timeLeft, totalProbes, probedPercentage, validProbes, validPercentage, mbps, currentWorkers)
 
 		mu.Unlock()
 	}
 }
 
-// Format the duration into hours, minutes, and seconds
-func formatDuration(d time.Duration) string {
-	h := int(d.Hours())
-	m := int(d.Minutes()) % 60
-	s := int(d.Seconds()) % 60
-	return fmt.Sprintf("%dh%dm%ds", h, m, s)
+func addWorkers(n int) {
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go worker()
+	}
+	currentWorkers = int(math.Min(float64(currentWorkers+n), float64(maxWorkers)))
+}
+
+func removeWorkers(n int) {
+	for i := 0; i < n; i++ {
+		ipChan <- "" // leere IPs als Stop-Signal
+	}
+	currentWorkers = int(math.Max(float64(currentWorkers-n), 1.0))
 }

@@ -27,7 +27,7 @@ iface_b:
   name: "eth1"
   ip: "141.76.94.15"
 max_rtt: "2s"
-send_bandwidth: "100M"
+send_bandwidth: "50M"
 default_send_ip_ids: [0] # Sends [0,0,0,...]
 detect_reflected_ip_ids: false
 reflection_send_ip_ids: [3717,3718,3719] # Sequence must not match with any known pattern
