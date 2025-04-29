@@ -63,7 +63,7 @@ def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> bool:
                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         print("Writing the merged results back to the temporary file...")
-        merged_lf.write_csv(decompressed_ip_scan_file)
+        merged_lf.sink_csv(decompressed_ip_scan_file)
 
         print("Compressing the temporary file to target file...")
         subprocess.run(["zstd", decompressed_ip_scan_file, "-o", ip_scan_file], check=True, stdout=subprocess.PIPE,
