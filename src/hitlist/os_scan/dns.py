@@ -2,6 +2,7 @@ import datetime
 import subprocess
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.utils import config
@@ -10,8 +11,15 @@ from hitlist.os_scan import setup, cleanup, extract_os_name
 # Lock for synchronizing file writes
 write_lock = threading.Lock()
 
+# Initialize counters for logging
+processed_count = 0
+result_count = 0
+start_time = time.time()
+
 
 def process_ip_addr(ip: str, os_scan_file: str):
+    global processed_count, result_count
+
     try:
         result = subprocess.run(
             ['dig', f'@{ip}', 'version.bind', 'CH', 'TXT', '+short', '+retry=0', '+time=1'],
@@ -28,8 +36,20 @@ def process_ip_addr(ip: str, os_scan_file: str):
             with write_lock:
                 with open(os_scan_file, 'a') as f:
                     f.write(f"{ip},{os_name},{timestamp}\n")
-        else:
-            print(f"Error: Unable to get OS for IP: {ip}", file=sys.stderr)
+
+            # Increment result_count when OS is detected
+            with threading.Lock():
+                result_count += 1
+
+        # Increment processed_count for each IP processed
+        with threading.Lock():
+            processed_count += 1
+
+        # Log progress every 1000 processed IPs
+        if processed_count % 1000 == 0:
+            elapsed_time = time.time() - start_time
+            rate = processed_count / elapsed_time
+            print(f"Processed {processed_count} IPs, {result_count} with OS detected ({rate:.1f} IPs/sec)")
 
     except Exception as e:
         print(f"Exception occurred for IP {ip}: {e}", file=sys.stderr)
