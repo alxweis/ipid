@@ -27,14 +27,17 @@ def run_zgrab2_http_scan(ip_addr_file: str, os_scan_file: str):
 
             start_time = time.time()
             processed_count = 0
+            last_log_time = start_time
 
             for line in zgrab_process.stdout:
                 processed_count += 1
 
-                if processed_count % 1000 == 0:
-                    elapsed = time.time() - start_time
+                now = time.time()
+                if now - last_log_time >= 1:
+                    elapsed = now - start_time
                     rate = processed_count / elapsed if elapsed > 0 else 0
                     print(f"Processed {processed_count} IPs, {result_count} with OS detected ({rate:.1f} IPs/sec)")
+                    last_log_time = now
 
                 try:
                     data = json.loads(line.strip())
