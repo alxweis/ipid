@@ -115,8 +115,7 @@ var (
 
 const (
 	maxWorkers       = 10_000
-	initialWorkers   = 1000
-	workerStopSignal = "stop"
+	workerStopSignal = "STOP_WORKER"
 )
 
 var (
@@ -137,7 +136,7 @@ var (
 	deltaByteSize      int
 	validProbes        int
 	targetSendMbps     int
-	currentWorkers     = initialWorkers
+	currentWorkers     = 1
 	targetChan         = make(chan string, maxWorkers*2)
 	senderA            Sender
 	senderB            Sender
@@ -217,11 +216,6 @@ func Main() {
 	}
 	scanner = bufio.NewScanner(f)
 	if scanner.Scan() { // Skip header line again
-	}
-
-	// Adjust currentWorkers for small totalTargetCount
-	if totalTargetCount < currentWorkers {
-		currentWorkers = totalTargetCount
 	}
 
 	// Start initial workers
@@ -1085,11 +1079,18 @@ func setRSTDrop(enable bool) bool {
 
 // Stats
 func logStatistics() {
-	startTime := time.Now()
-	ticker := time.NewTicker(1 * time.Second)
+	tickCount := 0
+	duration := 1 * time.Second
+	ticker := time.NewTicker(duration)
+	var lastWorkers int
+	var warmupStartTime time.Time
+	var warmupProbes int
+	var warmedUp bool
 
 	for range ticker.C {
 		statsMu.Lock()
+
+		tickCount++
 
 		// Fortschritt
 		probedPercentage := float64(totalProbes) / float64(totalTargetCount) * 100
@@ -1098,47 +1099,61 @@ func logStatistics() {
 			validPercentage = float64(validProbes) / float64(totalProbes) * 100
 		}
 
-		// Restlaufzeit
-		elapsed := time.Since(startTime)
-		remainingTime := time.Duration(0)
-		if totalProbes > 0 {
-			remainingTime = time.Duration(float64(elapsed) / float64(totalProbes) * float64(totalTargetCount-totalProbes))
-		}
-
-		days := int(remainingTime.Hours()) / 24
-		hours := int(remainingTime.Hours()) % 24
-		minutes := int(remainingTime.Minutes()) % 60
-		seconds := int(remainingTime.Seconds()) % 60
-
-		timeLeft := ""
-		if days > 0 {
-			timeLeft += fmt.Sprintf("%dd", days)
-		}
-		if hours > 0 {
-			timeLeft += fmt.Sprintf("%02dh", hours)
-		}
-		if minutes > 0 {
-			timeLeft += fmt.Sprintf("%02dm", minutes)
-		}
-		if seconds > 0 || timeLeft == "" {
-			timeLeft += fmt.Sprintf("%02ds", seconds)
-		}
-
 		// Bandbreite berechnen
-		sendBit := deltaByteSize * 8
-		sentMbps := float64(sendBit) / 1_000_000.0
+		sentBit := deltaByteSize * 8
+		sentMbps := float64(sentBit) / (1_000_000.0 * duration.Seconds())
 		deltaByteSize = 0
 
 		// Dynamische Anpassung
 		diff := sentMbps - float64(targetSendMbps)
 		factor := diff / float64(targetSendMbps)
 
+		lastWorkers = currentWorkers
 		if factor < -0.1 {
 			adjust := int(math.Round(float64(currentWorkers) * -factor))
 			addWorkers(adjust)
 		} else if factor > 0.1 {
 			adjust := int(math.Round(float64(currentWorkers) * factor))
 			removeWorkers(adjust)
+		}
+
+		// Warmup
+		absDeltaWorkerDiff := math.Abs(float64(currentWorkers-lastWorkers)) / float64(currentWorkers)
+		if !warmedUp && (absDeltaWorkerDiff <= 0.1 || tickCount > 20) {
+			warmedUp = true
+
+			// Reset baseline
+			warmupStartTime = time.Now()
+			warmupProbes = totalProbes
+		}
+
+		// Geschätzte Restzeit nach Warmup
+		timeLeft := "Warming up..."
+		if warmedUp {
+			elapsedSinceWarmedUp := time.Since(warmupStartTime)
+			probesSinceWarmedUp := totalProbes - warmupProbes
+			if probesSinceWarmedUp > 0 {
+				remainingTime := time.Duration(float64(elapsedSinceWarmedUp) / float64(probesSinceWarmedUp) * float64(totalIPs-totalProbes))
+
+				days := int(remainingTime.Hours()) / 24
+				hours := int(remainingTime.Hours()) % 24
+				minutes := int(remainingTime.Minutes()) % 60
+				seconds := int(remainingTime.Seconds()) % 60
+
+				timeLeft = ""
+				if days > 0 {
+					timeLeft += fmt.Sprintf("%dd", days)
+				}
+				if hours > 0 {
+					timeLeft += fmt.Sprintf("%02dh", hours)
+				}
+				if minutes > 0 {
+					timeLeft += fmt.Sprintf("%02dm", minutes)
+				}
+				if seconds > 0 || timeLeft == "" {
+					timeLeft += fmt.Sprintf("%02ds", seconds)
+				}
+			}
 		}
 
 		fmt.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] used_bandwidth=[%.2f Mbps] workers=[%d]\n",

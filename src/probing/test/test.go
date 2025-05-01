@@ -14,7 +14,6 @@ import (
 const (
 	targetBandwidthMbps = 100.0
 	maxWorkers          = 100_000
-	initialWorkers      = 1000
 	bitsPerProbe        = 6720
 )
 
@@ -23,7 +22,7 @@ var (
 	totalProbes    int
 	validProbes    int
 	totalIPs       int
-	currentWorkers = initialWorkers
+	currentWorkers = 1
 	ipChan         chan string
 	wg             sync.WaitGroup
 )
@@ -52,10 +51,6 @@ func Main(csvFile string) {
 	scanner = bufio.NewScanner(f)
 	if scanner.Scan() {
 		// skip header
-	}
-
-	if totalIPs < currentWorkers {
-		currentWorkers = totalIPs
 	}
 
 	ipChan = make(chan string, maxWorkers*2)
@@ -88,6 +83,9 @@ func Main(csvFile string) {
 func worker() {
 	defer wg.Done()
 	for ip := range ipChan {
+		if ip == "" {
+			break
+		}
 		probeTarget(ip)
 	}
 }
@@ -110,44 +108,23 @@ func updateStats(valid bool) {
 }
 
 func logStatistics() {
-	startTime := time.Now()
 	lastProbes := 0
+	tickCount := 0
 	ticker := time.NewTicker(1 * time.Second)
+	var warmupStartTime time.Time
+	var lastWorkers int
+	var warmupProbes int
+	var warmedUp bool
 
 	for range ticker.C {
 		mu.Lock()
 
-		// Fortschritt
+		tickCount++
+
 		probedPercentage := float64(totalProbes) / float64(totalIPs) * 100
 		validPercentage := 0.0
 		if totalProbes > 0 {
 			validPercentage = float64(validProbes) / float64(totalProbes) * 100
-		}
-
-		// Restlaufzeit
-		elapsed := time.Since(startTime)
-		remainingTime := time.Duration(0)
-		if totalProbes > 0 {
-			remainingTime = time.Duration(float64(elapsed) / float64(totalProbes) * float64(totalIPs-totalProbes))
-		}
-
-		days := int(remainingTime.Hours()) / 24
-		hours := int(remainingTime.Hours()) % 24
-		minutes := int(remainingTime.Minutes()) % 60
-		seconds := int(remainingTime.Seconds()) % 60
-
-		timeLeft := ""
-		if days > 0 {
-			timeLeft += fmt.Sprintf("%dd", days)
-		}
-		if hours > 0 {
-			timeLeft += fmt.Sprintf("%02dh", hours)
-		}
-		if minutes > 0 {
-			timeLeft += fmt.Sprintf("%02dm", minutes)
-		}
-		if seconds > 0 || timeLeft == "" {
-			timeLeft += fmt.Sprintf("%02ds", seconds)
 		}
 
 		// Bandbreite berechnen
@@ -160,12 +137,51 @@ func logStatistics() {
 		diff := mbps - targetBandwidthMbps
 		factor := diff / targetBandwidthMbps
 
+		lastWorkers = currentWorkers
 		if factor < -0.1 {
 			adjust := int(math.Round(float64(currentWorkers) * -factor))
 			addWorkers(adjust)
 		} else if factor > 0.1 {
 			adjust := int(math.Round(float64(currentWorkers) * factor))
 			removeWorkers(adjust)
+		}
+
+		absDeltaWorkerDiff := math.Abs(float64(currentWorkers-lastWorkers)) / float64(currentWorkers)
+		if !warmedUp && (absDeltaWorkerDiff <= 0.1 || tickCount > 20) {
+			warmedUp = true
+
+			// Reset baseline
+			warmupStartTime = time.Now()
+			warmupProbes = totalProbes
+		}
+
+		// Geschätzte Restzeit nach Warmup
+		timeLeft := "Warming up..."
+		if warmedUp {
+			elapsedSinceWarmedUp := time.Since(warmupStartTime)
+			probesSinceWarmedUp := totalProbes - warmupProbes
+			if probesSinceWarmedUp > 0 {
+				remainingTime := time.Duration(float64(elapsedSinceWarmedUp) / float64(probesSinceWarmedUp) * float64(totalIPs-totalProbes))
+
+				days := int(remainingTime.Hours()) / 24
+				hours := int(remainingTime.Hours()) % 24
+				minutes := int(remainingTime.Minutes()) % 60
+				seconds := int(remainingTime.Seconds()) % 60
+
+				timeLeft = ""
+				if days > 0 {
+					timeLeft += fmt.Sprintf("%dd", days)
+				}
+				if hours > 0 {
+					timeLeft += fmt.Sprintf("%02dh", hours)
+				}
+				if minutes > 0 {
+					timeLeft += fmt.Sprintf("%02dm", minutes)
+				}
+				if seconds > 0 || timeLeft == "" {
+					timeLeft += fmt.Sprintf("%02ds", seconds)
+				}
+			}
 		}
 
 		fmt.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] used_bandwidth=[%.2f Mbps] workers=[%d]\n",
