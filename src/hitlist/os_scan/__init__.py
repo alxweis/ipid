@@ -1,13 +1,12 @@
 import os
 import re
-import subprocess
 import sys
 
 import polars as pl
 
-from analysis.main import analyze_response_rate
 from core.utils import config
-from hitlist import read_csv_header_linux_low_ram, extract_column_no_header, count_rows_linux_low_ram
+from hitlist import get_csv_header_linux_low_ram, extract_column_no_header, count_rows_linux_low_ram, decompress_csv, \
+    compress_csv, join_csv_linux_low_ram
 
 os_regex = "ubuntu|centos|debian|redhat|ret hat|rhel|fedora|gentoo|opensuse|euleros|zorin|linux|windows server|windows|freebsd|openbsd|netbsd|bsd|macos|darwin|solaris|fritz|rasp|openwrt|lede|dd-wrt|ddwrt|wrt|vyos|vyatta|pfsense|routeros|mikrotik|edgeos|airos|unifi|ubiquiti|junos|juniper|cisco ios|ios-xe|nx-os|ios|cisco|fortios|fortinet|forti|sonicos|sonicwall|sonic|arubaos|aruba|draytek|drayos|vigor|dray|zynos|zyxel|aix|hp-ux|hpux|z/os|zos|openvms|vms|vrp|busybox|vxworks|qnx|freertos|openembedded|yocto|utm|gaia|router"
 os_pattern = re.compile(os_regex, re.IGNORECASE)
@@ -25,7 +24,7 @@ def setup(ip_scan_file: str) -> str:
 
         print("Checking if OS scan was already made...")
         if config.is_linux_low_ram:
-            header_line = read_csv_header_linux_low_ram(ip_scan_file)
+            header_line = get_csv_header_linux_low_ram(ip_scan_file)
             columns = header_line.split(',')
         else:
             columns = lf.collect_schema().names()
@@ -46,13 +45,6 @@ def setup(ip_scan_file: str) -> str:
                 for ip in ip_addresses[config.ip_col_name]:
                     f.write(f"{ip}\n")
 
-            # Iteriere über die Zeilen und schreibe die IP-Adressen in die Ausgabedatei
-            with open(ip_addr_file, 'w') as f:
-                # Wandle die LazyFrame in eine Liste um, iteriere zeilenweise
-                for chunk in lf.select([config.ip_col_name]).fetch():
-                    for row in chunk:
-                        f.write(f"{row[config.ip_col_name]}\n")
-
         print(f"Setup finished: ip_addr_count=[{ip_addr_count}] ip_addr_file=[{ip_addr_file}]")
 
         return ip_addr_file
@@ -66,31 +58,29 @@ def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> bool:
     try:
         print(f"Merging: {os_scan_file} => {ip_scan_file}")
 
-        print("Reading files...")
-        ip_scan_lf = pl.scan_csv(ip_scan_file)
-        os_scan_lf = pl.scan_csv(os_scan_file)
+        if config.is_linux_low_ram:
+            merged_scan_file = join_csv_linux_low_ram(original_csv=ip_scan_file, join_csv=os_scan_file,
+                                                      join_column_name=config.ip_col_name)
+        else:
+            print("Reading files...")
+            ip_scan_lf = pl.scan_csv(ip_scan_file)
+            os_scan_lf = pl.scan_csv(os_scan_file)
 
-        print("Joining files...")
-        merged_lf = ip_scan_lf.join(
-            os_scan_lf,
-            on=config.ip_col_name,
-            how="inner"
-        )
+            print("Joining files...")
+            merged_lf = ip_scan_lf.join(
+                os_scan_lf,
+                on=config.ip_col_name,
+                how="inner"
+            )
 
-        print("Decompressing target file to temporary file...")
-        temp_ip_scan_file = ip_scan_file + ".temp.csv"
-        subprocess.run(["zstd", "-d", ip_scan_file, "-o", temp_ip_scan_file], check=True,
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            print("Decompressing target file...")
+            merged_scan_file = decompress_csv(ip_scan_file)
 
-        print("Writing the merged results to the temporary file...")
-        merged_lf.sink_csv(temp_ip_scan_file)
+            print("Writing the merged results to the decompressed file...")
+            merged_lf.sink_csv(merged_scan_file)
 
-        print("Compressing the temporary file...")
-        subprocess.run(["zstd", "-T0", "--rm", temp_ip_scan_file], check=True, stdout=subprocess.PIPE,
-                       stderr=subprocess.PIPE)
-
-        print("Overwriting target file...")
-        os.rename(temp_ip_scan_file + ".zst", ip_scan_file)
+        print("Compressing the merged file...")
+        compress_csv(merged_scan_file)
 
         return True
 
@@ -109,7 +99,8 @@ def cleanup(ip_scan_file: str, ip_addr_file: str, os_scan_file: str):
         except:
             print("Warning: Could not remove temporary files.")
 
-        analyze_response_rate(targets_file=ip_scan_file, ts_name=config.ts_os_col_name)
+        # # Analyze
+        # analyze_response_rate(targets_file=ip_scan_file, ts_name=config.ts_os_col_name)
         print(f"Results saved in {ip_scan_file}")
 
 

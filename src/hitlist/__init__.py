@@ -1,3 +1,4 @@
+import csv
 import os
 import subprocess
 import tempfile
@@ -47,7 +48,7 @@ def deduplicate_csv_linux_low_ram(input_csv: str, total_rows: int, column_name: 
     return removed_rows, removed_rows_percent
 
 
-def read_csv_header_linux_low_ram(input_csv: str) -> str:
+def get_csv_header_linux_low_ram(input_csv: str) -> str:
     result = subprocess.check_output(['head', '-n', '1', input_csv], text=True)
     return result.strip()
 
@@ -68,21 +69,25 @@ def count_rows_linux_low_ram(input_csv: str) -> int:
     return int(result.strip().split()[0])
 
 
+def get_column_index(input_csv: str, column_name: str) -> int:
+    header = subprocess.check_output(
+        ['head', '-n', '1', input_csv], text=True
+    ).strip()
+    columns = header.split(',')
+    column_index = columns.index(column_name)
+    return column_index
+
+
 def sort_csv_linux_low_ram(input_csv: str, column_name: str) -> bool:
     # Find the column index that matches column_name
     try:
-        header = subprocess.check_output(
-            ['head', '-n', '1', input_csv], text=True
-        ).strip()
-        columns = header.split(',')
-        column_index = columns.index(column_name) + 1  # +1 for 1-based indexing
-
+        column_index = get_column_index(input_csv=input_csv, column_name=column_name)
         # Create a temporary file
         temp_csv = tempfile.mktemp(prefix=f"{input_csv}.sort.", dir=".")
 
         # Run the sort command to sort by the found column index
         subprocess.run(
-            ['sort', '-t', ',', f'-k{column_index},{column_index}', '-u', '-T', '.', input_csv],
+            ['sort', '-t', ',', f'-k{column_index+1},{column_index+1}', '-u', '-T', '.', input_csv],
             stdout=open(temp_csv, 'w'),
             check=True
         )
@@ -95,13 +100,58 @@ def sort_csv_linux_low_ram(input_csv: str, column_name: str) -> bool:
 
 
 def extract_column_no_header(input_csv: str, column_name: str, output_txt: str):
-    header = subprocess.check_output(
-        ['head', '-n', '1', input_csv], text=True
-    ).strip()
-    columns = header.split(',')
-    column_index = columns.index(column_name) + 1  # +1 for 1-based indexing
-
+    column_index = get_column_index(input_csv=input_csv, column_name=column_name)
     with open(input_csv, 'r') as f_in, open(output_txt, 'w') as f_out:
         next(f_in)  # skip header
         for line in f_in:
-            f_out.write(line.split(',')[column_index-1] + '\n')
+            f_out.write(line.split(',')[column_index] + '\n')
+
+
+def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: str) -> str:
+    merge_csv = original_csv + ".tmp"
+
+    orig_index = get_column_index(original_csv, join_column_name)
+    join_index = get_column_index(join_csv, join_column_name)
+
+    orig_header = get_csv_header_linux_low_ram(original_csv)
+    join_header = get_csv_header_linux_low_ram(join_csv)
+    merge_header = f"{orig_header},{join_header}"
+
+    with open(original_csv, newline='', encoding='utf-8') as orig_f, \
+            open(join_csv, newline='', encoding='utf-8') as join_f, \
+            open(merge_csv, 'w', newline='', encoding='utf-8') as out_f:
+
+        orig_reader = csv.reader(orig_f)
+        join_reader = csv.reader(join_f)
+        merge_writer = csv.writer(out_f)
+
+        # skip headers
+        next(orig_reader)
+        next(join_reader)
+
+        # write merged header
+        merge_writer.writerow(merge_header.split(','))
+
+        # init first join line
+        try:
+            join_row = next(join_reader)
+        except StopIteration:
+            join_row = None
+
+        for orig_row in orig_reader:
+            if not join_row:
+                break
+
+            orig_value = orig_row[orig_index]
+            join_value = join_row[join_index]
+
+            if orig_value == join_value:
+                merged_row = orig_row + join_row
+                merge_writer.writerow(merged_row)
+                try:
+                    join_row = next(join_reader)
+                except StopIteration:
+                    join_row = None
+
+    os.replace(merge_csv, original_csv)
+    return original_csv

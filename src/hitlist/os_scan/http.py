@@ -11,7 +11,7 @@ from hitlist.os_scan import setup, cleanup, extract_os_name
 def run_zgrab2_http_scan(ip_addr_file: str, os_scan_file: str):
     result_count = 0
 
-    print(f"Starting HTTP scan of IPs in {ip_addr_file}")
+    print(f"Starting HTTP scan of IP addresses in {ip_addr_file}")
     print(f"Results will be written to {os_scan_file}")
 
     with open(os_scan_file, 'w') as f:

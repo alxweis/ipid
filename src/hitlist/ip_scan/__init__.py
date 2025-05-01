@@ -4,7 +4,7 @@ import time
 import polars as pl
 
 from core.utils import config
-from hitlist import read_csv_header_linux_low_ram, count_rows_linux_low_ram, deduplicate_csv_linux_low_ram, \
+from hitlist import get_csv_header_linux_low_ram, count_rows_linux_low_ram, deduplicate_csv_linux_low_ram, \
     deduplicate_csv, log_runtime, replace_csv_header_linux_low_ram, sort_csv_linux_low_ram, compress_csv
 
 ip_zmap_name = "saddr"
@@ -25,7 +25,7 @@ def cleanup(targets_file: str):
     print("Verifying required columns exist in the CSV file...")
     required_columns = [ip_zmap_name, ts_zmap_name]
     if config.is_linux_low_ram:
-        header_line = read_csv_header_linux_low_ram(targets_file)
+        header_line = get_csv_header_linux_low_ram(targets_file)
         missing_columns = [col for col in required_columns if col not in header_line.split(',')]
     else:
         schema = lf.collect_schema()
@@ -97,10 +97,7 @@ def cleanup(targets_file: str):
         print(f"Compressing finished: {log_runtime(start)} compressed_file=[{compressed_file}]")
 
         # # Analyze
-        # start = time.time()
-        # print("Analyzing ZMap response rate...")
         # analyze_response_rate(targets_file=compressed_output_file, ts_name=config.ts_ip_col_name)
-        # print(f"Analyzing finished: {log_runtime(start)}")
 
         print(f"Cleanup finished: {log_runtime(overall_start)}")
         print(f"Results saved in {compressed_file}")
