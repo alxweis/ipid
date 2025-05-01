@@ -11,11 +11,11 @@ def deduplicate_csv_memory_efficient(targets_file: str, column_name: str) -> tup
         lf = pl.scan_csv(targets_file)
 
         # Gesamtzeilenzahl zählen mit Streaming
-        total_rows = lf.select(pl.count()).collect(streaming=True).item()
+        total_rows = lf.select(pl.len()).collect(engine="streaming").item()
 
         # Deduplizieren mit Streaming-Engine
         unique_df = lf.unique(subset=[column_name], keep="first")
-        unique_rows = unique_df.select(pl.count()).collect(streaming=True).item()
+        unique_rows = unique_df.select(pl.len()).collect(engine="streaming").item()
 
         # Berechnung der entfernten Zeilen
         removed_rows = total_rows - unique_rows

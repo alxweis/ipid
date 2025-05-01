@@ -7,4 +7,4 @@ seaborn~=0.13.2
 scikit-learn~=1.6.1
 geoip2~=5.0.1
 scipy~=1.15.2
-polars~=1.27.1
+polars~=1.29.0
