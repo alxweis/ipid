@@ -1133,7 +1133,7 @@ func logStatistics() {
 			elapsedSinceWarmedUp := time.Since(warmupStartTime)
 			probesSinceWarmedUp := totalProbes - warmupProbes
 			if probesSinceWarmedUp > 0 {
-				remainingTime := time.Duration(float64(elapsedSinceWarmedUp) / float64(probesSinceWarmedUp) * float64(totalIPs-totalProbes))
+				remainingTime := time.Duration(float64(elapsedSinceWarmedUp) / float64(probesSinceWarmedUp) * float64(totalTargetCount-totalProbes))
 
 				days := int(remainingTime.Hours()) / 24
 				hours := int(remainingTime.Hours()) % 24
