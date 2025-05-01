@@ -9,8 +9,10 @@ from hitlist import get_csv_header_linux_low_ram, count_rows_linux_low_ram, dedu
 
 ip_zmap_name = "saddr"
 ts_zmap_name = "timestamp_ts"
+us_zmap_name = "timestamp_us"
 
-zmap_output_fields = ",".join([ip_zmap_name, ts_zmap_name])
+zmap_output_columns = [ip_zmap_name, ts_zmap_name, us_zmap_name]
+zmap_output_fields = ",".join(zmap_output_columns)
 
 
 def cleanup(targets_file: str):
@@ -23,13 +25,12 @@ def cleanup(targets_file: str):
         lf = pl.scan_csv(targets_file)
 
     print("Verifying required columns exist in the CSV file...")
-    required_columns = [ip_zmap_name, ts_zmap_name]
     if config.is_linux_low_ram:
         header_line = get_csv_header_linux_low_ram(targets_file)
-        missing_columns = [col for col in required_columns if col not in header_line.split(',')]
+        missing_columns = [col for col in zmap_output_columns if col not in header_line.split(',')]
     else:
         schema = lf.collect_schema()
-        missing_columns = [col for col in required_columns if col not in schema.names()]
+        missing_columns = [col for col in zmap_output_columns if col not in schema.names()]
     if missing_columns:
         print(f"Error: Missing required columns: {', '.join(missing_columns)}")
         return
@@ -57,9 +58,9 @@ def cleanup(targets_file: str):
         start = time.time()
         print("Sorting by timestamp...")
         if config.is_linux_low_ram:
-            sort_csv_linux_low_ram(input_csv=targets_file, column_name=ts_zmap_name)
+            sort_csv_linux_low_ram(input_csv=targets_file, column_names=[ts_zmap_name, us_zmap_name])
         else:
-            lf = lf.sort(ts_zmap_name)
+            lf = lf.sort([ts_zmap_name, us_zmap_name])
         print(f"Sorting finished: {log_runtime(start)}")
 
         # Rename
@@ -67,11 +68,12 @@ def cleanup(targets_file: str):
         print("Renaming columns...")
         if config.is_linux_low_ram:
             replace_csv_header_linux_low_ram(input_csv=targets_file,
-                                             new_header=f"{config.ip_col_name},{config.ts_ip_col_name}")
+                                             new_header=f"{config.ip_col_name},{config.ts_ip_col_name},{config.us_ip_col_name}")
         else:
             lf = lf.rename({
                 ip_zmap_name: config.ip_col_name,
-                ts_zmap_name: config.ts_ip_col_name
+                ts_zmap_name: config.ts_ip_col_name,
+                us_zmap_name: config.us_ip_col_name
             })
         print(f"Renaming finished: {log_runtime(start)}")
 

@@ -36,6 +36,7 @@ class Config:
     is_linux_low_ram: bool
     ip_col_name: str
     ts_ip_col_name: str
+    us_ip_col_name: str
     os_col_name: str
     ts_os_col_name: str
     ip_id_seq_col_name: str

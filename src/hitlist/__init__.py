@@ -22,7 +22,7 @@ def log_runtime(start: float) -> str:
 
 def compress_csv(input_csv: str) -> str:
     compressed_output_file = input_csv + ".zst"
-    subprocess.run(["zstd", "-T0",  "-f", "--rm", input_csv], check=True)
+    subprocess.run(["zstd", "-T0", "-f", "--rm", input_csv], check=True)
     return compressed_output_file
 
 
@@ -41,7 +41,7 @@ def deduplicate_csv(lf: pl.LazyFrame, total_rows: int, column_name: str) -> (int
 
 
 def deduplicate_csv_linux_low_ram(input_csv: str, total_rows: int, column_name: str) -> (int, float):
-    sort_csv_linux_low_ram(input_csv=input_csv, column_name=column_name)
+    sort_csv_linux_low_ram(input_csv=input_csv, column_names=[column_name])
     unique_rows = count_rows_linux_low_ram(input_csv)
     removed_rows = total_rows - unique_rows
     removed_rows_percent = (removed_rows / total_rows * 100) if total_rows > 0 else 0
@@ -78,21 +78,25 @@ def get_column_index(input_csv: str, column_name: str) -> int:
     return column_index
 
 
-def sort_csv_linux_low_ram(input_csv: str, column_name: str) -> bool:
-    # Find the column index that matches column_name
+def sort_csv_linux_low_ram(input_csv: str, column_names: list[str]) -> bool:
     try:
-        column_index = get_column_index(input_csv=input_csv, column_name=column_name)
-        # Create a temporary file
+        # Hole die Spaltenindizes für alle angegebenen Spaltennamen
+        column_indices = [get_column_index(input_csv=input_csv, column_name=col_name) for col_name in column_names]
+
+        # Erstelle eine temporäre Datei
         temp_csv = tempfile.mktemp(prefix=f"{input_csv}.sort.", dir=".")
 
-        # Run the sort command to sort by the found column index
+        # Bereite die Sortieroptionen vor
+        sort_keys = [f'-k{index + 1},{index + 1}' for index in column_indices]
+
+        # Führe den Sortierbefehl aus, wobei mehrere Sortierschlüssel angegeben werden
         subprocess.run(
-            ['sort', '-t', ',', f'-k{column_index+1},{column_index+1}', '-u', '-T', '.', input_csv],
+            ['sort', '-t', ',', *sort_keys, '-T', '.', input_csv],
             stdout=open(temp_csv, 'w'),
             check=True
         )
 
-        # Replace the original CSV with the sorted version
+        # Ersetze die Originaldatei mit der sortierten Version
         os.rename(temp_csv, input_csv)
         return True
     except (subprocess.CalledProcessError, ValueError):
@@ -143,7 +147,7 @@ def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: s
                 break
 
             if orig_row[orig_index] == join_row[join_index]:
-                modified_join_row = join_row[:join_index] + join_row[join_index+1:]
+                modified_join_row = join_row[:join_index] + join_row[join_index + 1:]
                 merged_row = orig_row + modified_join_row
                 merge_writer.writerow(merged_row)
                 try:

@@ -36,6 +36,7 @@ is_linux_low_ram: true
 # Dataframe column names
 ip_col_name: "IP"
 ts_ip_col_name: "TS_IP"
+us_ip_col_name: "US_IP"
 os_col_name: "OS"
 ts_os_col_name: "TS_OS"
 
