@@ -21,6 +21,9 @@ def setup(ip_scan_file: str) -> str:
         lf = None
         if not config.is_linux_low_ram:
             lf = pl.scan_csv(ip_scan_file)
+        else:
+            print("Decompressing file...")
+            decompress_csv(ip_scan_file)
 
         print("Checking if OS scan was already made...")
         if config.is_linux_low_ram:
