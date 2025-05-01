@@ -7,6 +7,7 @@ import polars as pl
 
 from analysis.main import analyze_response_rate
 from core.utils import config
+from hitlist import read_csv_header_linux_low_ram, extract_column_no_header, count_rows_linux_low_ram
 
 os_regex = "ubuntu|centos|debian|redhat|ret hat|rhel|fedora|gentoo|opensuse|euleros|zorin|linux|windows server|windows|freebsd|openbsd|netbsd|bsd|macos|darwin|solaris|fritz|rasp|openwrt|lede|dd-wrt|ddwrt|wrt|vyos|vyatta|pfsense|routeros|mikrotik|edgeos|airos|unifi|ubiquiti|junos|juniper|cisco ios|ios-xe|nx-os|ios|cisco|fortios|fortinet|forti|sonicos|sonicwall|sonic|arubaos|aruba|draytek|drayos|vigor|dray|zynos|zyxel|aix|hp-ux|hpux|z/os|zos|openvms|vms|vrp|busybox|vxworks|qnx|freertos|openembedded|yocto|utm|gaia|router"
 os_pattern = re.compile(os_regex, re.IGNORECASE)
@@ -18,9 +19,16 @@ def setup(ip_scan_file: str) -> str:
         if not os.path.exists(ip_scan_file):
             raise FileNotFoundError(f"Error: File {ip_scan_file} does not exist")
 
+        lf = None
+        if not config.is_linux_low_ram:
+            lf = pl.scan_csv(ip_scan_file)
+
         print("Checking if OS scan was already made...")
-        lf = pl.scan_csv(ip_scan_file)
-        columns = lf.collect_schema().names()
+        if config.is_linux_low_ram:
+            header_line = read_csv_header_linux_low_ram(ip_scan_file)
+            columns = header_line.split(',')
+        else:
+            columns = lf.collect_schema().names()
         if config.os_col_name in columns:
             print(f"Column '{config.os_col_name}' already exists in the CSV file.")
             print("OS fingerprinting will be skipped.")
@@ -28,12 +36,24 @@ def setup(ip_scan_file: str) -> str:
 
         print("Creating file with IP addresses for OS scanning...")
         ip_addr_file = f"{ip_scan_file}.ip_addr.txt"
-        unique_ips = lf.select(config.ip_col_name).unique().collect()
-        with open(ip_addr_file, 'w') as f:
-            for ip in unique_ips[config.ip_col_name]:
-                f.write(f"{ip}\n")
+        if config.is_linux_low_ram:
+            extract_column_no_header(input_csv=ip_scan_file, column_name=config.ip_col_name, output_txt=ip_addr_file)
+            ip_addr_count = count_rows_linux_low_ram(ip_addr_file)
+        else:
+            ip_addresses = lf.select(config.ip_col_name).collect()
+            ip_addr_count = len(ip_addresses)
+            with open(ip_addr_file, 'w') as f:
+                for ip in ip_addresses[config.ip_col_name]:
+                    f.write(f"{ip}\n")
 
-        print(f"Setup finished: ip_addr_count=[{len(unique_ips)}] ip_addr_file=[{ip_addr_file}]")
+            # Iteriere über die Zeilen und schreibe die IP-Adressen in die Ausgabedatei
+            with open(ip_addr_file, 'w') as f:
+                # Wandle die LazyFrame in eine Liste um, iteriere zeilenweise
+                for chunk in lf.select([config.ip_col_name]).fetch():
+                    for row in chunk:
+                        f.write(f"{row[config.ip_col_name]}\n")
+
+        print(f"Setup finished: ip_addr_count=[{ip_addr_count}] ip_addr_file=[{ip_addr_file}]")
 
         return ip_addr_file
 
