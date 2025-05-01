@@ -142,10 +142,7 @@ def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: s
             if not join_row:
                 break
 
-            orig_value = orig_row[orig_index]
-            join_value = join_row[join_index]
-
-            if orig_value == join_value:
+            if orig_row[orig_index] == join_row[join_index]:
                 modified_join_row = join_row[:join_index] + join_row[join_index+1:]
                 merged_row = orig_row + modified_join_row
                 merge_writer.writerow(merged_row)
