@@ -5,7 +5,7 @@ from hitlist import log_runtime, deduplicate_csv_linux_low_ram, count_rows_linux
 
 def main():
     # Deduplicate
-    targets_file = "targets/tcp/80/2025-04-29_22-32-07/targets.csv.zst"
+    targets_file = "targets/tcp/80/2025-04-29_22-32-07/targets.csv"
 
     start = time.time()
     print("Deduplicating by IP address...")
