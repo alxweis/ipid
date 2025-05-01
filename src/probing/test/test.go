@@ -58,7 +58,7 @@ func Main(csvFile string) {
 		currentWorkers = totalIPs
 	}
 
-	ipChan = make(chan string, 10_000)
+	ipChan = make(chan string, maxWorkers*2)
 
 	// Start initial workers
 	for i := 0; i < currentWorkers; i++ {

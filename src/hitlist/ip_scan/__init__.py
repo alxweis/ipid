@@ -26,6 +26,26 @@ def log_runtime(start: float) -> str:
     return f"runtime=[{runtime}]"
 
 
+def compress_file(input_file: str) -> str:
+    pass
+
+
+def decompress_file(input_file: str) -> str:
+    pass
+
+
+def deduplicate_csv(input_csv: str, key: str):
+    pass
+
+
+def sort_csv(input_csv: str, key: str):
+    pass
+
+
+def sort_csv_linux(input_csv: str, key: str):
+    pass
+
+
 def cleanup(output_file: str):
     overall_start = time.time()
 
