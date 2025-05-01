@@ -33,6 +33,7 @@ class Config:
     default_send_ip_ids: List[int]
     detect_reflected_ip_ids: bool
     reflection_send_ip_ids: List[int]
+    is_linux_low_ram: bool
     ip_col_name: str
     ts_ip_col_name: str
     os_col_name: str
