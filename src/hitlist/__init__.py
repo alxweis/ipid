@@ -113,9 +113,9 @@ def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: s
     orig_index = get_column_index(original_csv, join_column_name)
     join_index = get_column_index(join_csv, join_column_name)
 
-    orig_header = get_csv_header_linux_low_ram(original_csv)
-    join_header = get_csv_header_linux_low_ram(join_csv)
-    merge_header = f"{orig_header},{join_header}"
+    orig_header = get_csv_header_linux_low_ram(original_csv).split(',')
+    join_header = [col for col in get_csv_header_linux_low_ram(join_csv).split(',') if col != join_column_name]
+    merge_header = orig_header + join_header
 
     with open(original_csv, newline='', encoding='utf-8') as orig_f, \
             open(join_csv, newline='', encoding='utf-8') as join_f, \
@@ -130,7 +130,7 @@ def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: s
         next(join_reader)
 
         # write merged header
-        merge_writer.writerow(merge_header.split(','))
+        merge_writer.writerow(merge_header)
 
         # init first join line
         try:
@@ -146,7 +146,8 @@ def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: s
             join_value = join_row[join_index]
 
             if orig_value == join_value:
-                merged_row = orig_row + join_row
+                modified_join_row = join_row[:join_index] + join_row[join_index+1:]
+                merged_row = orig_row + modified_join_row
                 merge_writer.writerow(merged_row)
                 try:
                     join_row = next(join_reader)
