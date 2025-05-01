@@ -22,7 +22,7 @@ def log_runtime(start: float) -> str:
 
 def compress_csv(input_csv: str) -> str:
     compressed_output_file = input_csv + ".zst"
-    subprocess.run(["zstd", "-T0", "--rm", input_csv], check=True)
+    subprocess.run(["zstd", "-T0",  "-f", "--rm", input_csv], check=True)
     return compressed_output_file
 
 
