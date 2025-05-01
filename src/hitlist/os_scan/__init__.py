@@ -62,6 +62,7 @@ def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> bool:
         print(f"Merging: {os_scan_file} => {ip_scan_file}")
 
         if config.is_linux_low_ram:
+            ip_scan_file = ip_scan_file.removesuffix(".zst")
             merged_scan_file = join_csv_linux_low_ram(original_csv=ip_scan_file, join_csv=os_scan_file,
                                                       join_column_name=config.ip_col_name)
         else:
