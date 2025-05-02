@@ -113,13 +113,16 @@ def extract_column_no_header(input_csv: str, column_name: str, output_txt: str):
 
 def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: str) -> str:
     merge_csv = original_csv + ".merge.tmp"
+    print(f"[INFO] Merging '{original_csv}' with '{join_csv}' on column '{join_column_name}'")
 
     orig_index = get_column_index(original_csv, join_column_name)
     join_index = get_column_index(join_csv, join_column_name)
+    print(f"[DEBUG] original_csv join index: {orig_index}, join_csv join index: {join_index}")
 
     orig_header = get_csv_header_linux_low_ram(original_csv).split(',')
     join_header = [col for col in get_csv_header_linux_low_ram(join_csv).split(',') if col != join_column_name]
     merge_header = orig_header + join_header
+    print(f"[DEBUG] Merged header: {merge_header}")
 
     with open(original_csv, newline='', encoding='utf-8') as orig_f, \
             open(join_csv, newline='', encoding='utf-8') as join_f, \
@@ -140,20 +143,32 @@ def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: s
         try:
             join_row = next(join_reader)
         except StopIteration:
+            print("[WARN] join_csv is empty after header")
             join_row = None
 
+        matched_count = 0
+        total_orig = 0
+
         for orig_row in orig_reader:
+            total_orig += 1
             if not join_row:
                 break
 
-            if orig_row[orig_index] == join_row[join_index]:
+            orig_val = orig_row[orig_index]
+            join_val = join_row[join_index]
+            print(f"[TRACE] Comparing orig_val='{orig_val}' to join_val='{join_val}'")
+
+            if orig_val == join_val:
                 modified_join_row = join_row[:join_index] + join_row[join_index + 1:]
                 merged_row = orig_row + modified_join_row
                 merge_writer.writerow(merged_row)
+                matched_count += 1
                 try:
                     join_row = next(join_reader)
                 except StopIteration:
                     join_row = None
+
+        print(f"[INFO] Finished merging. Total original rows: {total_orig}, matched: {matched_count}")
 
     # os.replace(merge_csv, original_csv) # TODO Uncomment later
     return original_csv
