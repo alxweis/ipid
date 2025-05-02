@@ -97,8 +97,8 @@ def cleanup(ip_scan_file: str, ip_addr_file: str, os_scan_file: str):
     if success:
         try:
             pass
-            # os.remove(ip_addr_file) # TODO Uncomment later
-            # os.remove(os_scan_file)
+            os.remove(ip_addr_file)
+            os.remove(os_scan_file)
         except:
             print("Warning: Could not remove temporary files.")
 
