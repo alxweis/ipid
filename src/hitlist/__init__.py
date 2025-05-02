@@ -112,7 +112,7 @@ def extract_column_no_header(input_csv: str, column_name: str, output_txt: str):
 
 
 def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: str) -> str:
-    merge_csv = original_csv + ".tmp"
+    merge_csv = original_csv + ".merge.tmp"
 
     orig_index = get_column_index(original_csv, join_column_name)
     join_index = get_column_index(join_csv, join_column_name)
