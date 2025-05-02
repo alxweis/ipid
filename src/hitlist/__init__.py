@@ -87,7 +87,7 @@ def sort_csv_linux_low_ram(input_csv: str, column_names: list[str]) -> bool:
         temp_csv = tempfile.mktemp(prefix=f"{input_csv}.sort.", dir=".")
 
         # Bereite die Sortieroptionen vor
-        sort_keys = [f'-k{index + 1},{index + 1}' for index in column_indices]
+        sort_keys = [f'-k{index + 1},{index + 1}n' for index in column_indices]
 
         # Führe den Sortierbefehl aus, wobei mehrere Sortierschlüssel angegeben werden
         subprocess.run(
