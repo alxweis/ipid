@@ -6,6 +6,8 @@ import time
 
 import polars as pl
 
+from core.utils import config
+
 
 def log_runtime(start: float) -> str:
     elapsed = int(time.time() - start)
@@ -112,6 +114,10 @@ def extract_column_no_header(input_csv: str, column_name: str, output_txt: str):
 
 
 def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: str) -> str:
+    # Sort original_csv and join_csv by join_column_name
+    sort_csv_linux_low_ram(input_csv=original_csv, column_names=[join_column_name])
+    sort_csv_linux_low_ram(input_csv=original_csv, column_names=[join_column_name])
+
     merge_csv = original_csv + ".merge.tmp"
     print(f"[INFO] Merging '{original_csv}' with '{join_csv}' on column '{join_column_name}'")
 
@@ -169,6 +175,9 @@ def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: s
                     join_row = None
 
         print(f"[INFO] Finished merging. Total original rows: {total_orig}, matched: {matched_count}")
+
+    # Sort merge_csv by timestamp
+    sort_csv_linux_low_ram(input_csv=merge_csv, column_names=[config.ts_ip_col_name, config.us_ip_col_name])
 
     # os.replace(merge_csv, original_csv) # TODO Uncomment later
     return original_csv
