@@ -123,11 +123,11 @@ def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: s
 
     with open(original_csv, newline='', encoding='utf-8') as orig_f, \
             open(join_csv, newline='', encoding='utf-8') as join_f, \
-            open(merge_csv, 'w', newline='', encoding='utf-8') as out_f:
+            open(merge_csv, 'w', newline='', encoding='utf-8') as merge_f:
 
         orig_reader = csv.reader(orig_f)
         join_reader = csv.reader(join_f)
-        merge_writer = csv.writer(out_f)
+        merge_writer = csv.writer(merge_f)
 
         # skip headers
         next(orig_reader)
@@ -155,5 +155,5 @@ def join_csv_linux_low_ram(original_csv: str, join_csv: str, join_column_name: s
                 except StopIteration:
                     join_row = None
 
-    # os.replace(merge_csv, original_csv)
+    # os.replace(merge_csv, original_csv) # TODO Uncomment later
     return original_csv
