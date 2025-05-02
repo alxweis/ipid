@@ -78,7 +78,7 @@ def run_zgrab2_http_scan(ip_addr_file: str, os_scan_file: str):
 
 
 def start(ip_scan_file: str):
-    ip_addr_file = setup(ip_scan_file)
+    ip_addr_file, ip_scan_file = setup(ip_scan_file)
     os_scan_file = ip_scan_file + ".os_scan.csv"
 
     run_zgrab2_http_scan(ip_addr_file, os_scan_file)

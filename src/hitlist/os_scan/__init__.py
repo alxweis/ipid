@@ -12,18 +12,18 @@ os_regex = "ubuntu|centos|debian|redhat|ret hat|rhel|fedora|gentoo|opensuse|eule
 os_pattern = re.compile(os_regex, re.IGNORECASE)
 
 
-def setup(ip_scan_file: str) -> str:
+def setup(ip_scan_file: str) -> (str, str):
     try:
         # Check if the file exists
         if not os.path.exists(ip_scan_file):
             raise FileNotFoundError(f"Error: File {ip_scan_file} does not exist")
 
         lf = None
-        if not config.is_linux_low_ram:
-            lf = pl.scan_csv(ip_scan_file)
-        else:
+        if config.is_linux_low_ram:
             print("Decompressing file...")
             ip_scan_file = decompress_csv(ip_scan_file)
+        else:
+            lf = pl.scan_csv(ip_scan_file)
 
         print("Checking if OS scan was already made...")
         if config.is_linux_low_ram:
@@ -50,19 +50,18 @@ def setup(ip_scan_file: str) -> str:
 
         print(f"Setup finished: ip_addr_count=[{ip_addr_count}] ip_addr_file=[{ip_addr_file}]")
 
-        return ip_addr_file
+        return ip_addr_file, ip_scan_file
 
     except Exception as e:
         print(f"Unexpected error during setup: {str(e)}")
         raise ValueError(f"Failed to prepare IP addresses: {str(e)}")
 
 
-def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> bool:
+def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> (bool, str):
     try:
         print(f"Merging: {os_scan_file} => {ip_scan_file}")
 
         if config.is_linux_low_ram:
-            ip_scan_file = ip_scan_file.removesuffix(".zst")
             merged_scan_file = join_csv_linux_low_ram(original_csv=ip_scan_file, join_csv=os_scan_file,
                                                       join_column_name=config.ip_col_name)
         else:
@@ -84,22 +83,21 @@ def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> bool:
             merged_lf.sink_csv(merged_scan_file)
 
         print("Compressing the merged file...")
-        compress_csv(merged_scan_file)
-
-        return True
+        merged_scan_file = compress_csv(merged_scan_file)
+        return True, merged_scan_file
 
     except Exception as e:
         print(f"Error merging scan results: {str(e)}", file=sys.stderr)
-        return False
+        return False, None
 
 
 def cleanup(ip_scan_file: str, ip_addr_file: str, os_scan_file: str):
-    success = merge_ip_os_scan_data(ip_scan_file=ip_scan_file, os_scan_file=os_scan_file)
+    success, ip_scan_file = merge_ip_os_scan_data(ip_scan_file=ip_scan_file, os_scan_file=os_scan_file)
 
     if success:
         try:
             pass
-            # os.remove(ip_addr_file)
+            # os.remove(ip_addr_file) # TODO Uncomment later
             # os.remove(os_scan_file)
         except:
             print("Warning: Could not remove temporary files.")

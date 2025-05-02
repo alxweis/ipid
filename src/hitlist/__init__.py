@@ -27,7 +27,7 @@ def compress_csv(input_csv: str) -> str:
 
 
 def decompress_csv(input_csv: str) -> str:
-    decompressed_output_file = input_csv.replace(".zst", "")
+    decompressed_output_file = input_csv.removesuffix(".zst")
     subprocess.run(["zstd", "-d", "-T0", "-f", input_csv], check=True)
     return decompressed_output_file
 
