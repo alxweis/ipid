@@ -599,7 +599,7 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expDst string, expSeq uin
 	}
 
 	if dst != expDst {
-		log.Println("Dst is not expected (dst=%d exp=%d)", dst, expDst)
+		log.Printf("Dst is not expected (dst=%s exp=%s)", dst, expDst)
 		return false
 	}
 
@@ -873,12 +873,7 @@ func createRawIPLayers(proto Protocol) []layers.IPv4 {
 	ipLayers := make([]layers.IPv4, config.SEQReqCount)
 
 	for seq := uint16(0); seq < config.SEQReqCount; seq++ {
-		var srcIP net.IP
-		if seq%2 == 0 {
-			srcIP = srcAIp
-		} else {
-			srcIP = srcBIp
-		}
+		_, srcIP := getSender(seq)
 
 		id := config.DefaultSendIpIds[int(seq)%len(config.DefaultSendIpIds)]
 		if config.DetectReflectedIpIds {
