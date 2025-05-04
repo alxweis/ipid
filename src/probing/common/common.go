@@ -33,11 +33,11 @@ type Config struct {
 	RecTraffic           bool           `yaml:"record_traffic"`
 	TcpDstPort           layers.TCPPort `yaml:"tcp_dst_port"`
 	TcpReqFlags          string         `yaml:"tcp_request_flags"`
-	TcpSrcPortOffset     uint32         `yaml:"tcp_src_port_offset"`
+	TcpSrcPortOffset     uint16         `yaml:"tcp_src_port_offset"`
 	UdpDstPort           layers.UDPPort `yaml:"udp_dst_port"`
 	UdpSrcPortOffset     uint16         `yaml:"udp_src_port_offset"`
 	B2BReqCount          uint16         `yaml:"b2b_request_count"`
-	B2BReqInterval       uint16         `yaml:"b2b_request_interval"`
+	B2BReqInterval       time.Duration  `yaml:"b2b_request_interval"`
 	SEQReqCount          uint16         `yaml:"seq_request_count"`
 	IfaceA               Iface          `yaml:"iface_a"`
 	IfaceB               Iface          `yaml:"iface_b"`
