@@ -114,7 +114,7 @@ var (
 )
 
 const (
-	maxWorkers       = 100_000
+	maxWorkers       = 500
 	workerStopSignal = "STOP_WORKER"
 )
 
@@ -138,7 +138,7 @@ var (
 	validProbes        int
 	targetSendMbps     int
 	currentWorkers     = 1
-	targetChan         = make(chan string, maxWorkers*10)
+	targetChan         = make(chan string, maxWorkers*2)
 	senderA            Sender
 	senderB            Sender
 	rawIPLayers        []layers.IPv4
