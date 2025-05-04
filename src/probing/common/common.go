@@ -550,6 +550,7 @@ func receivePacket(recvCh chan ReplyInfo, expSrc string, expDst string, expSeq u
 	for {
 		select {
 		case replyInfo := <-recvCh:
+			log.Printf("##### len_recvChan=%d (should be 0)", len(recvCh))
 			return processPacket(replyInfo, expSrc, expDst, expSeq, proto)
 		case <-timeout:
 			return false
@@ -614,7 +615,7 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expDst string, expSeq uin
 	}
 
 	if seq != expSeq {
-		log.Printf("Seq is not expected (seq=%d exp_seq=%d | dst=%s exp_dst=%s)", seq, expSeq, dst, expDst)
+		log.Printf("Seq is not expected (seq=%d exp_seq=%d)", seq, expSeq)
 		return false
 	}
 
