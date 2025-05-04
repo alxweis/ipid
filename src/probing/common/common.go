@@ -138,7 +138,7 @@ var (
 	validProbes        int
 	targetSendMbps     int
 	currentWorkers     = 1
-	targetChan         = make(chan string, maxWorkers*2)
+	targetChan         = make(chan string, maxWorkers*10)
 	senderA            Sender
 	senderB            Sender
 	rawIPLayers        []layers.IPv4
@@ -532,16 +532,14 @@ func setupReceiver(iface Iface, proto Protocol) {
 		panic(bpfErr)
 	}
 
-	packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet)
-
+	packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet).Packets()
 	for {
 		select {
-		case packet := <-packetSource.Packets():
-			info := ReplyInfo{
+		case packet := <-packetSource:
+			go addToRecvChan(ReplyInfo{
 				Packet: packet,
 				Time:   time.Now().UnixNano(),
-			}
-			addToRecvChan(info)
+			})
 		case <-stopReceiving:
 			return
 		}
