@@ -13,12 +13,5 @@ func main() {
 		return
 	}
 	mode := os.Args[1]
-	switch mode {
-	case "b2b":
-		common.Main()
-	case "seq":
-		common.Main()
-	default:
-		fmt.Println("Unknown mode:", mode)
-	}
+	common.Main(mode)
 }

@@ -15,9 +15,11 @@ udp_src_port_offset: 32570
 # B2B Probing
 b2b_request_count: 10
 b2b_request_interval: "10ms"
+b2b_retry_count: 0
 
 # SEQ Probing
 seq_request_count: 10
+seq_retry_count: 2
 
 # Other
 iface_a:
