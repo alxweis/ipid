@@ -608,7 +608,7 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expDst string, expSeq uin
 	}
 
 	if dst != expDst {
-		log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
+		//log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
 		return false
 	}
 
@@ -619,7 +619,7 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expDst string, expSeq uin
 	}
 
 	if seq != expSeq {
-		log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, seq, expSeq)
+		//log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, seq, expSeq)
 		return false
 	}
 
