@@ -5,9 +5,11 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"github.com/breml/bpfutils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/google/gopacket/pcapgo"
 	"github.com/ilyakaznacheev/cleanenv"
 	"golang.org/x/net/ipv4"
 	"log"
@@ -504,30 +506,29 @@ func sendPacket(sender Sender, payload []byte, target string, seq uint16) {
 // Receive
 func setupReceiver(iface Iface, proto Protocol) {
 	defer recvWg.Done()
-
-	inactive, err := pcap.NewInactiveHandle(iface.Name)
-	if err != nil {
-		panic(err)
-	}
-	defer inactive.CleanUp()
-
-	// Set capture buffer size to 16MB
-	if bufErr := inactive.SetBufferSize(16 * 1024 * 1024); bufErr != nil {
-		panic(bufErr)
-	}
-
-	handle, err := inactive.Activate()
+	handle, err := pcapgo.NewEthernetHandle(iface.Name)
 	if err != nil {
 		panic(err)
 	}
 	defer handle.Close()
+
+	ifc, err := net.InterfaceByName(iface.Name)
+	if err != nil {
+		panic(err)
+	}
 
 	protoFilter := proto.Id
 	if proto.Filter != "" {
 		protoFilter += " and " + proto.Filter
 	}
 	bpfFilter := fmt.Sprintf("ip and %s and dst host %s", protoFilter, iface.Ip)
-	if bpfErr := handle.SetBPFFilter(bpfFilter); bpfErr != nil {
+	bpfInstr, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet, ifc.MTU, bpfFilter)
+	if err != nil {
+		panic(err)
+	}
+
+	bpfRaw := bpfutils.ToBpfRawInstructions(bpfInstr)
+	if bpfErr := handle.SetBPF(bpfRaw); bpfErr != nil {
 		panic(bpfErr)
 	}
 
