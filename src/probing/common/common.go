@@ -560,6 +560,10 @@ func receivePacket(recvCh chan ReplyInfo, expSrc string, expDst string, expSeq u
 // Receive Channel
 func createRecvChan(target string) {
 	createProbe(target)
+	_, ok := getRecvChan(target)
+	if ok {
+		fmt.Printf("Receive Channel %s already exists", target)
+	}
 	recvChans.Store(target, make(chan ReplyInfo))
 }
 
