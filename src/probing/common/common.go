@@ -229,6 +229,7 @@ func Main() {
 	go logStatistics()
 
 	// Send targets to channel
+	seen := make(map[string]struct{})
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -238,7 +239,12 @@ func Main() {
 		if len(fields) < 1 {
 			continue
 		}
-		targetChan <- fields[0] // Send target to channel
+		ip := fields[0]
+		if _, exists := seen[ip]; exists {
+			continue // IP bereits gesehen, überspringe
+		}
+		seen[ip] = struct{}{} // IP speichern
+		targetChan <- ip      // Send target to channel
 	}
 
 	// Now that all targets have been sent, close the targetChan
@@ -369,7 +375,7 @@ func probeTarget(target string) {
 	dstIP := net.ParseIP(target).To4()
 	payloads, probeByteSize := buildPackets(rawIPLayers, dstIP, proto)
 
-	attempts := 3 // TODO Make as constant
+	attempts := 3 // TODO Make as constant. Make -1 cause otherwise it is 3+1 total attempts
 
 restartProbing:
 	createRecvChan(target, attempts < 3)
