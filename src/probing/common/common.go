@@ -359,8 +359,6 @@ func clampInt(x, min, max int) int {
 
 // Probing
 func probeTarget(target string) {
-	defer workerWg.Done()
-
 	dstIP := net.ParseIP(target).To4()
 	payloads, probeByteSize := buildPackets(rawIPLayers, dstIP, proto)
 
@@ -796,6 +794,8 @@ func getBasePath() string {
 }
 
 func loadTargets(targetsBasePath string, basePath string, outputDir string) string {
+	// TODO zstd -d (...)/targets.csv.zst
+
 	if targetsBasePath == "latest" {
 		dir := filepath.Join("targets", basePath)
 		allDirs, err := getSortedDirectories(dir)
@@ -810,7 +810,7 @@ func loadTargets(targetsBasePath string, basePath string, outputDir string) stri
 		targetsBasePath = filepath.Join(basePath, latestDir)
 	}
 
-	sourceTargetsPath := filepath.Join(targetsBasePath, "targets.csv")
+	sourceTargetsPath := filepath.Join(targetsBasePath, "targets.csv") // TODO Make targets.csv as constant
 	absSourceTargetsPath, absErr := filepath.Abs(sourceTargetsPath)
 	if absErr != nil {
 		panic(absErr)
