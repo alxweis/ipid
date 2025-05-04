@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"github.com/breml/bpfutils"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
@@ -523,23 +522,12 @@ func setupReceiver(iface Iface, proto Protocol) {
 	}
 	defer handle.Close()
 
-	ifc, err := net.InterfaceByName(iface.Name)
-	if err != nil {
-		panic(err)
-	}
-
 	protoFilter := proto.Id
 	if proto.Filter != "" {
 		protoFilter += " and " + proto.Filter
 	}
 	bpfFilter := fmt.Sprintf("ip and %s and dst host %s", protoFilter, iface.Ip)
-	bpfInstr, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet, ifc.MTU, bpfFilter)
-	if err != nil {
-		panic(err)
-	}
-
-	bpfRaw := bpfutils.ToBpfRawInstructions(bpfInstr)
-	if bpfErr := handle.SetBPF(bpfRaw); bpfErr != nil {
+	if bpfErr := handle.SetBPFFilter(bpfFilter); bpfErr != nil {
 		panic(bpfErr)
 	}
 
