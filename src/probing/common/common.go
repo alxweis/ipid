@@ -229,7 +229,6 @@ func Main() {
 	go logStatistics()
 
 	// Send targets to channel
-	seen := make(map[string]struct{})
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -239,12 +238,7 @@ func Main() {
 		if len(fields) < 1 {
 			continue
 		}
-		ip := fields[0]
-		if _, exists := seen[ip]; exists {
-			continue // IP bereits gesehen, überspringe
-		}
-		seen[ip] = struct{}{} // IP speichern
-		targetChan <- ip      // Send target to channel
+		targetChan <- fields[0] // Send target to channel TODO: Get index of "IP" column
 	}
 
 	// Now that all targets have been sent, close the targetChan
@@ -378,7 +372,7 @@ func probeTarget(target string) {
 	attempts := 3 // TODO Make as constant. Make -1 cause otherwise it is 3+1 total attempts
 
 restartProbing:
-	createRecvChan(target, attempts < 3)
+	createRecvChan(target, attempts == 3)
 	recvCh, _ := getRecvChan(target)
 	recvCounter := 0
 	for seq := uint16(0); seq < config.SEQReqCount; seq++ {
@@ -564,10 +558,10 @@ func receivePacket(recvCh chan ReplyInfo, expSrc string, expDst string, expSeq u
 }
 
 // Receive Channel
-func createRecvChan(target string, isRetry bool) {
+func createRecvChan(target string, isFirstTry bool) {
 	createProbe(target)
 	_, ok := getRecvChan(target)
-	if isRetry && ok {
+	if isFirstTry && ok {
 		log.Printf("Receive Channel [%s] already exists", target)
 	}
 	recvChans.Store(target, make(chan ReplyInfo))
