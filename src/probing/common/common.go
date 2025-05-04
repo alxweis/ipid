@@ -599,7 +599,7 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expDst string, expSeq uin
 	}
 
 	if dst != expDst {
-		log.Println("Dst is not expected")
+		log.Println("Dst is not expected (dst=%d exp=%d)", dst, expDst)
 		return false
 	}
 
