@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	targetBandwidthMbps = 100.0
+	targetBandwidthMbps = 30.0
 	maxWorkers          = 100_000
 	bitsPerProbe        = 6720
 )
