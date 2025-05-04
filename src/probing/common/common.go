@@ -114,7 +114,7 @@ var (
 )
 
 const (
-	maxWorkers       = 10_000
+	maxWorkers       = 100
 	workerStopSignal = "STOP_WORKER"
 )
 
@@ -369,7 +369,8 @@ func probeTarget(target string) {
 	dstIP := net.ParseIP(target).To4()
 	payloads, probeSentBytes := buildPackets(rawIPLayers, dstIP, proto)
 
-	retries := 0 // TODO Make as constant
+	totalRetries := 0
+	retries := totalRetries // TODO Make as constant
 
 restartProbing:
 	createRecvChan(target, retries == 0)
@@ -398,7 +399,7 @@ restartProbing:
 		removeProbe(target)
 	}
 	updateStats(isProbeValid, probeSentBytes)
-	log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d", target, recvCounter, config.SEQReqCount, probeSentBytes)
+	log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d retry=%d", target, recvCounter, config.SEQReqCount, probeSentBytes, totalRetries-retries)
 }
 
 // Send
