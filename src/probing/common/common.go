@@ -376,8 +376,9 @@ restartProbing:
 	recvCh, _ := getRecvChan(target)
 	recvCounter := 0
 	for seq := uint16(0); seq < config.SEQReqCount; seq++ {
-		sendPacket(senderA, senderB, payloads[seq], target, seq)
-		if receivePacket(recvCh, target, seq, proto) {
+		sender, senderIP := getSender(seq)
+		sendPacket(sender, payloads[seq], target, seq)
+		if receivePacket(recvCh, target, senderIP.String(), seq, proto) {
 			recvCounter++
 		} else {
 			if attempts == 0 {
@@ -487,14 +488,15 @@ func (l2 *Sender) Send(payload []byte) {
 	}
 }
 
-func sendPacket(senderA Sender, senderB Sender, payload []byte, target string, seq uint16) {
-	var sender Sender
+func getSender(seq uint16) (Sender, net.IP) {
 	if seq%2 == 0 {
-		sender = senderA
+		return senderA, srcAIp
 	} else {
-		sender = senderB
+		return senderB, srcBIp
 	}
+}
 
+func sendPacket(sender Sender, payload []byte, target string, seq uint16) {
 	sender.Send(payload)
 	createProbePoint(target, seq, time.Now().UnixNano())
 	//log.Printf("Request: target=%s seq=%d\n", target, seq)
@@ -543,12 +545,12 @@ func setupReceiver(iface Iface, proto Protocol) {
 	}
 }
 
-func receivePacket(recvCh chan ReplyInfo, target string, seq uint16, proto Protocol) bool {
+func receivePacket(recvCh chan ReplyInfo, expSrc string, expDst string, expSeq uint16, proto Protocol) bool {
 	timeout := time.After(config.MaxRTT)
 	for {
 		select {
 		case replyInfo := <-recvCh:
-			return processPacket(replyInfo, target, seq, proto)
+			return processPacket(replyInfo, expSrc, expDst, expSeq, proto)
 		case <-timeout:
 			return false
 		}
@@ -584,8 +586,8 @@ func addToRecvChan(replyInfo ReplyInfo) {
 }
 
 // Process
-func processPacket(replyInfo ReplyInfo, expSrc string, expSeq uint16, proto Protocol) bool {
-	ok, src, ipId := checkIPLayer(replyInfo.Packet)
+func processPacket(replyInfo ReplyInfo, expSrc string, expDst string, expSeq uint16, proto Protocol) bool {
+	ok, src, dst, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
 		return false
@@ -593,6 +595,11 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expSeq uint16, proto Prot
 
 	if src != expSrc {
 		log.Println("Src is not expected")
+		return false
+	}
+
+	if dst != expDst {
+		log.Println("Dst is not expected")
 		return false
 	}
 
@@ -892,19 +899,19 @@ func createRawIPLayers(proto Protocol) []layers.IPv4 {
 	return ipLayers
 }
 
-func checkIPLayer(packet gopacket.Packet) (bool, string, uint16) {
+func checkIPLayer(packet gopacket.Packet) (bool, string, string, uint16) {
 	ip, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 	if !ok {
 		log.Println("IPv4 layer invalid")
-		return false, "", 0
+		return false, "", "", 0
 	}
 
 	if !ip.DstIP.Equal(srcAIp) && !ip.DstIP.Equal(srcBIp) {
 		log.Println("DstIP not match")
-		return false, "", 0
+		return false, "", "", 0
 	}
 
-	return true, ip.SrcIP.String(), ip.Id
+	return true, ip.SrcIP.String(), ip.DstIP.String(), ip.Id
 }
 
 // ICMP
