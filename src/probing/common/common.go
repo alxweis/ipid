@@ -810,7 +810,7 @@ func loadTargets(targetsBasePath string, basePath string, outputDir string) stri
 		targetsBasePath = filepath.Join(basePath, latestDir)
 	}
 
-	sourceTargetsPath := filepath.Join("targets", targetsBasePath, "targets.csv")
+	sourceTargetsPath := filepath.Join(targetsBasePath, "targets.csv")
 	absSourceTargetsPath, absErr := filepath.Abs(sourceTargetsPath)
 	if absErr != nil {
 		panic(absErr)
