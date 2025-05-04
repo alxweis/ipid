@@ -1,5 +1,5 @@
 # General
-targets: "latest" # Use e.g. "tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
+targets: "targets/icmp/2025-05-04_08-00-18" # Use e.g. "tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
 protocol: "icmp" # Make it to list ["icmp", "tcp"]
 record_traffic: false
 
