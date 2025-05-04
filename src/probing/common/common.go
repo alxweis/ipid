@@ -938,7 +938,7 @@ func createTCPLayers(ipLayers []layers.IPv4) ([][]byte, int) {
 	for seq := uint32(0); seq < uint32(config.SEQReqCount); seq++ {
 		ipLayer := ipLayers[seq]
 		pLayer := layers.TCP{
-			SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
+			SrcPort: layers.TCPPort(seq + uint32(config.TcpSrcPortOffset)),
 			DstPort: config.TcpDstPort,
 			Seq:     seq,
 			SYN:     strings.Contains(config.TcpReqFlags, "S"),
