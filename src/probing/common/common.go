@@ -369,10 +369,10 @@ func probeTarget(target string) {
 	dstIP := net.ParseIP(target).To4()
 	payloads, probeByteSize := buildPackets(rawIPLayers, dstIP, proto)
 
-	attempts := 0 // TODO Make as constant. Make -1 cause otherwise it is 3+1 total attempts
+	retries := 0 // TODO Make as constant
 
 restartProbing:
-	createRecvChan(target, attempts == 0)
+	createRecvChan(target, retries == 0)
 	recvCh, _ := getRecvChan(target)
 	recvCounter := 0
 	for seq := uint16(0); seq < config.SEQReqCount; seq++ {
@@ -381,10 +381,10 @@ restartProbing:
 		if receivePacket(recvCh, target, senderIP.String(), seq, proto) {
 			recvCounter++
 		} else {
-			if attempts == 0 {
+			if retries == 0 {
 				break
 			} else {
-				attempts--
+				retries--
 				goto restartProbing
 			}
 		}
