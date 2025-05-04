@@ -550,7 +550,10 @@ func receivePacket(recvCh chan ReplyInfo, expSrc string, expDst string, expSeq u
 	for {
 		select {
 		case replyInfo := <-recvCh:
-			log.Printf("##### len_recvChan=%d (should be 0)", len(recvCh))
+			lenRecvChan := len(recvCh)
+			if lenRecvChan > 0 {
+				log.Printf("##### len_recvChan=%d (should be 0)", lenRecvChan)
+			}
 			return processPacket(replyInfo, expSrc, expDst, expSeq, proto)
 		case <-timeout:
 			return false
