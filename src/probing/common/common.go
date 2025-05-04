@@ -399,7 +399,7 @@ restartProbing:
 		removeProbe(target)
 	}
 	updateStats(isProbeValid, probeSentBytes)
-	log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d retry=%d", target, recvCounter, config.SEQReqCount, probeSentBytes, totalRetries-retries)
+	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d retry=%d", target, recvCounter, config.SEQReqCount, probeSentBytes, totalRetries-retries)
 }
 
 // Send
