@@ -114,7 +114,7 @@ var (
 )
 
 const (
-	maxWorkers       = 10_000
+	maxWorkers       = 1000
 	workerStopSignal = "STOP_WORKER"
 )
 
@@ -369,7 +369,7 @@ func probeTarget(target string) {
 	dstIP := net.ParseIP(target).To4()
 	payloads, probeSentBytes := buildPackets(rawIPLayers, dstIP, proto)
 
-	totalRetries := 0
+	totalRetries := 2
 	retries := totalRetries // TODO Make as constant
 
 restartProbing:
