@@ -9,7 +9,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	"github.com/google/gopacket/pcapgo"
 	"github.com/ilyakaznacheev/cleanenv"
 	"golang.org/x/net/ipv4"
 	"log"
@@ -114,7 +113,7 @@ var (
 )
 
 const (
-	maxWorkers       = 1000
+	maxWorkers       = 10_000
 	workerStopSignal = "STOP_WORKER"
 )
 
@@ -506,7 +505,19 @@ func sendPacket(sender Sender, payload []byte, target string, seq uint16) {
 // Receive
 func setupReceiver(iface Iface, proto Protocol) {
 	defer recvWg.Done()
-	handle, err := pcapgo.NewEthernetHandle(iface.Name)
+
+	inactive, err := pcap.NewInactiveHandle(iface.Name)
+	if err != nil {
+		panic(err)
+	}
+	defer inactive.CleanUp()
+
+	// Set capture buffer size to 16MB
+	if bufErr := inactive.SetBufferSize(16 * 1024 * 1024); bufErr != nil {
+		panic(bufErr)
+	}
+
+	handle, err := inactive.Activate()
 	if err != nil {
 		panic(err)
 	}
@@ -532,14 +543,16 @@ func setupReceiver(iface Iface, proto Protocol) {
 		panic(bpfErr)
 	}
 
-	packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet).Packets()
+	packetSource := gopacket.NewPacketSource(handle, layers.LinkTypeEthernet)
+
 	for {
 		select {
-		case packet := <-packetSource:
-			go addToRecvChan(ReplyInfo{
+		case packet := <-packetSource.Packets():
+			info := ReplyInfo{
 				Packet: packet,
 				Time:   time.Now().UnixNano(),
-			})
+			}
+			addToRecvChan(info)
 		case <-stopReceiving:
 			return
 		}
