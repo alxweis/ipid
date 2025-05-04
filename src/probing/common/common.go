@@ -127,6 +127,7 @@ var (
 	saveWg             sync.WaitGroup
 	stopReceiving      = make(chan struct{})
 	probeBuffer        = make(map[string]*Probe)
+	probeBufferMu      sync.RWMutex
 	probeSaveChan      = make(chan *Probe)
 	recvChans          sync.Map
 	opts               = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
@@ -299,15 +300,19 @@ func getProbePoint(target string, key uint16) (*ProbePoint, bool) {
 }
 
 func createProbe(target string) (*Probe, bool) {
+	probeBufferMu.Lock()
 	probeBuffer[target] = &Probe{
 		IPAddr: target,
 		Data:   make(map[uint16]*ProbePoint),
 	}
+	probeBufferMu.Unlock()
 	return getProbe(target)
 }
 
 func getProbe(target string) (*Probe, bool) {
+	probeBufferMu.RLock()
 	probe, exists := probeBuffer[target]
+	probeBufferMu.RUnlock()
 	if !exists {
 		log.Printf("Probe not created")
 		return nil, false
@@ -316,7 +321,9 @@ func getProbe(target string) (*Probe, bool) {
 }
 
 func removeProbe(target string) {
+	probeBufferMu.Lock()
 	delete(probeBuffer, target)
+	probeBufferMu.Unlock()
 }
 
 // Worker
@@ -362,7 +369,7 @@ func probeTarget(target string) {
 	dstIP := net.ParseIP(target).To4()
 	payloads, probeByteSize := buildPackets(rawIPLayers, dstIP, proto)
 
-	attempts := 3
+	attempts := 3 // TODO Make as constant
 
 restartProbing:
 	createRecvChan(target)
