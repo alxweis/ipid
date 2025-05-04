@@ -512,6 +512,8 @@ func setupReceiver(iface Iface, proto Protocol) {
 	}
 	defer handle.Close()
 
+	handle.SetBufferSize(16 * 1024 * 1024) // 16MB
+
 	ifc, err := net.InterfaceByName(iface.Name)
 	if err != nil {
 		panic(err)
