@@ -398,7 +398,7 @@ restartProbing:
 		removeProbe(target)
 	}
 	updateStats(isProbeValid, probeSentBytes)
-	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d", target, recvCounter, config.SEQReqCount, probeSentBytes)
+	log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d", target, recvCounter, config.SEQReqCount, probeSentBytes)
 }
 
 // Send
@@ -607,7 +607,7 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expDst string, expSeq uin
 	}
 
 	if dst != expDst {
-		log.Printf("Dst is not expected (dst=%s exp_dst=%s)", dst, expDst)
+		log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
 		return false
 	}
 
@@ -618,7 +618,7 @@ func processPacket(replyInfo ReplyInfo, expSrc string, expDst string, expSeq uin
 	}
 
 	if seq != expSeq {
-		log.Printf("Seq is not expected (seq=%d exp_seq=%d)", seq, expSeq)
+		log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, seq, expSeq)
 		return false
 	}
 
