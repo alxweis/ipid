@@ -372,7 +372,7 @@ func probeTarget(target string) {
 	attempts := 3 // TODO Make as constant
 
 restartProbing:
-	createRecvChan(target, 3-attempts)
+	createRecvChan(target, attempts < 3)
 	recvCh, _ := getRecvChan(target)
 	recvCounter := 0
 	for seq := uint16(0); seq < config.SEQReqCount; seq++ {
@@ -558,11 +558,11 @@ func receivePacket(recvCh chan ReplyInfo, expSrc string, expDst string, expSeq u
 }
 
 // Receive Channel
-func createRecvChan(target string, retryAttempt int) {
+func createRecvChan(target string, isRetry bool) {
 	createProbe(target)
 	_, ok := getRecvChan(target)
-	if ok {
-		log.Printf("Receive Channel [%s] already exists (retry_attempt=%d)", target, retryAttempt)
+	if isRetry && ok {
+		log.Printf("Receive Channel [%s] already exists", target)
 	}
 	recvChans.Store(target, make(chan ReplyInfo))
 }
