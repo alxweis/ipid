@@ -862,10 +862,13 @@ func loadProtocol(protocol string) Protocol {
 
 // Build
 func buildPackets(rawIPLayers []layers.IPv4, dstIP net.IP, proto Protocol) ([][]byte, int) {
-	for i := range rawIPLayers {
-		rawIPLayers[i].DstIP = dstIP
+	ipLayersCopy := make([]layers.IPv4, len(rawIPLayers))
+	copy(ipLayersCopy, rawIPLayers)
+
+	for i := range ipLayersCopy {
+		ipLayersCopy[i].DstIP = dstIP
 	}
-	return proto.CreateLayers(rawIPLayers)
+	return proto.CreateLayers(ipLayersCopy)
 }
 
 func buildLayers(payloadLayers ...gopacket.SerializableLayer) []byte {
@@ -925,12 +928,14 @@ func createICMPLayers(ipLayers []layers.IPv4) ([][]byte, int) {
 
 	for seq := uint16(0); seq < config.SEQReqCount; seq++ {
 		ipLayer := ipLayers[seq]
+		ipLayerCopy := ipLayer
+
 		pLayer := layers.ICMPv4{
 			TypeCode: layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoRequest, 0),
 			Seq:      seq,
 		}
 
-		packet := buildLayers(&ipLayer, &pLayer)
+		packet := buildLayers(&ipLayerCopy, &pLayer)
 		pList[seq] = packet
 		byteSize += len(packet)
 	}
