@@ -367,7 +367,7 @@ func clampInt(x, min, max int) int {
 // Probing
 func probeTarget(target string) {
 	dstIP := net.ParseIP(target).To4()
-	payloads, probeByteSize := buildPackets(rawIPLayers, dstIP, proto)
+	payloads, probeSentBytes := buildPackets(rawIPLayers, dstIP, proto)
 
 	retries := 0 // TODO Make as constant
 
@@ -397,8 +397,8 @@ restartProbing:
 		probeSaveChan <- probe
 		removeProbe(target)
 	}
-	updateStats(isProbeValid, probeByteSize)
-	//log.Printf("Finished probing target=%s received=%d/%d", target, recvCounter, config.ProbeCount)
+	updateStats(isProbeValid, probeSentBytes)
+	log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d", target, recvCounter, config.SEQReqCount, probeSentBytes)
 }
 
 // Send
