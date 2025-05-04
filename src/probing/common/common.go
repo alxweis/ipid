@@ -114,7 +114,7 @@ var (
 )
 
 const (
-	maxWorkers       = 100
+	maxWorkers       = 10_000
 	workerStopSignal = "STOP_WORKER"
 )
 
