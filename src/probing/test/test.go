@@ -14,7 +14,7 @@ import (
 const (
 	targetBandwidthMbps = 30.0
 	maxWorkers          = 100_000
-	bitsPerProbe        = 6720
+	bitsPerProbe        = 560
 )
 
 var (
