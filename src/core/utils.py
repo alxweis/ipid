@@ -25,7 +25,9 @@ class Config:
     udp_src_port_offset: int
     b2b_request_count: int
     b2b_request_interval: str
+    b2b_retry_count: int
     seq_request_count: int
+    seq_retry_count: int
     iface_a: Interface
     iface_b: Interface
     max_rtt: str

@@ -431,7 +431,7 @@ restartProbing:
 		removeProbe(target)
 	}
 	updateStats(isProbeValid, probeSentBytes)
-	log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d retry=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retries)
+	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d retry=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retries)
 }
 
 func (pm B2B) probeTarget(target string) {
@@ -439,7 +439,7 @@ func (pm B2B) probeTarget(target string) {
 	payloads, probeSentBytes := pm.buildPackets(rawIPLayers, dstIP, proto)
 
 	foundAll := false
-	recvCounter := 0
+	//recvCounter := 0
 
 	retries := pm.retryCount
 
@@ -447,10 +447,10 @@ restartProbing:
 	createRecvChan(target)
 	recvCh, _ := getRecvChan(target)
 	pm.sendPackets(payloads, target)
-	if fa, rc := pm.receivePackets(recvCh, target, proto); fa {
+	if fa, _ := pm.receivePackets(recvCh, target, proto); fa {
 		// All replies found
 		foundAll = true
-		recvCounter = rc
+		//recvCounter = rc
 	} else {
 		// Not all replies found
 		if retries > 0 {
@@ -467,7 +467,7 @@ restartProbing:
 		removeProbe(target)
 	}
 	updateStats(isProbeValid, probeSentBytes)
-	log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d retry=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retries)
+	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d retry=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retries)
 }
 
 // Send
@@ -692,6 +692,7 @@ func (pm SEQ) processPacket(replyInfo ReplyInfo, expSrc string, expDst string, e
 	}
 
 	if dst != expDst {
+		// Commented because this happens too often due to double replies
 		//log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
 		return false
 	}
@@ -703,6 +704,7 @@ func (pm SEQ) processPacket(replyInfo ReplyInfo, expSrc string, expDst string, e
 	}
 
 	if seq != expSeq {
+		// Commented because this happens too often due to double replies
 		//log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, seq, expSeq)
 		return false
 	}
@@ -856,8 +858,8 @@ func saveProbes(outputDir string) {
 		record = append(record, fmt.Sprintf("(%s)", joinWithComma(checks)))
 
 		// Write the record to the CSV file
-		if err := writer.Write(record); err != nil {
-			log.Printf("Error writing record to CSV: %v", err)
+		if writeErr := writer.Write(record); writeErr != nil {
+			log.Printf("Error writing record to CSV: %v", writeErr)
 		}
 	}
 }
