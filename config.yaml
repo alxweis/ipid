@@ -1,11 +1,11 @@
 # General
 targets: "targets/icmp/2025-05-04_08-00-18" # Use e.g. "tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
-protocol: "icmp" # Make it to list ["icmp", "tcp"]
+protocol: "icmp" # TODO Use a list like ["icmp", "tcp"] to enable inter-protocol IPID measurements
 record_traffic: true
 
 # TCP
 tcp_dst_port: 80
-tcp_request_flags: "S"
+tcp_request_flags: "S" # S=SYN A=ACK R=RST, e.g. "SA" for SYN-ACK
 tcp_src_port_offset: 22570
 
 # UDP
@@ -24,7 +24,7 @@ seq_retry_count: 2
 # Other
 iface_a:
   name: "eth0"
-  ip: "141.76.94.12" # ipid.research.netd.cs.tu-dresden.de
+  ip: "141.76.94.12"
 iface_b:
   name: "eth1"
   ip: "141.76.94.15"
@@ -33,7 +33,7 @@ send_bandwidth: "30M"
 default_send_ip_ids: [0] # Sends [0,0,0,...]
 detect_reflected_ip_ids: false
 reflection_send_ip_ids: [3717,3718,3719] # Sequence must not match with any known pattern
-is_linux_low_ram: true
+is_linux_low_ram: true # Enables disk-based calculations on low-RAM Linux systems
 
 # Dataframe column names
 ip_col_name: "IP"
