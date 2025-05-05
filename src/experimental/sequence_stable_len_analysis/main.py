@@ -5,6 +5,7 @@ from collections import OrderedDict
 from enum import Enum
 
 import numpy as np
+import pandas as pd
 import polars as pl
 import seaborn as sns
 from matplotlib import pyplot as plt
@@ -279,7 +280,7 @@ def evaluate(pattern_to_min_stable_lens, output_dir: str, filename: str):
                 file.write(f"{stable_pattern.value}: no stable classification found.\n")
 
     # Print the content of the file
-    with open(output_file, 'r') as file:
+    with open(output_file, 'r', encoding='utf-8') as file:
         print(file.read())
 
     # Create boxplot
@@ -342,7 +343,7 @@ def analyze_sequence_stable_lens_synthetic(sequence_count_per_pattern: int, sequ
                 pattern_to_min_stable_lens.setdefault(last_classified_pattern, []).append(min_stable_len)
 
     evaluate(pattern_to_min_stable_lens, EXP_SEQUENCE_STABLE_LEN_ANALYSIS,
-             f"synthetic_{sequence_count_per_pattern * len(pattern_generation_map)}_{sequence_length}")
+             f"min_sequence_stable_lens_synthetic_{sequence_count_per_pattern * len(pattern_generation_map)}_{sequence_length}")
 
 
 def analyze_sequence_stable_lens_natural(probing_csv: str):
@@ -367,4 +368,4 @@ def analyze_sequence_stable_lens_natural(probing_csv: str):
         if min_stable_len > 0:
             pattern_to_min_stable_lens.setdefault(last_classified_pattern, []).append(min_stable_len)
 
-    evaluate(pattern_to_min_stable_lens, os.path.dirname(probing_csv), f"natural_{row_count}_{sequence_length}")
+    evaluate(pattern_to_min_stable_lens, os.path.dirname(probing_csv), "min_sequence_stable_lens")
