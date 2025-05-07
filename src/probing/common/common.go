@@ -15,6 +15,7 @@ import (
 	"log"
 	"math"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +27,8 @@ import (
 	"syscall"
 	"time"
 )
+
+import _ "net/http/pprof"
 
 type ProbingMode interface {
 	createOutputDir(basePath string) string
@@ -187,6 +190,10 @@ var (
 )
 
 func Main(mode string) {
+	go func() {
+		http.ListenAndServe("localhost:6060", nil)
+	}()
+
 	runtime.GOMAXPROCS(runtime.NumCPU()) // Utilize all available CPUs
 
 	// Load configuration
