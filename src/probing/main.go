@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"ipid/common"
+	"ipid/base"
 	"os"
 )
 
@@ -13,5 +13,5 @@ func main() {
 		return
 	}
 	mode := os.Args[1]
-	common.Main(mode)
+	base.Main(mode)
 }
