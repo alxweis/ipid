@@ -197,7 +197,10 @@ func Main(mode string) {
 	setupSignalHandler()
 
 	go func() {
-		http.ListenAndServe("localhost:6060", nil)
+		err := http.ListenAndServe("localhost:6060", nil)
+		if err != nil {
+			return
+		}
 	}()
 
 	runtime.GOMAXPROCS(runtime.NumCPU()) // Utilize all available CPUs
@@ -570,7 +573,7 @@ func getSender(seq uint16) (*Sender, net.IP) {
 func sendPacket(sender *Sender, payload []byte, seq uint16, probe *Probe) {
 	sender.Send(payload)
 	createProbePoint(probe, seq, time.Now().UnixNano())
-	//log.Printf("Request: target=%s seq=%d\n", target, seq)
+	log.Printf("Request: target=%s seq=%d\n", probe.IPAddr, seq)
 }
 
 func (pm B2B) sendPackets(payloads [][]byte, probe *Probe) {
@@ -732,7 +735,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc string, expDst string, 
 	pp.ReceivedTime = replyInfo.Time
 	pp.IpId = ipId
 	pp.Check = true
-	//log.Printf("Reply: src=%s seq=%d rtt=%v ip_id=%d\n", src, seq, rtt, ipId)
+	log.Printf("Reply: src=%s seq=%d rtt=%v ip_id=%d\n", src, seq, rtt, ipId)
 	return true
 }
 
