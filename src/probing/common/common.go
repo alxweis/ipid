@@ -35,6 +35,7 @@ type ProbingMode interface {
 	createOutputDir(basePath string) string
 	createRawIPLayers() []layers.IPv4
 	probeTarget(target string)
+	createRecvChan(target string) chan *ReplyInfo
 }
 
 type ProbingVars struct {
@@ -56,6 +57,10 @@ func (pm B2B) createRawIPLayers() []layers.IPv4 {
 	return pm.ProbingVars.createRawIPLayers()
 }
 
+func (pm B2B) createRecvChan(target string) chan *ReplyInfo {
+	return pm.ProbingVars.createRecvChan(target)
+}
+
 type SEQ struct {
 	ProbingVars
 }
@@ -66,6 +71,10 @@ func (pm SEQ) createOutputDir(basePath string) string {
 
 func (pm SEQ) createRawIPLayers() []layers.IPv4 {
 	return pm.ProbingVars.createRawIPLayers()
+}
+
+func (pm SEQ) createRecvChan(target string) chan *ReplyInfo {
+	return pm.ProbingVars.createRecvChan(target)
 }
 
 type Config struct {
@@ -172,7 +181,7 @@ var (
 	stopReceiving      = make(chan struct{})
 	probeBuffer        = make(map[string]*Probe)
 	probeBufferMu      sync.RWMutex
-	probeSaveChan      = make(chan *Probe)
+	probeSaveChan      = make(chan *Probe, maxWorkers*2)
 	recvChans          sync.Map
 	opts               = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
 	recordingProcesses []*exec.Cmd
@@ -419,7 +428,7 @@ func (pm SEQ) probeTarget(target string) {
 
 	for retriesLeft = pm.retryCount; true; retriesLeft-- {
 		probe = createProbe(target)
-		recvCh = createRecvChan(target)
+		recvCh = pm.createRecvChan(target)
 		recvCounter = 0
 		for seq := uint16(0); seq < pm.requestCount; seq++ {
 			sender, senderIP := getSender(seq)
@@ -459,7 +468,7 @@ func (pm B2B) probeTarget(target string) {
 
 	for retriesLeft = pm.retryCount; true; retriesLeft-- {
 		probe = createProbe(target)
-		recvCh = createRecvChan(target)
+		recvCh = pm.createRecvChan(target)
 		pm.sendPackets(payloads, probe)
 		isProbeValid, _ = pm.receivePackets(recvCh, target, probe)
 		if isProbeValid {
@@ -658,8 +667,8 @@ func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc string, probe *Probe
 }
 
 // Receive Channel
-func createRecvChan(target string) chan *ReplyInfo {
-	ch := make(chan *ReplyInfo)
+func (pv ProbingVars) createRecvChan(target string) chan *ReplyInfo {
+	ch := make(chan *ReplyInfo, pv.requestCount)
 	recvChans.Delete(target)
 	recvChans.Store(target, ch)
 	return ch
