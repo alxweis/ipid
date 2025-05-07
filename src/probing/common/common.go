@@ -190,7 +190,7 @@ var (
 	statsMu            sync.Mutex
 	rstChanged         bool
 	outputDir          string
-	sigs               = make(chan os.Signal, 1)
+	stopRunning        = make(chan struct{})
 )
 
 func Main(mode string) {
@@ -296,7 +296,7 @@ func Main(mode string) {
 
 		select {
 		case targetChan <- fields[0]: // Send target to channel TODO: Get index of "IP" column
-		case <-sigs:
+		case <-stopRunning:
 			log.Println("Stop signal received: Stop filling target channel")
 			return
 		}
@@ -879,13 +879,14 @@ func formatBool(value bool) string {
 
 // Setup
 func setupSignalHandler() {
+	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 
 	// Start a goroutine to handle the signal
 	go func() {
-		close(sigs)
+		<-sigs
 		cleanup()
-		os.Exit(1)
+		os.Exit(0)
 	}()
 }
 
