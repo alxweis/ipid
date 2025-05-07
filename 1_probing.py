@@ -1,7 +1,6 @@
 import os
-import sys
 import subprocess
-import time
+import sys
 
 from probing import PROBING_FILE, MODES
 
@@ -24,9 +23,12 @@ def main():
         try:
             process.wait()
         except KeyboardInterrupt:
-            print("Stopped probing")
-            time.sleep(10)  # Timeout for cleanup in go script
-            process.terminate()
+            print("Stopping probing...")
+            try:
+                process.wait()
+            except KeyboardInterrupt:
+                print("Stopping forcefully...")
+                process.terminate()
     else:
         print_usage()
 
