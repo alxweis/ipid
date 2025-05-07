@@ -299,6 +299,7 @@ func Main(mode string) {
 }
 
 func cleanup() {
+	log.Println("CLEANUP")
 	// Now that all targets have been sent, close the targetChan
 	close(targetChan)
 
