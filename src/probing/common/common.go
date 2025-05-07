@@ -159,7 +159,7 @@ const (
 
 var (
 	pm                 ProbingMode
-	config             *Config
+	config             Config
 	srcAIp             net.IP
 	srcBIp             net.IP
 	workerWg           sync.WaitGroup
