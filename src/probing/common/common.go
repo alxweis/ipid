@@ -181,7 +181,7 @@ var (
 	deltaByteSize      int
 	validProbes        int
 	targetSendMbps     int
-	currentWorkers     = 100
+	currentWorkers     = 1000
 	targetChan         = make(chan string, maxWorkers*2)
 	senderA            *Sender
 	senderB            *Sender
