@@ -20,7 +20,7 @@ def main():
     if mode in MODES:
         try:
             subprocess.run(["go", "run", PROBING_FILE, mode], check=True)
-        except subprocess.CalledProcessError as e:
+        except KeyboardInterrupt as e:
             print("Stopped probing")
     else:
         print_usage()
