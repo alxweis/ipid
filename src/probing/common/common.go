@@ -297,7 +297,7 @@ func Main(mode string) {
 		select {
 		case targetChan <- fields[0]: // Send target to channel TODO: Get index of "IP" column
 		case <-stopRunning:
-			log.Println("Stop signal received: Stop filling target channel")
+			log.Println("Stop filling target channel")
 			return
 		}
 	}

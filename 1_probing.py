@@ -1,6 +1,8 @@
 import os
 import sys
 import subprocess
+import time
+
 from probing import PROBING_FILE, MODES
 
 filename = os.path.basename(__file__)
@@ -18,10 +20,13 @@ def main():
 
     mode = sys.argv[1]
     if mode in MODES:
+        process = subprocess.Popen(["go", "run", PROBING_FILE, mode])
         try:
-            subprocess.run(["go", "run", PROBING_FILE, mode], check=True)
-        except KeyboardInterrupt as e:
+            process.wait()
+        except KeyboardInterrupt:
             print("Stopped probing")
+            time.sleep(10)  # Timeout for cleanup in go script
+            process.terminate()
     else:
         print_usage()
 
