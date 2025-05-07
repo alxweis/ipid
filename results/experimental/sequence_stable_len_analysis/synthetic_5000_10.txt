@@ -1,0 +1,9 @@
+Reflection: no stable classification found.
+Constant: avg = 2.00, std = 0.00
+Global: avg = 2.00, std = 0.00
+Local (=1): avg = 2.57, std = 0.90
+Local (≥1): avg = 4.03, std = 0.31
+Multi Global: no stable classification found.
+Random: avg = 7.02, std = 0.18
+Fallback: avg = 7.00, std = 2.16
+None: no stable classification found.

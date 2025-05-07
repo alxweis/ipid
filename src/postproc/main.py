@@ -19,147 +19,10 @@ from core.utils import (
     DETECT_REFLECTED_IPIDS,
     REFLECTION_SEND_IPIDS,
     MAX_INC,
-    MAX_IPID
+    MAX_IPID, config
 )
 
 logger = create_logger(__file__)
-
-
-# region Pattern Recognition
-def ent(values):
-    values = np.array(values)
-    value, counts = np.unique(values, return_counts=True)
-    probabilities = counts / counts.sum()
-    entropy = -np.sum(probabilities * np.log2(probabilities))
-    max_entropy = np.log2(len(values))
-    return entropy / max_entropy
-
-
-def is_increasing(incs):
-    return np.all((1 <= incs) & (incs <= MAX_INC))
-
-
-def get_p_value(seq):
-    seq = list(seq)
-    intervals = int(math.ceil(math.sqrt(len(seq))))
-    interval_edges = np.linspace(0, MAX_IPID, intervals + 1)
-    observed_frequencies, _ = np.histogram(seq, bins=interval_edges)
-    total_numbers = len(seq)
-    expected_frequencies = np.full(intervals, total_numbers / intervals)
-
-    chi2_stat, p_value = chisquare(f_obs=observed_frequencies, f_exp=expected_frequencies)
-    return p_value
-
-
-def is_uniform(seq, alpha):
-    return get_p_value(seq) > alpha
-
-
-def is_mirror(parts):
-    if not DETECT_REFLECTED_IPIDS:
-        return False
-
-    for i, ipid in enumerate(parts.s):
-        if ipid != REFLECTION_SEND_IPIDS[i % len(REFLECTION_SEND_IPIDS)]:
-            return False
-    return True
-
-
-def is_const(parts):
-    return np.all(parts.incs_s == 0)
-
-
-def is_local(parts):
-    is_a_increasing = is_increasing(parts.incs_a)
-    is_b_increasing = is_increasing(parts.incs_b)
-    return is_a_increasing and is_b_increasing
-
-
-def is_local_eq1(parts):
-    return (is_local(parts)
-            and np.all(parts.incs_a == 1)
-            and np.all(parts.incs_b == 1))
-
-
-def is_local_ge1(parts):
-    return (is_local(parts)
-            and np.all(parts.incs_a >= 1)
-            and np.all(parts.incs_b >= 1))
-
-
-def is_global(parts):
-    is_s_increasing = is_increasing(parts.incs_s)
-    return is_s_increasing
-
-
-def is_random(parts):
-    alpha = 0.01
-    return is_uniform(parts.incs_s, alpha) and is_uniform(parts.incs_a, alpha) and is_uniform(parts.incs_b, alpha)
-
-
-def is_odd(parts):
-    return not (is_mirror(parts) or has_pattern(parts))
-
-
-def has_pattern(parts):
-    return (
-            is_const(parts)
-            or is_local_eq1(parts)
-            or is_local_ge1(parts)
-            or is_global(parts)
-            or is_random(parts)
-    )
-
-
-class IPIDParts:
-    def __init__(self, ipids):
-        self.a = ipids[0::2]
-        self.b = ipids[1::2]
-        self.s = tuple(ipids)
-
-        def incs(tup):
-            return np.diff(tup) % (MAX_IPID + 1)
-
-        self.incs_a = incs(self.a)
-        self.incs_b = incs(self.b)
-        self.incs_s = incs(ipids)
-
-
-# endregion
-
-
-def get_pattern(ipids, get_all=False):
-    parts = IPIDParts(ipids)
-    result = []
-    if is_mirror(parts):
-        result.append("mirror")
-    if is_const(parts):
-        result.append("const")
-    if is_global(parts):
-        result.append("global")
-    if is_local_eq1(parts):
-        result.append("local_eq1")
-    if is_local_ge1(parts):
-        result.append("local_ge1")
-    if is_random(parts):
-        result.append("random")
-    if is_odd(parts):
-        result.append("odd")
-    return result if get_all else result[0]
-
-
-def patterns():
-    return {
-        "mirror": "Mirror",
-        "const": "Constant",
-        "global": "Global",
-        "local": "Local",
-        "local_eq1": "Local(inc==1)",
-        "local_ge1": "Local(inc>=1)",
-        "random": "Random",
-        "odd": "Odd",
-    }
-
 
 def ipid_classification(ip_to_ipids, total_valid_ips, log, save_dir):
     ip_to_pattern = {}
@@ -731,53 +594,47 @@ class Plotter:
         plt.show()
 
 
-def start(result_id: str):
-    result_dir = f"results/{result_id}"
-    probing_file = f"{result_dir }/probing.csv"
-
-    logger.info(f"Start Post-Processing")
+def start(result_dir: str):
+    probing_file = os.path.join(result_dir, "probing.csv")
 
     # region Load Probing Data
-    proc_probes_df = pd.read_csv(probing_file)
-
-    logger.info(f"Probe data loading...")
+    probing_df = pd.read_csv(probing_file)
     start_time = time.time()
 
     def eval_timestamps(lst):
         return np.array(eval(lst), dtype=float) / 1_000_000_000
 
-    ips = proc_probes_df["IP"]
-    oses = proc_probes_df["OS"]
-    ipid_seqs = proc_probes_df["IPID Sequence"].apply(eval)
-    sent_time_seqs = proc_probes_df["SentTime Sequence"].apply(eval_timestamps)
-    recv_time_seqs = proc_probes_df["ReceivedTime Sequence"].apply(eval_timestamps)
-    isvalid_seqs = proc_probes_df["IsValid Sequence"].apply(eval)
+    ip_col = probing_df[config.ip_col_name]
+    ip_id_seq_col = probing_df[config.ip_id_seq_col_name].apply(eval)
+    sent_time_seq_col = probing_df[config.send_ts_seq_col_name].apply(eval_timestamps)
+    recv_time_seq_col = probing_df[config.received_ts_seq_col_name].apply(eval_timestamps)
+    check_seq_col = probing_df[config.check_seq_col_name].apply(eval)
 
-    valid = isvalid_seqs.apply(lambda lst: all(x == 1 for x in lst))
+    valid = check_seq_col.apply(lambda lst: all(x == 1 for x in lst))
     invalid = ~valid
 
-    ip_to_os = {}
+    # ip_to_os = {}
     ip_to_ipids = {}
     ip_to_sent_times = {}
     ip_to_recv_times = {}
     ip_to_rtts = {}
 
     for ip, op_sys, ipid_seq, sent_time_seq, recv_time_seq in zip(
-            ips[valid],
-            oses[valid],
-            ipid_seqs[valid],
-            sent_time_seqs[valid],
-            recv_time_seqs[valid]
+            ip_col[valid],
+            # oses[valid],
+            ip_id_seq_col[valid],
+            sent_time_seq_col[valid],
+            recv_time_seq_col[valid]
     ):
-        ip_to_os[ip] = op_sys
+        # ip_to_os[ip] = op_sys
         ip_to_ipids[ip] = ipid_seq
         ip_to_sent_times[ip] = sent_time_seq
         ip_to_recv_times[ip] = recv_time_seq
         ip_to_rtts[ip] = recv_time_seq - sent_time_seq
 
-    total_requested_ips = proc_probes_df.shape[0]
-    total_valid_ips = len(ips[valid])
-    total_invalid_ips = len(ips[invalid])
+    total_requested_ips = probing_df.shape[0]
+    total_valid_ips = len(ip_col[valid])
+    total_invalid_ips = len(ip_col[invalid])
     assert total_requested_ips == total_valid_ips + total_invalid_ips
 
     end_time = time.time()
