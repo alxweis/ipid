@@ -301,6 +301,7 @@ func Main(mode string) {
 		case targetChan <- fields[0]: // Send target to channel TODO: Get index of "IP" column
 		case <-stopRunning:
 			log.Printf("Stop filling target channel")
+			cleanup()
 			return
 		}
 	}
@@ -889,7 +890,6 @@ func setupSignalHandler() {
 	go func() {
 		<-sigs
 		close(stopRunning)
-		cleanup()
 		os.Exit(0)
 	}()
 }
