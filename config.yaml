@@ -1,7 +1,7 @@
 # General
 targets: "targets/udp/53/2025-04-29_00-33-19" # Use e.g. "tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
 protocol: "udp" # TODO Use a list like ["icmp", "tcp"] to enable inter-protocol IPID measurements
-record_traffic: true
+record_traffic: false
 
 # TCP
 tcp_dst_port: 80

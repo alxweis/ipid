@@ -28,13 +28,15 @@ import (
 )
 
 type ProbingMode interface {
-	createRawIPLayers(proto Protocol) []layers.IPv4
+	createOutputDir(basePath string) string
+	createRawIPLayers() []layers.IPv4
 	probeTarget(target string)
 }
 
 type ProbingVars struct {
 	retryCount   uint16
 	requestCount uint16
+	dirName      string
 }
 
 type B2B struct {
@@ -42,16 +44,24 @@ type B2B struct {
 	requestInterval time.Duration
 }
 
-func (pm B2B) createRawIPLayers(proto Protocol) []layers.IPv4 {
-	return pm.ProbingVars.createRawIPLayers(proto)
+func (pm B2B) createOutputDir(basePath string) string {
+	return pm.ProbingVars.createOutputDir(basePath)
+}
+
+func (pm B2B) createRawIPLayers() []layers.IPv4 {
+	return pm.ProbingVars.createRawIPLayers()
 }
 
 type SEQ struct {
 	ProbingVars
 }
 
-func (pm SEQ) createRawIPLayers(proto Protocol) []layers.IPv4 {
-	return pm.ProbingVars.createRawIPLayers(proto)
+func (pm SEQ) createOutputDir(basePath string) string {
+	return pm.ProbingVars.createOutputDir(basePath)
+}
+
+func (pm SEQ) createRawIPLayers() []layers.IPv4 {
+	return pm.ProbingVars.createRawIPLayers()
 }
 
 type Config struct {
@@ -119,21 +129,21 @@ type Sender struct {
 }
 
 var (
-	ICMP = Protocol{
+	ICMP = &Protocol{
 		Id:           "icmp",
 		Filter:       "icmp[icmptype] == icmp-echoreply",
 		IpLayer:      layers.IPProtocolICMPv4,
 		CreateLayers: createICMPLayers,
 		CheckLayer:   checkICMPLayer,
 	}
-	TCP = Protocol{
+	TCP = &Protocol{
 		Id:           "tcp",
 		Filter:       "",
 		IpLayer:      layers.IPProtocolTCP,
 		CreateLayers: createTCPLayers,
 		CheckLayer:   checkTCPLayer,
 	}
-	UDP = Protocol{
+	UDP = &Protocol{
 		Id:           "udp",
 		Filter:       "",
 		IpLayer:      layers.IPProtocolUDP,
@@ -149,7 +159,7 @@ const (
 
 var (
 	pm                 ProbingMode
-	config             Config
+	config             *Config
 	srcAIp             net.IP
 	srcBIp             net.IP
 	workerWg           sync.WaitGroup
@@ -169,10 +179,10 @@ var (
 	targetSendMbps     int
 	currentWorkers     = 1
 	targetChan         = make(chan string, maxWorkers*2)
-	senderA            Sender
-	senderB            Sender
+	senderA            *Sender
+	senderB            *Sender
 	rawIPLayers        []layers.IPv4
-	proto              Protocol
+	proto              *Protocol
 	statsMu            sync.Mutex
 )
 
@@ -186,14 +196,14 @@ func Main(mode string) {
 	loadProbingMode(mode)
 
 	basePath := getBasePath()
-	outputDir, outputId := createOutputDir(basePath)
+	outputDir := pm.createOutputDir(basePath)
 
 	// Load targets file
 	targetsFile := loadTargets(config.Targets, basePath, outputDir)
 
 	// Load protocol and raw IP layers
 	proto = loadProtocol(config.Protocol)
-	rawIPLayers = pm.createRawIPLayers(proto)
+	rawIPLayers = pm.createRawIPLayers()
 
 	// Setup senders
 	senderA = setupSender(config.IfaceA)
@@ -216,8 +226,8 @@ func Main(mode string) {
 
 	// Start receivers
 	recvWg.Add(2)
-	go setupReceiver(config.IfaceA, proto)
-	go setupReceiver(config.IfaceB, proto)
+	go setupReceiver(config.IfaceA)
+	go setupReceiver(config.IfaceB)
 
 	// Open targets file
 	f, err := os.Open(targetsFile)
@@ -227,7 +237,7 @@ func Main(mode string) {
 	defer func(f *os.File) {
 		err = f.Close()
 		if err != nil {
-
+			panic(err)
 		}
 	}(f)
 
@@ -300,57 +310,27 @@ func Main(mode string) {
 
 	// Log results
 	log.Println("Results Directory:", outputDir)
-	log.Println("Results ID:", outputId)
 }
 
-// Probe and ProbePoint
-func createProbePoint(target string, key uint16, sentTime int64) {
-	probe, exists := getProbe(target)
-	if !exists {
-		return
-	}
-
+// ProbePoint
+func createProbePoint(probe *Probe, seq uint16, sentTime int64) *ProbePoint {
 	pp := &ProbePoint{
 		SentTime: sentTime,
 	}
-
-	probe.Data[key] = pp
+	probe.Data[seq] = pp
+	return pp
 }
 
-func getProbePoint(target string, key uint16) (*ProbePoint, bool) {
-	probe, exists := getProbe(target)
-	if !exists {
-		return nil, false
-	}
-
-	pp, ok := probe.Data[key]
-	if !ok {
-		log.Printf("ProbePoint not created")
-		return nil, false
-	}
-
-	return pp, true
-}
-
-func createProbe(target string) (*Probe, bool) {
-	probeBufferMu.Lock()
-	probeBuffer[target] = &Probe{
+// Probe
+func createProbe(target string) *Probe {
+	probe := &Probe{
 		IPAddr: target,
 		Data:   make(map[uint16]*ProbePoint),
 	}
+	probeBufferMu.Lock()
+	probeBuffer[target] = probe
 	probeBufferMu.Unlock()
-	return getProbe(target)
-}
-
-func getProbe(target string) (*Probe, bool) {
-	probeBufferMu.RLock()
-	probe, exists := probeBuffer[target]
-	probeBufferMu.RUnlock()
-	if !exists {
-		log.Printf("Probe not created")
-		return nil, false
-	}
-	return probe, true
+	return probe
 }
 
 func removeProbe(target string) {
@@ -400,78 +380,76 @@ func clampInt(x, min, max int) int {
 // Probing
 func (pm SEQ) probeTarget(target string) {
 	dstIP := net.ParseIP(target).To4()
-	payloads, probeSentBytes := pm.buildPackets(rawIPLayers, dstIP, proto)
+	payloads, probeSentBytes := pm.buildPackets(rawIPLayers, dstIP)
 
-	retries := pm.retryCount
+	var isProbeValid bool
+	var recvCounter uint16
+	var retriesLeft uint16
+	var recvCh chan *ReplyInfo
+	var probe *Probe
 
-restartProbing:
-	createRecvChan(target)
-	recvCh, _ := getRecvChan(target)
-	recvCounter := 0
-	for seq := uint16(0); seq < pm.requestCount; seq++ {
-		sender, senderIP := getSender(seq)
-		sendPacket(sender, payloads[seq], target, seq)
-		if pm.receivePacket(recvCh, target, senderIP.String(), seq, proto) {
-			recvCounter++
-		} else {
-			if retries == 0 {
-				break
+	for retriesLeft = pm.retryCount; true; retriesLeft-- {
+		probe = createProbe(target)
+		recvCh = createRecvChan(target)
+		recvCounter = 0
+		for seq := uint16(0); seq < pm.requestCount; seq++ {
+			sender, senderIP := getSender(seq)
+			sendPacket(sender, payloads[seq], seq, probe)
+			if pm.receivePacket(recvCh, target, senderIP.String(), seq, probe) {
+				recvCounter++
 			} else {
-				retries--
-				goto restartProbing
+				break
 			}
+		}
+
+		if recvCounter == pm.requestCount { // Found all replies
+			isProbeValid = true
+			break
 		}
 	}
 
+	close(recvCh)
 	deleteRecvChan(target)
-	isProbeValid := recvCounter == int(pm.requestCount)
 	if isProbeValid {
-		probe, _ := getProbe(target)
 		probeSaveChan <- probe
-		removeProbe(target)
 	}
+	removeProbe(target)
 	updateStats(isProbeValid, probeSentBytes)
-	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d retry=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retries)
+	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d used_retries=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retriesLeft)
 }
 
 func (pm B2B) probeTarget(target string) {
 	dstIP := net.ParseIP(target).To4()
-	payloads, probeSentBytes := pm.buildPackets(rawIPLayers, dstIP, proto)
+	payloads, probeSentBytes := pm.buildPackets(rawIPLayers, dstIP)
 
-	foundAll := false
-	//recvCounter := 0
+	var isProbeValid bool
+	var _ uint16
+	var retriesLeft uint16
+	var recvCh chan *ReplyInfo
+	var probe *Probe
 
-	retries := pm.retryCount
-
-restartProbing:
-	createRecvChan(target)
-	recvCh, _ := getRecvChan(target)
-	pm.sendPackets(payloads, target)
-	if fa, _ := pm.receivePackets(recvCh, target, proto); fa {
-		// All replies found
-		foundAll = true
-		//recvCounter = rc
-	} else {
-		// Not all replies found
-		if retries > 0 {
-			retries--
-			goto restartProbing
+	for retriesLeft = pm.retryCount; true; retriesLeft-- {
+		probe = createProbe(target)
+		recvCh = createRecvChan(target)
+		pm.sendPackets(payloads, probe)
+		isProbeValid, _ = pm.receivePackets(recvCh, target, probe)
+		if isProbeValid {
+			break
 		}
 	}
 
+	close(recvCh)
 	deleteRecvChan(target)
-	isProbeValid := foundAll
 	if isProbeValid {
-		probe, _ := getProbe(target)
 		probeSaveChan <- probe
-		removeProbe(target)
 	}
+	removeProbe(target)
 	updateStats(isProbeValid, probeSentBytes)
-	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d retry=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retries)
+	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d used_retries=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retriesLeft)
 }
 
 // Send
-func setupSender(iface Iface) Sender {
+func setupSender(iface Iface) *Sender {
 	ifc, err := net.InterfaceByName(iface.Name)
 	if err != nil {
 		panic(err)
@@ -508,7 +486,7 @@ func setupSender(iface Iface) Sender {
 		0x08, 0x00, // ipv4
 	}
 
-	return Sender{
+	return &Sender{
 		EthHeader: ethHeader,
 		Addr:      addr,
 		Fd:        fd,
@@ -557,7 +535,7 @@ func (l2 *Sender) Send(payload []byte) {
 	}
 }
 
-func getSender(seq uint16) (Sender, net.IP) {
+func getSender(seq uint16) (*Sender, net.IP) {
 	if seq%2 == 0 {
 		return senderA, srcAIp
 	} else {
@@ -565,22 +543,22 @@ func getSender(seq uint16) (Sender, net.IP) {
 	}
 }
 
-func sendPacket(sender Sender, payload []byte, target string, seq uint16) {
+func sendPacket(sender *Sender, payload []byte, seq uint16, probe *Probe) {
 	sender.Send(payload)
-	createProbePoint(target, seq, time.Now().UnixNano())
+	createProbePoint(probe, seq, time.Now().UnixNano())
 	//log.Printf("Request: target=%s seq=%d\n", target, seq)
 }
 
-func (pm B2B) sendPackets(payloads [][]byte, target string) {
+func (pm B2B) sendPackets(payloads [][]byte, probe *Probe) {
 	for seq := uint16(0); seq < pm.requestCount; seq++ {
 		time.Sleep(pm.requestInterval)
 		sender, _ := getSender(seq)
-		sendPacket(sender, payloads[seq], target, seq)
+		sendPacket(sender, payloads[seq], seq, probe)
 	}
 }
 
 // Receive
-func setupReceiver(iface Iface, proto Protocol) {
+func setupReceiver(iface Iface) {
 	defer recvWg.Done()
 	handle, err := pcapgo.NewEthernetHandle(iface.Name)
 	if err != nil {
@@ -612,7 +590,7 @@ func setupReceiver(iface Iface, proto Protocol) {
 	for {
 		select {
 		case packet := <-packetSource:
-			go addToRecvChan(ReplyInfo{
+			go addToRecvChan(&ReplyInfo{
 				Packet: packet,
 				Time:   time.Now().UnixNano(),
 			})
@@ -622,26 +600,26 @@ func setupReceiver(iface Iface, proto Protocol) {
 	}
 }
 
-func (pm SEQ) receivePacket(recvCh chan ReplyInfo, expSrc string, expDst string, expSeq uint16, proto Protocol) bool {
+func (pm SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc string, expDst string, expSeq uint16, probe *Probe) bool {
 	timeout := time.After(config.MaxRTT)
 	for {
 		select {
 		case replyInfo := <-recvCh:
-			return pm.processPacket(replyInfo, expSrc, expDst, expSeq, proto)
+			return pm.processPacket(replyInfo, expSrc, expDst, expSeq, probe)
 		case <-timeout:
 			return false
 		}
 	}
 }
 
-func (pm B2B) receivePackets(recvCh chan ReplyInfo, expSrc string, proto Protocol) (bool, int) {
-	recvCounter := 0
+func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc string, probe *Probe) (bool, uint16) {
+	var recvCounter uint16
 	repliesFound := make(chan struct{})
 	timeout := time.After(config.MaxRTT)
 	for {
 		select {
 		case replyInfo := <-recvCh:
-			go pm.processPacket(recvCounter, repliesFound, replyInfo, expSrc, proto)
+			pm.processPacket(recvCounter, repliesFound, replyInfo, expSrc, probe)
 		case <-repliesFound:
 			return true, recvCounter
 		case <-timeout:
@@ -651,24 +629,25 @@ func (pm B2B) receivePackets(recvCh chan ReplyInfo, expSrc string, proto Protoco
 }
 
 // Receive Channel
-func createRecvChan(target string) {
-	createProbe(target)
-	recvChans.Store(target, make(chan ReplyInfo))
+func createRecvChan(target string) chan *ReplyInfo {
+	ch := make(chan *ReplyInfo)
+	recvChans.Store(target, ch)
+	return ch
 }
 
 func deleteRecvChan(target string) {
 	recvChans.Delete(target)
 }
 
-func getRecvChan(target string) (chan ReplyInfo, bool) {
+func getRecvChan(target string) (chan *ReplyInfo, bool) {
 	ch, ok := recvChans.Load(target)
 	if !ok {
 		return nil, false
 	}
-	return ch.(chan ReplyInfo), true
+	return ch.(chan *ReplyInfo), true
 }
 
-func addToRecvChan(replyInfo ReplyInfo) {
+func addToRecvChan(replyInfo *ReplyInfo) {
 	if ipLayer := replyInfo.Packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
 		ip, _ := ipLayer.(*layers.IPv4)
 		ch, ok := getRecvChan(ip.SrcIP.String())
@@ -679,7 +658,7 @@ func addToRecvChan(replyInfo ReplyInfo) {
 }
 
 // Process
-func (pm SEQ) processPacket(replyInfo ReplyInfo, expSrc string, expDst string, expSeq uint16, proto Protocol) bool {
+func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc string, expDst string, expSeq uint16, probe *Probe) bool {
 	ok, src, dst, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
@@ -709,7 +688,7 @@ func (pm SEQ) processPacket(replyInfo ReplyInfo, expSrc string, expDst string, e
 		return false
 	}
 
-	pp, ok := getProbePoint(src, seq)
+	pp, ok := probe.Data[seq]
 	if !ok {
 		log.Println("No entry for probe")
 		return false
@@ -733,7 +712,7 @@ func (pm SEQ) processPacket(replyInfo ReplyInfo, expSrc string, expDst string, e
 	return true
 }
 
-func (pm B2B) processPacket(recvCounter int, repliesFound chan struct{}, replyInfo ReplyInfo, expSrc string, proto Protocol) {
+func (pm B2B) processPacket(recvCounter uint16, repliesFound chan struct{}, replyInfo *ReplyInfo, expSrc string, probe *Probe) {
 	ok, src, _, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
@@ -751,7 +730,7 @@ func (pm B2B) processPacket(recvCounter int, repliesFound chan struct{}, replyIn
 		return
 	}
 
-	pp, ok := getProbePoint(src, seq)
+	pp, ok := probe.Data[seq]
 	if !ok {
 		log.Println("No entry for probe")
 		return
@@ -773,20 +752,19 @@ func (pm B2B) processPacket(recvCounter int, repliesFound chan struct{}, replyIn
 	pp.Check = true
 	//log.Printf("Reply: src=%s seq=%d rtt=%v ipid=%d\n", src, seq, rtt, ipId)
 	recvCounter++
-	if recvCounter == int(pm.requestCount) {
+	if recvCounter == pm.requestCount {
 		close(repliesFound)
 	}
 }
 
 // Output
-func createOutputDir(basePath string) (string, string) {
+func (pv ProbingVars) createOutputDir(basePath string) string {
 	timeStamp := time.Now().Format("2006-01-02_15-04-05")
-	outputId := filepath.Join("seq", basePath, timeStamp)
-	outputDir := filepath.Join("results", outputId) // TODO Use constants for "results" or "targets"
+	outputDir := filepath.Join("results", pv.dirName, basePath, timeStamp) // TODO Use constants for "results" or "targets"
 	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
 		panic(err)
 	}
-	return outputDir, outputId
+	return outputDir
 }
 
 func saveProbes(outputDir string) {
@@ -803,14 +781,14 @@ func saveProbes(outputDir string) {
 	}
 
 	// Create a CSV writer
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
+	headerWriter := csv.NewWriter(file)
 
 	// Write CSV header
-	err = writer.Write([]string{config.IpColName, config.IpIdSeqColName, config.SendTsColName, config.RecvTsColName, config.CheckSeqColName})
+	err = headerWriter.Write([]string{config.IpColName, config.IpIdSeqColName, config.SendTsColName, config.RecvTsColName, config.CheckSeqColName})
 	if err != nil {
 		panic(err)
 	}
+	headerWriter.Flush()
 
 	// Close the file after writing header
 	err = file.Close()
@@ -830,8 +808,8 @@ func saveProbes(outputDir string) {
 		}
 	}(file)
 
-	writer = csv.NewWriter(file)
-	defer writer.Flush()
+	dataWriter := csv.NewWriter(file)
+	defer dataWriter.Flush()
 
 	// Read from channel and write each probe to the CSV file
 	for probe := range probeSaveChan {
@@ -858,7 +836,7 @@ func saveProbes(outputDir string) {
 		record = append(record, fmt.Sprintf("(%s)", joinWithComma(checks)))
 
 		// Write the record to the CSV file
-		if writeErr := writer.Write(record); writeErr != nil {
+		if writeErr := dataWriter.Write(record); writeErr != nil {
 			log.Printf("Error writing record to CSV: %v", writeErr)
 		}
 	}
@@ -978,7 +956,7 @@ func loadTargets(targetsBasePath string, basePath string, outputDir string) stri
 	return linkTargetsPath
 }
 
-func loadProtocol(protocol string) Protocol {
+func loadProtocol(protocol string) *Protocol {
 	switch protocol {
 	case "icmp":
 		return ICMP // TODO Make "icmp", "tcp", "udp" constants
@@ -997,6 +975,7 @@ func loadProbingMode(mode string) {
 			ProbingVars: ProbingVars{
 				requestCount: config.B2BReqCount,
 				retryCount:   config.B2BRetryCount,
+				dirName:      "b2b",
 			},
 			requestInterval: config.B2BReqInterval,
 		}
@@ -1005,6 +984,7 @@ func loadProbingMode(mode string) {
 			ProbingVars: ProbingVars{
 				requestCount: config.SEQReqCount,
 				retryCount:   config.SEQRetryCount,
+				dirName:      "seq",
 			},
 		}
 	} else {
@@ -1013,7 +993,7 @@ func loadProbingMode(mode string) {
 }
 
 // Build
-func (pv ProbingVars) buildPackets(rawIPLayers []layers.IPv4, dstIP net.IP, proto Protocol) ([][]byte, int) {
+func (pv ProbingVars) buildPackets(rawIPLayers []layers.IPv4, dstIP net.IP) ([][]byte, int) {
 	ipLayersCopy := make([]layers.IPv4, len(rawIPLayers))
 	copy(ipLayersCopy, rawIPLayers)
 
@@ -1033,7 +1013,7 @@ func buildLayers(payloadLayers ...gopacket.SerializableLayer) []byte {
 }
 
 // IP
-func (pv ProbingVars) createRawIPLayers(proto Protocol) []layers.IPv4 {
+func (pv ProbingVars) createRawIPLayers() []layers.IPv4 {
 	ipLayers := make([]layers.IPv4, pv.requestCount)
 
 	for seq := uint16(0); seq < pv.requestCount; seq++ {
