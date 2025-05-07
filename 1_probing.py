@@ -18,7 +18,10 @@ def main():
 
     mode = sys.argv[1]
     if mode in MODES:
-        subprocess.run(["go", "run", PROBING_FILE, mode], check=True)
+        try:
+            subprocess.run(["go", "run", PROBING_FILE, mode], check=True)
+        except subprocess.CalledProcessError as e:
+            print("Stopped probing")
     else:
         print_usage()
 
