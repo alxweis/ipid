@@ -181,7 +181,7 @@ var (
 	deltaByteSize      int
 	validProbes        int
 	targetSendMbps     int
-	currentWorkers     = 1
+	currentWorkers     = 100
 	targetChan         = make(chan string, maxWorkers*2)
 	senderA            *Sender
 	senderB            *Sender
@@ -356,6 +356,7 @@ func createProbe(target string) *Probe {
 		Data:   make(map[uint16]*ProbePoint),
 	}
 	probeBufferMu.Lock()
+	delete(probeBuffer, target)
 	probeBuffer[target] = probe
 	probeBufferMu.Unlock()
 	return probe
@@ -437,7 +438,7 @@ func (pm SEQ) probeTarget(target string) {
 	}
 
 	close(recvCh)
-	deleteRecvChan(target)
+	removeRecvChan(target)
 	if isProbeValid {
 		probeSaveChan <- probe
 	}
@@ -467,7 +468,7 @@ func (pm B2B) probeTarget(target string) {
 	}
 
 	close(recvCh)
-	deleteRecvChan(target)
+	removeRecvChan(target)
 	if isProbeValid {
 		probeSaveChan <- probe
 	}
@@ -659,11 +660,12 @@ func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc string, probe *Probe
 // Receive Channel
 func createRecvChan(target string) chan *ReplyInfo {
 	ch := make(chan *ReplyInfo)
+	recvChans.Delete(target)
 	recvChans.Store(target, ch)
 	return ch
 }
 
-func deleteRecvChan(target string) {
+func removeRecvChan(target string) {
 	recvChans.Delete(target)
 }
 
@@ -1305,11 +1307,11 @@ func logStatistics() {
 
 		lastWorkers = currentWorkers
 		if factor < -0.1 {
-			adjust := int(math.Round(float64(currentWorkers) * -factor))
-			addWorkers(adjust)
+			//adjust := int(math.Round(float64(currentWorkers) * -factor))
+			//addWorkers(adjust)
 		} else if factor > 0.1 {
-			adjust := int(math.Round(float64(currentWorkers) * factor))
-			removeWorkers(adjust)
+			//adjust := int(math.Round(float64(currentWorkers) * factor))
+			//removeWorkers(adjust)
 		}
 
 		// Warmup
