@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -187,9 +188,13 @@ var (
 	rawIPLayers        []layers.IPv4
 	proto              *Protocol
 	statsMu            sync.Mutex
+	rstChanged         bool
+	outputDir          string
 )
 
 func Main(mode string) {
+	setupSignalHandler()
+
 	go func() {
 		http.ListenAndServe("localhost:6060", nil)
 	}()
@@ -203,10 +208,10 @@ func Main(mode string) {
 	loadProbingMode(mode)
 
 	basePath := getBasePath()
-	outputDir := pm.createOutputDir(basePath)
+	outputDir = pm.createOutputDir(basePath)
 
 	// Load targets file
-	targetsFile := loadTargets(config.Targets, basePath, outputDir)
+	targetsFile := loadTargets(config.Targets, basePath)
 
 	// Load protocol and raw IP layers
 	proto = loadProtocol(config.Protocol)
@@ -218,15 +223,14 @@ func Main(mode string) {
 
 	// Start saving probes
 	saveWg.Add(1)
-	go saveProbes(outputDir)
+	go saveProbes()
 
 	// Start recording if enabled
 	if config.RecTraffic {
-		startRecording(outputDir)
+		startRecording()
 	}
 
 	// Block auto-send RST when using TCP
-	var rstChanged bool
 	if proto.Id == "tcp" {
 		rstChanged = setRSTDrop(true)
 	}
@@ -291,6 +295,10 @@ func Main(mode string) {
 		targetChan <- fields[0] // Send target to channel TODO: Get index of "IP" column
 	}
 
+	cleanup()
+}
+
+func cleanup() {
 	// Now that all targets have been sent, close the targetChan
 	close(targetChan)
 
@@ -774,7 +782,7 @@ func (pv ProbingVars) createOutputDir(basePath string) string {
 	return outputDir
 }
 
-func saveProbes(outputDir string) {
+func saveProbes() {
 	defer saveWg.Done()
 
 	filePath := filepath.Join(outputDir, "probing.csv")
@@ -861,6 +869,19 @@ func formatBool(value bool) string {
 }
 
 // Setup
+func setupSignalHandler() {
+	// Create a channel to receive OS signals
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+
+	// Start a goroutine to handle the signal
+	go func() {
+		<-sigs
+		cleanup()
+		os.Exit(1)
+	}()
+}
+
 func loadConfig() {
 	err := cleanenv.ReadConfig("config.yaml", &config)
 	if err != nil {
@@ -932,7 +953,7 @@ func getBasePath() string {
 	}
 }
 
-func loadTargets(targetsBasePath string, basePath string, outputDir string) string {
+func loadTargets(targetsBasePath string, basePath string) string {
 	// TODO zstd -d (...)/targets.csv.zst
 
 	if targetsBasePath == "latest" {
@@ -1195,7 +1216,7 @@ func checkUDPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
 }
 
 // Record Traffic
-func startRecording(outputDir string) {
+func startRecording() {
 	interfaces := []Iface{config.IfaceA, config.IfaceB}
 	for _, iface := range interfaces {
 		outputFile := filepath.Join(outputDir, iface.Name+".pcap")
