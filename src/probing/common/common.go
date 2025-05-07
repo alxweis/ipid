@@ -190,6 +190,7 @@ var (
 	statsMu            sync.Mutex
 	rstChanged         bool
 	outputDir          string
+	sigs               = make(chan os.Signal, 1)
 )
 
 func Main(mode string) {
@@ -292,14 +293,21 @@ func Main(mode string) {
 		if len(fields) < 1 {
 			continue
 		}
-		targetChan <- fields[0] // Send target to channel TODO: Get index of "IP" column
+
+		select {
+		case targetChan <- fields[0]: // Send target to channel TODO: Get index of "IP" column
+		case <-sigs:
+			log.Println("Stop signal received: Stop filling target channel")
+			return
+		}
 	}
 
 	cleanup()
 }
 
 func cleanup() {
-	log.Println("CLEANUP")
+	log.Println("Cleaning up...")
+
 	// Now that all targets have been sent, close the targetChan
 	close(targetChan)
 
@@ -871,8 +879,6 @@ func formatBool(value bool) string {
 
 // Setup
 func setupSignalHandler() {
-	// Create a channel to receive OS signals
-	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 
 	// Start a goroutine to handle the signal
@@ -1340,7 +1346,7 @@ func logStatistics() {
 			}
 		}
 
-		fmt.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] used_bandwidth=[%.2f Mbps] workers=[%d]\n",
+		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] used_bandwidth=[%.2f Mbps] workers=[%d]\n",
 			timeLeft, totalProbes, probedPercentage, validProbes, validPercentage, sentMbps, currentWorkers)
 
 		statsMu.Unlock()
