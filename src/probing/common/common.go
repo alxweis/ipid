@@ -883,7 +883,7 @@ func setupSignalHandler() {
 
 	// Start a goroutine to handle the signal
 	go func() {
-		<-sigs
+		close(sigs)
 		cleanup()
 		os.Exit(1)
 	}()
