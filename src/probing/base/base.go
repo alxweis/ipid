@@ -13,7 +13,6 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 	"golang.org/x/net/ipv4"
 	"log"
-	"math"
 	"net"
 	"net/http"
 	"os"
@@ -25,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -34,7 +34,7 @@ import _ "net/http/pprof"
 type ProbingMode interface {
 	createOutputDir(basePath string) string
 	createRawIPLayers() []layers.IPv4
-	probeTarget(target string)
+	probeTarget(recvChan chan *ReplyInfo, target string)
 	createRecvChan(target string) chan *ReplyInfo
 }
 
@@ -131,7 +131,7 @@ type Protocol struct {
 	Id           string
 	Filter       string
 	IpLayer      layers.IPProtocol
-	CreateLayers func(ipLayers []layers.IPv4, requestCount uint16) ([][]byte, int)
+	CreateLayers func(ipLayers []layers.IPv4, requestCount uint16) [][]byte
 	CheckLayer   func(packet gopacket.Packet, requestCount uint16) (bool, uint16)
 }
 
@@ -166,40 +166,34 @@ var (
 )
 
 const (
-	maxWorkers       = 2000
-	workerStopSignal = "STOP_WORKER"
+	workers = 100
 )
 
 var (
-	pm                 ProbingMode
-	config             Config
-	srcAIp             net.IP
-	srcBIp             net.IP
-	workerWg           sync.WaitGroup
-	recvWg             sync.WaitGroup
-	saveWg             sync.WaitGroup
-	stopReceiving      = make(chan struct{})
-	probeBuffer        = make(map[string]*Probe)
-	probeBufferMu      sync.RWMutex
-	probeSaveChan      = make(chan *Probe, maxWorkers*2)
-	recvChans          sync.Map
-	opts               = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
-	recordingProcesses []*exec.Cmd
-	totalTargetCount   int
-	totalProbes        int
-	deltaByteSize      int
-	validProbes        int
-	targetSendMbps     int
-	currentWorkers     = 10
-	targetChan         = make(chan string, maxWorkers*2)
-	senderA            *Sender
-	senderB            *Sender
-	rawIPLayers        []layers.IPv4
-	proto              *Protocol
-	statsMu            sync.Mutex
-	rstChanged         bool
-	outputDir          string
-	stopRunning        = make(chan struct{})
+	pm                   ProbingMode
+	config               Config
+	srcAIp               net.IP
+	srcBIp               net.IP
+	workerWg             sync.WaitGroup
+	recvWg               sync.WaitGroup
+	saveWg               sync.WaitGroup
+	stopReceiving        = make(chan struct{})
+	probeSaveChan        = make(chan *Probe, workers*2)
+	recvChans            = make(map[string]chan *ReplyInfo)
+	opts                 = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
+	recordingProcesses   []*exec.Cmd
+	totalTargetCount     int64
+	totalValidProbeCount int64
+	totalProbeCount      int64
+	totalSentByteCount   int64
+	targetChan           = make(chan string, workers*2)
+	senderA              *Sender
+	senderB              *Sender
+	rawIPLayers          []layers.IPv4
+	proto                *Protocol
+	rstChanged           bool
+	outputDir            string
+	stopRunning          = make(chan struct{})
 )
 
 func Main(mode string) {
@@ -287,9 +281,9 @@ func Main(mode string) {
 	}
 
 	// Start initial workers
-	for i := 0; i < currentWorkers; i++ {
+	for i := 0; i < workers; i++ {
 		workerWg.Add(1)
-		go worker()
+		go worker(i)
 	}
 
 	// Start statistics goroutine
@@ -360,130 +354,89 @@ func createProbePoint(probe *Probe, seq uint16, sentTime int64) *ProbePoint {
 
 // Probe
 func createProbe(target string) *Probe {
-	probe := &Probe{
+	atomic.AddInt64(&totalProbeCount, 1)
+	return &Probe{
 		IPAddr: target,
 		Data:   make(map[uint16]*ProbePoint),
 	}
-	probeBufferMu.Lock()
-	delete(probeBuffer, target)
-	probeBuffer[target] = probe
-	probeBufferMu.Unlock()
-	return probe
-}
-
-func removeProbe(target string) {
-	probeBufferMu.Lock()
-	delete(probeBuffer, target)
-	probeBufferMu.Unlock()
 }
 
 // Worker
-func worker() {
+func worker(i int) {
 	defer workerWg.Done()
+	// TODO Make random delay (0,1s)
+	oldIdent := strconv.Itoa(i)
+	recvChan := pm.createRecvChan(oldIdent)
 	for target := range targetChan {
-		if target == workerStopSignal {
-			break
-		}
-		pm.probeTarget(target)
+		updateRecvChanIdent(oldIdent, target)
+		pm.probeTarget(recvChan, target)
+		oldIdent = target
 	}
-}
-
-func addWorkers(n int) {
-	n = clampInt(n, 0, maxWorkers-currentWorkers)
-	for i := 0; i < n; i++ {
-		workerWg.Add(1)
-		go worker()
-	}
-	currentWorkers += n
-}
-
-func removeWorkers(n int) {
-	n = clampInt(n, 0, currentWorkers-1)
-	for i := 0; i < n; i++ {
-		targetChan <- workerStopSignal
-	}
-	currentWorkers -= n
-}
-
-func clampInt(x, min, max int) int {
-	if x < min {
-		return min
-	}
-	if x > max {
-		return max
-	}
-	return x
 }
 
 // Probing
-func (pm SEQ) probeTarget(target string) {
+func (pm SEQ) probeTarget(recvChan chan *ReplyInfo, target string) {
 	dstIP := net.ParseIP(target).To4()
-	payloads, probeSentBytes := pm.buildPackets(rawIPLayers, dstIP)
+	packets := pm.buildPackets(rawIPLayers, dstIP)
 
-	var isProbeValid bool
-	var recvCounter uint16
-	var retriesLeft uint16
-	var recvCh chan *ReplyInfo
-	var probe *Probe
+	probe := createProbe(target)
+	recvCounter := uint16(0)
+	retriesLeft := pm.retryCount
 
-	for retriesLeft = pm.retryCount; true; retriesLeft-- {
-		probe = createProbe(target)
-		recvCh = pm.createRecvChan(target)
-		recvCounter = 0
+	for {
+		// Probe Target
 		for seq := uint16(0); seq < pm.requestCount; seq++ {
 			sender, senderIP := getSender(seq)
-			sendPacket(sender, payloads[seq], seq, probe)
-			if pm.receivePacket(recvCh, target, senderIP.String(), seq, probe) {
+			sendPacket(sender, packets[seq], seq, probe)
+			if pm.receivePacket(recvChan, target, senderIP.String(), seq, probe) {
 				recvCounter++
 			} else {
-				break
+				break // Stop probing if no reply found
 			}
 		}
 
-		if recvCounter == pm.requestCount { // Found all replies
-			isProbeValid = true
+		if recvCounter == pm.requestCount { // Successfully finished probing
+			probeSaveChan <- probe
+			atomic.AddInt64(&totalValidProbeCount, 1)
+			break
+		} else if retriesLeft > 0 { // Failed probing attempt, retrying
+			retriesLeft--
+			// Reset variables for next attempt
+			recvCounter = 0
+			probe.Data = make(map[uint16]*ProbePoint)
+		} else { // All probing attempts failed
 			break
 		}
 	}
 
-	close(recvCh)
-	removeRecvChan(target)
-	if isProbeValid {
-		probeSaveChan <- probe
-	}
-	removeProbe(target)
-	updateStats(isProbeValid, probeSentBytes)
-	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d used_retries=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retriesLeft)
+	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
 }
 
-func (pm B2B) probeTarget(target string) {
+func (pm B2B) probeTarget(recvChan chan *ReplyInfo, target string) {
 	dstIP := net.ParseIP(target).To4()
-	payloads, probeSentBytes := pm.buildPackets(rawIPLayers, dstIP)
+	packets := pm.buildPackets(rawIPLayers, dstIP)
 
-	var isProbeValid bool
-	var _ uint16
-	var retriesLeft uint16
-	var recvCh chan *ReplyInfo
-	var probe *Probe
+	probe := createProbe(target)
+	retriesLeft := pm.retryCount
 
-	for retriesLeft = pm.retryCount; true; retriesLeft-- {
-		probe = createProbe(target)
-		recvCh = pm.createRecvChan(target)
-		pm.sendPackets(payloads, probe)
-		isProbeValid, _ = pm.receivePackets(recvCh, target, probe)
-		if isProbeValid {
+	for {
+		// Probe Target
+		pm.sendPackets(packets, probe)
+		foundAllReplies, _ := pm.receivePackets(recvChan, target, probe)
+
+		if foundAllReplies { // Successfully finished probing
+			probeSaveChan <- probe
+			break
+		} else if retriesLeft > 0 { // Failed probing attempt, retrying
+			retriesLeft--
+			// Reset variables for next attempt
+			probe.Data = make(map[uint16]*ProbePoint)
+		} else { // All probing attempts failed
 			break
 		}
 	}
 
-	close(recvCh)
-	removeRecvChan(target)
-	if isProbeValid {
-		probeSaveChan <- probe
-	}
-	removeProbe(target)
-	updateStats(isProbeValid, probeSentBytes)
-	//log.Printf("Finished probing target=%s received=%d/%d sent_bytes=%d used_retries=%d", target, recvCounter, pm.requestCount, probeSentBytes, pm.retryCount-retriesLeft)
+	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
 }
 
 // Send
@@ -581,9 +534,10 @@ func getSender(seq uint16) (*Sender, net.IP) {
 	}
 }
 
-func sendPacket(sender *Sender, payload []byte, seq uint16, probe *Probe) {
-	sender.Send(payload)
+func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe) {
+	sender.Send(packet)
 	createProbePoint(probe, seq, time.Now().UnixNano())
+	atomic.AddInt64(&totalSentByteCount, int64(len(packet)))
 	//log.Printf("Request: target=%s seq=%d\n", probe.IPAddr, seq)
 }
 
@@ -667,23 +621,24 @@ func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc string, probe *Probe
 }
 
 // Receive Channel
-func (pv ProbingVars) createRecvChan(target string) chan *ReplyInfo {
+func (pv ProbingVars) createRecvChan(ident string) chan *ReplyInfo {
 	ch := make(chan *ReplyInfo, pv.requestCount)
-	recvChans.Delete(target)
-	recvChans.Store(target, ch)
+	recvChans[ident] = ch
 	return ch
 }
 
-func removeRecvChan(target string) {
-	recvChans.Delete(target)
+func updateRecvChanIdent(oldIdent string, newIdent string) {
+	if ch, exists := recvChans[oldIdent]; exists {
+		delete(recvChans, oldIdent)
+		recvChans[newIdent] = ch
+	}
 }
 
-func getRecvChan(target string) (chan *ReplyInfo, bool) {
-	ch, ok := recvChans.Load(target)
-	if !ok {
-		return nil, false
+func getRecvChan(ident string) (chan *ReplyInfo, bool) {
+	if ch, exists := recvChans[ident]; exists {
+		return ch, true
 	}
-	return ch.(chan *ReplyInfo), true
+	return nil, false
 }
 
 func addToRecvChan(replyInfo *ReplyInfo) {
@@ -913,34 +868,6 @@ func loadConfig() {
 
 	srcAIp = net.ParseIP(config.IfaceA.Ip).To4()
 	srcBIp = net.ParseIP(config.IfaceB.Ip).To4()
-	targetSendMbps = parseBandwidth(config.SendBandwidth)
-}
-
-func parseBandwidth(value string) int {
-	multipliers := map[string]int{
-		"K": 1_000,
-		"M": 1_000_000,
-		"G": 1_000_000_000,
-	}
-
-	value = strings.ToUpper(strings.TrimSpace(value))
-	if len(value) < 2 {
-		panic(fmt.Sprintf("invalid input: %s", value))
-	}
-
-	unit := value[len(value)-1:]
-	numPart := value[:len(value)-1]
-	val, err := strconv.Atoi(numPart)
-	if err != nil {
-		panic(err)
-	}
-
-	mult, ok := multipliers[unit]
-	if !ok {
-		panic(fmt.Sprintf("unknown unit: %s", unit))
-	}
-
-	return val * mult
 }
 
 func getSortedDirectories(dir string) ([]string, error) {
@@ -1044,7 +971,7 @@ func loadProbingMode(mode string) {
 }
 
 // Build
-func (pv ProbingVars) buildPackets(rawIPLayers []layers.IPv4, dstIP net.IP) ([][]byte, int) {
+func (pv ProbingVars) buildPackets(rawIPLayers []layers.IPv4, dstIP net.IP) [][]byte {
 	ipLayersCopy := make([]layers.IPv4, len(rawIPLayers))
 	copy(ipLayersCopy, rawIPLayers)
 
@@ -1105,9 +1032,8 @@ func checkIPLayer(packet gopacket.Packet) (bool, string, string, uint16) {
 }
 
 // ICMP
-func createICMPLayers(ipLayers []layers.IPv4, requestCount uint16) ([][]byte, int) {
+func createICMPLayers(ipLayers []layers.IPv4, requestCount uint16) [][]byte {
 	pList := make([][]byte, requestCount)
-	var byteSize int
 
 	for seq := uint16(0); seq < requestCount; seq++ {
 		ipLayer := ipLayers[seq]
@@ -1120,9 +1046,8 @@ func createICMPLayers(ipLayers []layers.IPv4, requestCount uint16) ([][]byte, in
 
 		packet := buildLayers(&ipLayerCopy, &pLayer)
 		pList[seq] = packet
-		byteSize += len(packet)
 	}
-	return pList, byteSize
+	return pList
 }
 
 func checkICMPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
@@ -1137,9 +1062,8 @@ func checkICMPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) 
 }
 
 // TCP
-func createTCPLayers(ipLayers []layers.IPv4, requestCount uint16) ([][]byte, int) {
+func createTCPLayers(ipLayers []layers.IPv4, requestCount uint16) [][]byte {
 	pList := make([][]byte, requestCount)
-	var byteSize int
 
 	for seq := uint32(0); seq < uint32(requestCount); seq++ {
 		ipLayer := ipLayers[seq]
@@ -1158,9 +1082,8 @@ func createTCPLayers(ipLayers []layers.IPv4, requestCount uint16) ([][]byte, int
 
 		packet := buildLayers(&ipLayer, &pLayer)
 		pList[seq] = packet
-		byteSize += len(packet)
 	}
-	return pList, byteSize
+	return pList
 }
 
 func checkTCPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
@@ -1177,9 +1100,8 @@ func checkTCPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
 }
 
 // UDP
-func createUDPLayers(ipLayers []layers.IPv4, requestCount uint16) ([][]byte, int) {
+func createUDPLayers(ipLayers []layers.IPv4, requestCount uint16) [][]byte {
 	pList := make([][]byte, requestCount)
-	var byteSize int
 
 	for seq := uint16(0); seq < requestCount; seq++ {
 		ipLayer := ipLayers[seq]
@@ -1208,9 +1130,8 @@ func createUDPLayers(ipLayers []layers.IPv4, requestCount uint16) ([][]byte, int
 
 		packet := buildLayers(&ipLayer, &pLayer, &dnsLayer)
 		pList[seq] = packet
-		byteSize += len(packet)
 	}
-	return pList, byteSize
+	return pList
 }
 
 func checkUDPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
@@ -1288,93 +1209,63 @@ func logStatistics() {
 	tickCount := 0
 	duration := 1 * time.Second
 	ticker := time.NewTicker(duration)
-	var lastWorkers int
-	var warmupStartTime time.Time
-	var warmupProbes int
-	var warmedUp bool
+	startTime := time.Now()
+
+	var (
+		lastTotalProbeCount      int64
+		lastTotalValidProbeCount int64
+		lastTotalSentByteCount   int64
+	)
 
 	for range ticker.C {
-		statsMu.Lock()
+		deltaTotalProbeCount := totalProbeCount - lastTotalProbeCount
+		deltaTotalValidProbeCount := totalValidProbeCount - lastTotalValidProbeCount
+		deltaTotalSentByteCount := totalSentByteCount - lastTotalSentByteCount
 
 		tickCount++
 
-		// Fortschritt
-		probedPercentage := float64(totalProbes) / float64(totalTargetCount) * 100
-		validPercentage := 0.0
-		if totalProbes > 0 {
-			validPercentage = float64(validProbes) / float64(totalProbes) * 100
+		// Percentages
+		probeCountPercentage := float64(totalProbeCount) / float64(totalTargetCount) * 100
+		validProbeCountPercentage := 0.0
+		if totalProbeCount > 0 {
+			validProbeCountPercentage = float64(totalValidProbeCount) / float64(totalProbeCount) * 100
 		}
 
-		// Bandbreite berechnen
-		sentBit := deltaByteSize * 8
+		// Sent bandwidth
+		sentBit := deltaTotalSentByteCount * 8
 		sentMbps := float64(sentBit) / (1_000_000.0 * duration.Seconds())
-		deltaByteSize = 0
 
-		// Dynamische Anpassung
-		diff := sentMbps - float64(targetSendMbps)
-		factor := diff / float64(targetSendMbps)
-
-		lastWorkers = currentWorkers
-		if factor < -0.1 {
-			//adjust := int(math.Round(float64(currentWorkers) * -factor))
-			//addWorkers(adjust)
-		} else if factor > 0.1 {
-			//adjust := int(math.Round(float64(currentWorkers) * factor))
-			//removeWorkers(adjust)
-		}
-
-		// Warmup
-		absDeltaWorkerDiff := math.Abs(float64(currentWorkers-lastWorkers)) / float64(currentWorkers)
-		if !warmedUp && (absDeltaWorkerDiff <= 0.1 || tickCount > 20) {
-			warmedUp = true
-
-			// Reset baseline
-			warmupStartTime = time.Now()
-			warmupProbes = totalProbes
-		}
-
-		// Geschätzte Restzeit nach Warmup
+		// Estimated remaining time
 		timeLeft := "Warming up..."
-		if warmedUp {
-			elapsedSinceWarmedUp := time.Since(warmupStartTime)
-			probesSinceWarmedUp := totalProbes - warmupProbes
-			if probesSinceWarmedUp > 0 {
-				remainingTime := time.Duration(float64(elapsedSinceWarmedUp) / float64(probesSinceWarmedUp) * float64(totalTargetCount-totalProbes))
+		elapsedTime := time.Since(startTime)
+		if totalProbeCount > 0 {
+			remainingTime := time.Duration(float64(elapsedTime) / float64(totalProbeCount) * float64(totalTargetCount-totalProbeCount))
 
-				days := int(remainingTime.Hours()) / 24
-				hours := int(remainingTime.Hours()) % 24
-				minutes := int(remainingTime.Minutes()) % 60
-				seconds := int(remainingTime.Seconds()) % 60
+			days := int(remainingTime.Hours()) / 24
+			hours := int(remainingTime.Hours()) % 24
+			minutes := int(remainingTime.Minutes()) % 60
+			seconds := int(remainingTime.Seconds()) % 60
 
-				timeLeft = ""
-				if days > 0 {
-					timeLeft += fmt.Sprintf("%dd", days)
-				}
-				if hours > 0 {
-					timeLeft += fmt.Sprintf("%02dh", hours)
-				}
-				if minutes > 0 {
-					timeLeft += fmt.Sprintf("%02dm", minutes)
-				}
-				if seconds > 0 || timeLeft == "" {
-					timeLeft += fmt.Sprintf("%02ds", seconds)
-				}
+			timeLeft = ""
+			if days > 0 {
+				timeLeft += fmt.Sprintf("%dd", days)
+			}
+			if hours > 0 {
+				timeLeft += fmt.Sprintf("%02dh", hours)
+			}
+			if minutes > 0 {
+				timeLeft += fmt.Sprintf("%02dm", minutes)
+			}
+			if seconds > 0 || timeLeft == "" {
+				timeLeft += fmt.Sprintf("%02ds", seconds)
 			}
 		}
 
 		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] used_bandwidth=[%.2f Mbps] workers=[%d]\n",
-			timeLeft, totalProbes, probedPercentage, validProbes, validPercentage, sentMbps, currentWorkers)
+			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, workers)
 
-		statsMu.Unlock()
+		lastTotalProbeCount = totalProbeCount
+		lastTotalValidProbeCount = totalValidProbeCount
+		lastTotalSentByteCount = totalSentByteCount
 	}
-}
-
-func updateStats(isValidProbe bool, probeByteSize int) {
-	statsMu.Lock()
-	defer statsMu.Unlock()
-	totalProbes++
-	if isValidProbe {
-		validProbes++
-	}
-	deltaByteSize += probeByteSize
 }
