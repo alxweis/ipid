@@ -1206,7 +1206,6 @@ func setRSTDrop(enable bool) bool {
 
 // Stats
 func logStatistics() {
-	tickCount := 0
 	duration := 1 * time.Second
 	ticker := time.NewTicker(duration)
 	startTime := time.Now()
@@ -1221,8 +1220,6 @@ func logStatistics() {
 		deltaTotalProbeCount := totalProbeCount - lastTotalProbeCount
 		deltaTotalValidProbeCount := totalValidProbeCount - lastTotalValidProbeCount
 		deltaTotalSentByteCount := totalSentByteCount - lastTotalSentByteCount
-
-		tickCount++
 
 		// Percentages
 		probeCountPercentage := float64(totalProbeCount) / float64(totalTargetCount) * 100
@@ -1261,7 +1258,7 @@ func logStatistics() {
 			}
 		}
 
-		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] used_bandwidth=[%.2f Mbps] workers=[%d]\n",
+		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.3f%%] valid_probes=[%d, %.3f%%] sent_mbps=[%.3f] workers=[%d]\n",
 			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, workers)
 
 		lastTotalProbeCount = totalProbeCount
