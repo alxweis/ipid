@@ -13,6 +13,7 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 	"golang.org/x/net/ipv4"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
@@ -364,7 +365,11 @@ func createProbe(target string) *Probe {
 // Worker
 func worker(i int) {
 	defer workerWg.Done()
-	// TODO Make random delay (0,1s)
+
+	// Random delay before starting
+	delay := time.Duration(rand.Intn(1000)) * time.Millisecond
+	time.Sleep(delay)
+
 	oldIdent := strconv.Itoa(i)
 	recvChan := pm.createRecvChan(oldIdent)
 	for target := range targetChan {
@@ -417,15 +422,18 @@ func (pm B2B) probeTarget(recvChan chan *ReplyInfo, target string) {
 	packets := pm.buildPackets(rawIPLayers, dstIP)
 
 	probe := createProbe(target)
+	//recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
 
 	for {
 		// Probe Target
 		pm.sendPackets(packets, probe)
 		foundAllReplies, _ := pm.receivePackets(recvChan, target, probe)
+		//recvCounter = rc
 
 		if foundAllReplies { // Successfully finished probing
 			probeSaveChan <- probe
+			atomic.AddInt64(&totalValidProbeCount, 1)
 			break
 		} else if retriesLeft > 0 { // Failed probing attempt, retrying
 			retriesLeft--
@@ -1258,7 +1266,7 @@ func logStatistics() {
 			}
 		}
 
-		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.3f%%] valid_probes=[%d, %.3f%%] sent_mbps=[%.3f] workers=[%d]\n",
+		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] workers=[%d]\n",
 			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, workers)
 
 		lastTotalProbeCount = totalProbeCount
