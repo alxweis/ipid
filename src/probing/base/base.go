@@ -167,7 +167,7 @@ var (
 )
 
 const (
-	workers = 5
+	workers = 1
 )
 
 var (
