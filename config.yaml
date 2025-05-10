@@ -1,7 +1,7 @@
 # General
 targets: "targets/icmp/2025-05-07_00-48-05" # Use e.g. "tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
 protocol: "icmp" # TODO Use a list like ["icmp", "tcp"] to enable inter-protocol IPID measurements
-record_traffic: true
+record_traffic: false
 
 # TCP
 tcp_dst_port: 80

@@ -151,7 +151,7 @@ var (
 )
 
 const (
-	workers = 2000
+	workers = 5000
 )
 
 var (
@@ -268,7 +268,7 @@ func Main(mode string) {
 	for i := 0; i < workers; i++ {
 		workerWg.Add(1)
 		workerDatas[i] = &WorkerData{
-			targetCh: make(chan net.IP, 10), // TODO May change later
+			targetCh: make(chan net.IP, 50), // TODO May change later
 			recvCh:   make(chan *ReplyInfo, pm.probingVars().requestCount),
 		}
 		go worker(workerDatas[i])
