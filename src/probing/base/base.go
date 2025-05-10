@@ -288,7 +288,7 @@ func Main(mode string) {
 	}
 
 	// Start statistics goroutine
-	go logStatistics()
+	//go logStatistics()
 
 	// Send targets to channel
 	for scanner.Scan() {
@@ -421,7 +421,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 
 	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
 
-	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d sent_bytes=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount)
+	log.Printf("Finished probing target=%s received=%d/%d used_retries=%d sent_bytes=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount)
 }
 
 func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
@@ -559,11 +559,11 @@ func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByt
 	//log.Printf("Request: target=%s seq=%d\n", probe.IPAddr, seq)
 }
 
-func (pm B2B) sendPackets(payloads [][]byte, probe *Probe, sentByteCount int) {
+func (pm B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount int) {
 	for seq := uint16(0); seq < pm.requestCount; seq++ {
-		time.Sleep(pm.requestInterval)
+		time.Sleep(pm.requestInterval) // TODO Do with ticker
 		sender, _ := getSender(seq)
-		sendPacket(sender, payloads[seq], seq, probe, sentByteCount)
+		sendPacket(sender, packets[seq], seq, probe, sentByteCount)
 	}
 }
 
