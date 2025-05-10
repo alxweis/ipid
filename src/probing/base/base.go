@@ -35,7 +35,7 @@ import _ "net/http/pprof"
 
 type ProbingMode interface {
 	probingVars() ProbingVars
-	probeTarget(wd *WorkerData, target net.IP)
+	probeTarget(recvCh chan *ReplyInfo, target net.IP)
 }
 
 type ProbingVars struct {
@@ -275,7 +275,7 @@ func Main(mode string) {
 	}
 
 	// Start statistics goroutine
-	go logStatistics()
+	//go logStatistics()
 
 	// Send targets to channel
 	for scanner.Scan() {
@@ -369,26 +369,26 @@ func worker(wd *WorkerData) {
 	time.Sleep(delay)
 
 	for target := range wd.targetCh {
-		pm.probeTarget(wd, target)
+		pm.probeTarget(wd.recvCh, target)
 	}
 }
 
 // Probing
-func (pm SEQ) probeTarget(wd *WorkerData, target net.IP) {
+func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
 	packets := pm.buildPackets(target)
 
 	probe := createProbe(target)
 	recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
 	sentByteCount := 0
-	//startTime := time.Now()
+	startTime := time.Now()
 
 	for {
 		// Probe Target
 		for seq := uint16(0); seq < pm.requestCount; seq++ {
 			sender, senderIP := getSender(seq)
 			sendPacket(sender, packets[seq], seq, probe, &sentByteCount)
-			if pm.receivePacket(wd, target, senderIP, seq, probe) {
+			if pm.receivePacket(recvCh, target, senderIP, seq, probe) {
 				recvCounter++
 			} else {
 				break // Stop probing if no reply found
@@ -412,10 +412,10 @@ func (pm SEQ) probeTarget(wd *WorkerData, target net.IP) {
 
 	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
 
-	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
+	log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
 
-func (pm B2B) probeTarget(wd *WorkerData, target net.IP) {
+func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
 	packets := pm.buildPackets(target)
 
 	probe := createProbe(target)
@@ -426,7 +426,7 @@ func (pm B2B) probeTarget(wd *WorkerData, target net.IP) {
 	for {
 		// Probe Target
 		pm.sendPackets(packets, probe, sentByteCount)
-		foundAllReplies, _ := pm.receivePackets(wd, target, probe)
+		foundAllReplies, _ := pm.receivePackets(recvCh, target, probe)
 		//recvCounter = rc
 
 		if foundAllReplies { // Successfully finished probing
@@ -600,11 +600,11 @@ func setupReceiver(iface Iface) {
 	}
 }
 
-func (pm SEQ) receivePacket(wd *WorkerData, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) bool {
+func (pm SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) bool {
 	timeout := time.After(config.MaxRTT)
 	for {
 		select {
-		case replyInfo := <-wd.recvCh:
+		case replyInfo := <-recvCh:
 			return pm.processPacket(replyInfo, expSrc, expDst, expSeq, probe)
 		case <-timeout:
 			return false
@@ -612,13 +612,13 @@ func (pm SEQ) receivePacket(wd *WorkerData, expSrc net.IP, expDst net.IP, expSeq
 	}
 }
 
-func (pm B2B) receivePackets(wd *WorkerData, expSrc net.IP, probe *Probe) (bool, uint16) {
+func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc net.IP, probe *Probe) (bool, uint16) {
 	var recvCounter uint16
 	repliesFound := make(chan struct{})
 	timeout := time.After(config.MaxRTT)
 	for {
 		select {
-		case replyInfo := <-wd.recvCh:
+		case replyInfo := <-recvCh:
 			pm.processPacket(recvCounter, repliesFound, replyInfo, expSrc, probe)
 		case <-repliesFound:
 			return true, recvCounter
