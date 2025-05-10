@@ -605,7 +605,14 @@ func (pm SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc net.IP, expDst net.IP
 	for {
 		select {
 		case replyInfo := <-recvCh:
-			return pm.processPacket(replyInfo, expSrc, expDst, expSeq, probe)
+			switch pm.processPacket(replyInfo, expSrc, expDst, expSeq, probe) {
+			case 0:
+				return false // Invalid packet
+			case 1:
+				return true // Valid packet
+			case 2:
+				continue // Irrelevant packet, wait for next
+			}
 		case <-timeout:
 			return false
 		}
@@ -644,58 +651,58 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 }
 
 // Process
-func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) bool {
+func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) int {
 	ok, src, dst, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
-		return false
+		return 0
 	}
 
 	if !src.Equal(expSrc) {
-		log.Printf("[%s] Src is not expected (exp=%s) [Should be awaiting timeout...]", src.String(), expSrc.String())
-		return false
+		//log.Printf("[%s] Src is not expected (exp=%s) [If expSrc comes within timeout forget and continue else return false...]", src.String(), expSrc.String())
+		return 2
 	}
 
 	if !dst.Equal(expDst) {
 		// Commented because this happens too often due to double replies
 		log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
-		return false
+		return 0
 	}
 
 	ok, seq := proto.CheckLayer(replyInfo.Packet, pm.requestCount)
 	if !ok {
 		log.Println("Protocol layer invalid")
-		return false
+		return 0
 	}
 
 	if seq != expSeq {
 		// Commented because this happens too often due to double replies
 		log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, seq, expSeq)
-		return false
+		return 0
 	}
 
 	pp, ok := probe.Data[seq]
 	if !ok {
 		log.Println("No entry for probe")
-		return false
+		return 0
 	}
 
 	if pp.Check {
 		log.Println("Already received reply")
-		return false
+		return 0
 	}
 
 	rtt := time.Duration(replyInfo.Time - pp.SentTime)
 	if rtt >= config.MaxRTT {
 		log.Printf("RTT too high (rtt=%v, src=%s)", rtt, src)
-		return false
+		return 0
 	}
 
 	pp.ReceivedTime = replyInfo.Time
 	pp.IpId = ipId
 	pp.Check = true
 	//log.Printf("Reply: src=%s seq=%d rtt=%v ip_id=%d\n", src, seq, rtt, ipId)
-	return true
+	return 1
 }
 
 func (pm B2B) processPacket(recvCounter uint16, repliesFound chan struct{}, replyInfo *ReplyInfo, expSrc net.IP, probe *Probe) {
