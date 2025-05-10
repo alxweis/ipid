@@ -555,6 +555,7 @@ func getSender(seq uint16) (*Sender, net.IP) {
 func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByteCount int) {
 	sender.Send(packet)
 	createProbePoint(probe, seq, time.Now().UnixNano())
+	log.Println(len(packet))
 	sentByteCount += len(packet)
 	//log.Printf("Request: target=%s seq=%d\n", probe.IPAddr, seq)
 }
