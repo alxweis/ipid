@@ -288,7 +288,7 @@ func Main(mode string) {
 	}
 
 	// Start statistics goroutine
-	//go logStatistics()
+	go logStatistics()
 
 	// Send targets to channel
 	for scanner.Scan() {
@@ -374,12 +374,8 @@ func worker(i int) {
 	recvCh := pm.createRecvChan(oldIdent)
 	for target := range targetChan {
 		updateRecvChanIdent(oldIdent, target)
-		//log.Printf("Worker %d: Updated RecvCh Ident in %v (%s -> %s)", i, time.Since(startTime), oldIdent, target)
-		//startTime := time.Now() // TODO Remove later
 		pm.probeTarget(recvCh, target)
-		//log.Printf("Worker %d took %v for probing target %s", i, time.Since(startTime), target)
 		oldIdent = target
-		//log.Printf("Worker %d finished probing target %s\n", i, target)
 	}
 }
 
@@ -392,7 +388,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 	recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
 	sentByteCount := 0
-	startTime := time.Now()
+	//startTime := time.Now()
 
 	for {
 		// Probe Target
@@ -422,7 +418,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 
 	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
 
-	log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
+	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
 
 func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
@@ -666,10 +662,8 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 		if ok {
 			ch <- replyInfo
 		} else {
-			log.Printf("RecvCh not found for %s", ip.SrcIP.String()) // TODO Remove later
+			log.Printf("RecvCh not found for %s", ip.SrcIP.String())
 		}
-	} else {
-		log.Printf("INvalid Reply IP Layer") // TODO Remove later
 	}
 }
 
