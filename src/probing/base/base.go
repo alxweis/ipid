@@ -12,6 +12,7 @@ import (
 	"github.com/google/gopacket/pcapgo"
 	"github.com/ilyakaznacheev/cleanenv"
 	"golang.org/x/net/ipv4"
+	"hash/fnv"
 	"log"
 	"math/rand"
 	"net"
@@ -120,12 +121,6 @@ type Sender struct {
 	Addr      syscall.SockaddrLinklayer
 }
 
-type WorkerData struct {
-	CurrentIPAddr string
-	WLock         bool
-	RecvCh        chan *ReplyInfo
-}
-
 var (
 	ICMP = &Protocol{
 		Id:           "icmp",
@@ -151,7 +146,7 @@ var (
 )
 
 const (
-	workers = 1000
+	workers = 100
 )
 
 var (
@@ -164,7 +159,7 @@ var (
 	saveWg               sync.WaitGroup
 	stopReceiving        = make(chan struct{})
 	probeSaveChan        = make(chan *Probe, workers*2)
-	workerDatas          [workers]WorkerData
+	recvChans            [workers]chan *ReplyInfo
 	opts                 = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
 	recordingProcesses   []*exec.Cmd
 	totalTargetCount     int64
@@ -268,13 +263,7 @@ func Main(mode string) {
 	// Start initial workers
 	for i := 0; i < workers; i++ {
 		workerWg.Add(1)
-
-		workerDatas[i] = WorkerData{
-			CurrentIPAddr: "",
-			WLock:         false,
-			RecvCh:        make(chan *ReplyInfo, pm.probingVars().requestCount),
-		}
-
+		recvChans[i] = make(chan *ReplyInfo, pm.probingVars().requestCount)
 		go worker(i)
 	}
 
@@ -361,13 +350,8 @@ func worker(i int) {
 	delay := time.Duration(rand.Intn(1000)) * time.Millisecond
 	time.Sleep(delay)
 
-	recvCh := workerDatas[i].RecvCh
+	recvCh := recvChans[i]
 	for target := range targetChan {
-
-		workerDatas[i].WLock = true
-		workerDatas[i].CurrentIPAddr = target
-		workerDatas[i].WLock = false
-
 		pm.probeTarget(recvCh, target)
 	}
 }
@@ -630,24 +614,17 @@ func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc string, probe *Probe
 }
 
 // Receive Channel
-func getRecvChan(ipAddr string) (chan *ReplyInfo, bool) {
-	for i := 0; i < len(workerDatas); i++ {
-		if !workerDatas[i].WLock && workerDatas[i].CurrentIPAddr == ipAddr {
-			return workerDatas[i].RecvCh, true
-		}
-	}
-	return nil, false
+func hashIPAddrToChanId(ipAddr net.IP) int {
+	hasher := fnv.New32a()
+	hasher.Write(ipAddr)
+	return int(hasher.Sum32() % workers)
 }
 
 func addToRecvChan(replyInfo *ReplyInfo) {
 	if ipLayer := replyInfo.Packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
 		ip, _ := ipLayer.(*layers.IPv4)
-		ch, ok := getRecvChan(ip.SrcIP.String())
-		if ok {
-			ch <- replyInfo
-		} else {
-			log.Printf("RecvCh not found for %s", ip.SrcIP.String())
-		}
+		chId := hashIPAddrToChanId(ip.SrcIP)
+		recvChans[chId] <- replyInfo
 	}
 }
 
@@ -660,7 +637,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc string, expDst string, 
 	}
 
 	if src != expSrc {
-		log.Println("Src is not expected")
+		log.Println("Src is not expected [Should be awaiting timeout...]")
 		return false
 	}
 
