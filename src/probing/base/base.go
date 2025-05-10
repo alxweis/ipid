@@ -386,7 +386,7 @@ func worker(i int) {
 // Probing
 func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 	dstIP := net.ParseIP(target).To4()
-	packets := pm.buildPackets(rawIPLayers, dstIP)
+	packets := pm.buildPackets(dstIP)
 
 	probe := createProbe(target)
 	recvCounter := uint16(0)
@@ -426,7 +426,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 
 func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
 	dstIP := net.ParseIP(target).To4()
-	packets := pm.buildPackets(rawIPLayers, dstIP)
+	packets := pm.buildPackets(dstIP)
 
 	probe := createProbe(target)
 	//recvCounter := uint16(0)
@@ -534,8 +534,8 @@ func hToNs(i uint16) uint16 {
 	return (i<<8)&0xff00 | i>>8
 }
 
-func (l2 *Sender) Send(payload []byte) {
-	p := append(l2.EthHeader, payload...)
+func (l2 *Sender) Send(packet []byte) {
+	p := append(l2.EthHeader, packet...)
 
 	//err := syscall.Sendto(l2.Fd, p, 0, &l2.Addr)
 	err := syscall.Sendmsg(l2.Fd, p, []byte{}, &l2.Addr, 0)
@@ -992,14 +992,15 @@ func loadProbingMode(mode string) {
 }
 
 // Build
-func (pv ProbingVars) buildPackets(rawIPLayers []layers.IPv4, dstIP net.IP) [][]byte {
-	ipLayersCopy := make([]layers.IPv4, len(rawIPLayers))
-	copy(ipLayersCopy, rawIPLayers)
+func (pv ProbingVars) buildPackets(dstIP net.IP) [][]byte {
+	rawIpLayersCopy := make([]layers.IPv4, len(rawIPLayers))
 
-	for i := range ipLayersCopy {
-		ipLayersCopy[i].DstIP = dstIP
+	for i, rawIPLayer := range rawIPLayers {
+		rawIpLayersCopy[i] = rawIPLayer
+		rawIpLayersCopy[i].DstIP = dstIP
 	}
-	return proto.CreateLayers(ipLayersCopy, pv.requestCount)
+
+	return proto.CreateLayers(rawIpLayersCopy, pv.requestCount)
 }
 
 func buildLayers(payloadLayers ...gopacket.SerializableLayer) []byte {
@@ -1058,14 +1059,13 @@ func createICMPLayers(ipLayers []layers.IPv4, requestCount uint16) [][]byte {
 
 	for seq := uint16(0); seq < requestCount; seq++ {
 		ipLayer := ipLayers[seq]
-		ipLayerCopy := ipLayer
 
 		pLayer := layers.ICMPv4{
 			TypeCode: layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoRequest, 0),
 			Seq:      seq,
 		}
 
-		packet := buildLayers(&ipLayerCopy, &pLayer)
+		packet := buildLayers(&ipLayer, &pLayer)
 		pList[seq] = packet
 	}
 	return pList
