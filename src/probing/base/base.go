@@ -412,6 +412,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 			recvCounter = 0
 			probe.Data = make(map[uint16]*ProbePoint)
 		} else { // All probing attempts failed
+			log.Printf("Probing failed for target %s", target)
 			break
 		}
 	}
