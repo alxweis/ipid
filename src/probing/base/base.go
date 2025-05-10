@@ -373,9 +373,9 @@ func worker(i int) {
 	oldIdent := strconv.Itoa(i)
 	recvCh := pm.createRecvChan(oldIdent)
 	for target := range targetChan {
-		startTime := time.Now()
+		//startTime := time.Now() // TODO Remove later
 		updateRecvChanIdent(oldIdent, target)
-		log.Printf("Worker %d: Updated RecvCh Ident in %v (%s -> %s)", i, time.Since(startTime), oldIdent, target)
+		//log.Printf("Worker %d: Updated RecvCh Ident in %v (%s -> %s)", i, time.Since(startTime), oldIdent, target)
 		pm.probeTarget(recvCh, target)
 		oldIdent = target
 		//log.Printf("Worker %d finished probing target %s\n", i, target)
@@ -417,7 +417,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 		}
 	}
 
-	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
+	log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
 }
 
 func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
@@ -714,7 +714,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc string, expDst string, 
 	pp.ReceivedTime = replyInfo.Time
 	pp.IpId = ipId
 	pp.Check = true
-	log.Printf("Reply: src=%s seq=%d rtt=%v ip_id=%d\n", src, seq, rtt, ipId)
+	//log.Printf("Reply: src=%s seq=%d rtt=%v ip_id=%d\n", src, seq, rtt, ipId)
 	return true
 }
 
@@ -1271,7 +1271,7 @@ func logStatistics() {
 		}
 
 		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] workers=[%d]\n",
-			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, workers)
+			timeLeft, totalProbeCount, probeCountPercentage, totalValidProbeCount, validProbeCountPercentage, sentMbps, workers)
 
 		lastTotalProbeCount = totalProbeCount
 		lastTotalValidProbeCount = totalValidProbeCount
