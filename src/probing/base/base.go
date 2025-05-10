@@ -151,7 +151,7 @@ var (
 )
 
 const (
-	workers = 1000
+	workers = 2000
 )
 
 var (
