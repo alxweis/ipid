@@ -377,7 +377,7 @@ func worker(i int) {
 		//log.Printf("Worker %d: Updated RecvCh Ident in %v (%s -> %s)", i, time.Since(startTime), oldIdent, target)
 		startTime := time.Now() // TODO Remove later
 		pm.probeTarget(recvCh, target)
-		log.Printf("Worker %d took %v for probing", i, time.Since(startTime))
+		log.Printf("Worker %d took %v for probing target %s", i, time.Since(startTime), target)
 		oldIdent = target
 		//log.Printf("Worker %d finished probing target %s\n", i, target)
 	}
