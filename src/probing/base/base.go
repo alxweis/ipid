@@ -275,7 +275,7 @@ func Main(mode string) {
 	}
 
 	// Start statistics goroutine
-	//go logStatistics()
+	go logStatistics()
 
 	// Send targets to channel
 	for scanner.Scan() {
@@ -381,7 +381,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
 	recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
 	sentByteCount := 0
-	startTime := time.Now()
+	//startTime := time.Now()
 
 	for {
 		// Probe Target
@@ -412,7 +412,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
 
 	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
 
-	log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
+	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
 
 func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
