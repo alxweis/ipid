@@ -397,7 +397,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 		// Probe Target
 		for seq := uint16(0); seq < pm.requestCount; seq++ {
 			sender, senderIP := getSender(seq)
-			sendPacket(sender, packets[seq], seq, probe, sentByteCount)
+			sendPacket(sender, packets[seq], seq, probe, &sentByteCount)
 			if pm.receivePacket(recvCh, target, senderIP.String(), seq, probe) {
 				recvCounter++
 			} else {
@@ -552,11 +552,10 @@ func getSender(seq uint16) (*Sender, net.IP) {
 	}
 }
 
-func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByteCount int) {
+func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByteCount *int) {
 	sender.Send(packet)
 	createProbePoint(probe, seq, time.Now().UnixNano())
-	log.Println(len(packet))
-	sentByteCount += len(packet)
+	*sentByteCount += len(packet)
 	//log.Printf("Request: target=%s seq=%d\n", probe.IPAddr, seq)
 }
 
