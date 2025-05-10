@@ -376,6 +376,7 @@ func worker(i int) {
 		updateRecvChanIdent(oldIdent, target)
 		pm.probeTarget(recvCh, target)
 		oldIdent = target
+		log.Printf("Worker %d finished probing target %s\n", i, target)
 	}
 }
 
@@ -655,7 +656,7 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 		if ok {
 			ch <- replyInfo
 		} else {
-			log.Printf("RecvCh not found for %s", ip.SrcIP.String())
+			log.Printf("RecvCh not found for %s", ip.SrcIP.String()) // TODO Remove later
 		}
 	}
 }
