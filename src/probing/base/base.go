@@ -373,10 +373,12 @@ func worker(i int) {
 	oldIdent := strconv.Itoa(i)
 	recvCh := pm.createRecvChan(oldIdent)
 	for target := range targetChan {
+		startTime := time.Now()
 		updateRecvChanIdent(oldIdent, target)
+		log.Printf("Worker %d: Updated RecvCh Ident in %v", i, time.Since(startTime))
 		pm.probeTarget(recvCh, target)
 		oldIdent = target
-		log.Printf("Worker %d finished probing target %s\n", i, target)
+		//log.Printf("Worker %d finished probing target %s\n", i, target)
 	}
 }
 
