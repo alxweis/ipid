@@ -19,7 +19,7 @@ b2b_retry_count: 0
 
 # SEQ Probing
 seq_request_count: 10
-seq_retry_count: 0
+seq_retry_count: 2
 
 # Other
 iface_a:

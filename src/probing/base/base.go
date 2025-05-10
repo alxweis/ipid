@@ -418,7 +418,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 		}
 	}
 
-	log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
+	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
 }
 
 func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
