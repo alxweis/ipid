@@ -668,7 +668,7 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 			log.Printf("RecvCh not found for %s", ip.SrcIP.String()) // TODO Remove later
 		}
 	} else {
-		log.Printf("INvalid Reply IP Layer")
+		log.Printf("INvalid Reply IP Layer") // TODO Remove later
 	}
 }
 
@@ -687,7 +687,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc string, expDst string, 
 
 	if dst != expDst {
 		// Commented because this happens too often due to double replies
-		//log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
+		log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
 		return false
 	}
 
@@ -699,7 +699,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc string, expDst string, 
 
 	if seq != expSeq {
 		// Commented because this happens too often due to double replies
-		//log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, seq, expSeq)
+		log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, seq, expSeq)
 		return false
 	}
 
