@@ -652,7 +652,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 	}
 
 	if !src.Equal(expSrc) {
-		log.Println("Src is not expected [Should be awaiting timeout...]")
+		log.Printf("[%s] Src is not expected (exp=%s) [Should be awaiting timeout...]", src.String(), expSrc.String())
 		return false
 	}
 
