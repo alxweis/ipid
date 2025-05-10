@@ -372,13 +372,15 @@ func worker(i int) {
 
 	oldIdent := strconv.Itoa(i)
 	recvCh := pm.createRecvChan(oldIdent)
+	startTime := time.Now() // TODO Remove later
 	for target := range targetChan {
-		//startTime := time.Now() // TODO Remove later
 		updateRecvChanIdent(oldIdent, target)
 		//log.Printf("Worker %d: Updated RecvCh Ident in %v (%s -> %s)", i, time.Since(startTime), oldIdent, target)
 		pm.probeTarget(recvCh, target)
 		oldIdent = target
 		//log.Printf("Worker %d finished probing target %s\n", i, target)
+		log.Printf("Worker %d took %v for probing", i, time.Since(startTime))
+		startTime = time.Now()
 	}
 }
 
@@ -417,7 +419,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 		}
 	}
 
-	log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
+	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
 }
 
 func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
