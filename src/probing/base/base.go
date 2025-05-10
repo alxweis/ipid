@@ -33,10 +33,8 @@ import (
 import _ "net/http/pprof"
 
 type ProbingMode interface {
-	createOutputDir(basePath string) string
-	createRawIPLayers() []layers.IPv4
+	probingVars() ProbingVars
 	probeTarget(recvCh chan *ReplyInfo, target string)
-	createRecvChan(target string) chan *ReplyInfo
 }
 
 type ProbingVars struct {
@@ -50,33 +48,13 @@ type B2B struct {
 	requestInterval time.Duration
 }
 
-func (pm B2B) createOutputDir(basePath string) string {
-	return pm.ProbingVars.createOutputDir(basePath)
-}
-
-func (pm B2B) createRawIPLayers() []layers.IPv4 {
-	return pm.ProbingVars.createRawIPLayers()
-}
-
-func (pm B2B) createRecvChan(target string) chan *ReplyInfo {
-	return pm.ProbingVars.createRecvChan(target)
-}
+func (pm B2B) probingVars() ProbingVars { return pm.ProbingVars }
 
 type SEQ struct {
 	ProbingVars
 }
 
-func (pm SEQ) createOutputDir(basePath string) string {
-	return pm.ProbingVars.createOutputDir(basePath)
-}
-
-func (pm SEQ) createRawIPLayers() []layers.IPv4 {
-	return pm.ProbingVars.createRawIPLayers()
-}
-
-func (pm SEQ) createRecvChan(target string) chan *ReplyInfo {
-	return pm.ProbingVars.createRecvChan(target)
-}
+func (pm SEQ) probingVars() ProbingVars { return pm.ProbingVars }
 
 type Config struct {
 	Targets              string         `yaml:"targets"`
@@ -142,6 +120,12 @@ type Sender struct {
 	Addr      syscall.SockaddrLinklayer
 }
 
+type WorkerData struct {
+	CurrentIPAddr string
+	WLock         bool
+	RecvCh        chan *ReplyInfo
+}
+
 var (
 	ICMP = &Protocol{
 		Id:           "icmp",
@@ -167,7 +151,7 @@ var (
 )
 
 const (
-	workers = 100
+	workers = 10
 )
 
 var (
@@ -180,7 +164,7 @@ var (
 	saveWg               sync.WaitGroup
 	stopReceiving        = make(chan struct{})
 	probeSaveChan        = make(chan *Probe, workers*2)
-	recvChans            = make(map[string]chan *ReplyInfo)
+	workerDatas          [workers]WorkerData
 	opts                 = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
 	recordingProcesses   []*exec.Cmd
 	totalTargetCount     int64
@@ -216,14 +200,14 @@ func Main(mode string) {
 	loadProbingMode(mode)
 
 	basePath := getBasePath()
-	outputDir = pm.createOutputDir(basePath)
+	outputDir = pm.probingVars().createOutputDir(basePath)
 
 	// Load targets file
 	targetsFile := loadTargets(config.Targets, basePath)
 
 	// Load protocol and raw IP layers
 	proto = loadProtocol(config.Protocol)
-	rawIPLayers = pm.createRawIPLayers()
+	rawIPLayers = pm.probingVars().createRawIPLayers()
 
 	// Setup senders
 	senderA = setupSender(config.IfaceA)
@@ -284,6 +268,13 @@ func Main(mode string) {
 	// Start initial workers
 	for i := 0; i < workers; i++ {
 		workerWg.Add(1)
+
+		workerDatas[i] = WorkerData{
+			CurrentIPAddr: "",
+			WLock:         false,
+			RecvCh:        make(chan *ReplyInfo, pm.probingVars().requestCount),
+		}
+
 		go worker(i)
 	}
 
@@ -370,12 +361,14 @@ func worker(i int) {
 	delay := time.Duration(rand.Intn(1000)) * time.Millisecond
 	time.Sleep(delay)
 
-	oldIdent := strconv.Itoa(i)
-	recvCh := pm.createRecvChan(oldIdent)
+	recvCh := workerDatas[i].RecvCh
 	for target := range targetChan {
-		updateRecvChanIdent(oldIdent, target)
+
+		workerDatas[i].WLock = true
+		workerDatas[i].CurrentIPAddr = target
+		workerDatas[i].WLock = false
+
 		pm.probeTarget(recvCh, target)
-		oldIdent = target
 	}
 }
 
@@ -637,21 +630,11 @@ func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc string, probe *Probe
 }
 
 // Receive Channel
-func (pv ProbingVars) createRecvChan(ident string) chan *ReplyInfo {
-	ch := make(chan *ReplyInfo, pv.requestCount)
-	recvChans[ident] = ch
-	return ch
-}
-
-func updateRecvChanIdent(oldIdent string, newIdent string) {
-	ch := recvChans[oldIdent]
-	delete(recvChans, oldIdent)
-	recvChans[newIdent] = ch
-}
-
-func getRecvChan(ident string) (chan *ReplyInfo, bool) {
-	if ch, exists := recvChans[ident]; exists {
-		return ch, true
+func getRecvChan(ipAddr string) (chan *ReplyInfo, bool) {
+	for i := 0; i < len(workerDatas); i++ {
+		if !workerDatas[i].WLock && workerDatas[i].CurrentIPAddr == ipAddr {
+			return workerDatas[i].RecvCh, true
+		}
 	}
 	return nil, false
 }
