@@ -35,7 +35,7 @@ import _ "net/http/pprof"
 
 type ProbingMode interface {
 	probingVars() ProbingVars
-	probeTarget(recvCh chan *ReplyInfo, target string)
+	probeTarget(wd *WorkerData, target net.IP)
 }
 
 type ProbingVars struct {
@@ -98,7 +98,7 @@ type ProbePoint struct {
 }
 
 type Probe struct {
-	IPAddr string
+	Target net.IP
 	Data   map[uint16]*ProbePoint
 }
 
@@ -119,6 +119,11 @@ type Sender struct {
 	EthHeader []byte
 	Fd        int
 	Addr      syscall.SockaddrLinklayer
+}
+
+type WorkerData struct {
+	targetCh chan net.IP
+	recvCh   chan *ReplyInfo
 }
 
 var (
@@ -159,14 +164,13 @@ var (
 	saveWg               sync.WaitGroup
 	stopReceiving        = make(chan struct{})
 	probeSaveChan        = make(chan *Probe, workers*2)
-	recvChans            [workers]chan *ReplyInfo
+	workerDatas          [workers]*WorkerData
 	opts                 = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
 	recordingProcesses   []*exec.Cmd
 	totalTargetCount     int64
 	totalValidProbeCount int64
 	totalProbeCount      int64
 	totalSentByteCount   int64
-	targetChan           = make(chan string, workers*2)
 	senderA              *Sender
 	senderB              *Sender
 	rawIPLayers          []layers.IPv4
@@ -263,8 +267,11 @@ func Main(mode string) {
 	// Start initial workers
 	for i := 0; i < workers; i++ {
 		workerWg.Add(1)
-		recvChans[i] = make(chan *ReplyInfo, pm.probingVars().requestCount)
-		go worker(i)
+		workerDatas[i] = &WorkerData{
+			targetCh: make(chan net.IP, 10), // TODO May change later
+			recvCh:   make(chan *ReplyInfo, pm.probingVars().requestCount),
+		}
+		go worker(workerDatas[i])
 	}
 
 	// Start statistics goroutine
@@ -281,8 +288,16 @@ func Main(mode string) {
 			continue
 		}
 
+		target := net.ParseIP(fields[0]).To4() // TODO: Get index of "IP" column
+
+		if target == nil {
+			continue
+		}
+
+		wId := hashIPAddrToWorkerId(target)
+
 		select {
-		case targetChan <- fields[0]: // Send target to channel TODO: Get index of "IP" column
+		case workerDatas[wId].targetCh <- target: // Send target to worker channel
 		case <-stopRunning:
 			log.Printf("Stop filling target channel")
 			cleanup()
@@ -296,8 +311,11 @@ func Main(mode string) {
 func cleanup() {
 	log.Println("Cleaning up...")
 
-	log.Println("Now that all targets have been sent, close the targetChan")
-	close(targetChan)
+	log.Println("Now that all targets have been sent, close targetChan and recvChan")
+	for i := 0; i < workers; i++ {
+		close(workerDatas[i].targetCh)
+		close(workerDatas[i].recvCh)
+	}
 
 	log.Println("Wait for workers to finish")
 	workerWg.Wait()
@@ -334,32 +352,30 @@ func createProbePoint(probe *Probe, seq uint16, sentTime int64) *ProbePoint {
 }
 
 // Probe
-func createProbe(target string) *Probe {
+func createProbe(target net.IP) *Probe {
 	atomic.AddInt64(&totalProbeCount, 1)
 	return &Probe{
-		IPAddr: target,
+		Target: target,
 		Data:   make(map[uint16]*ProbePoint),
 	}
 }
 
 // Worker
-func worker(i int) {
+func worker(wd *WorkerData) {
 	defer workerWg.Done()
 
 	// Random delay before starting
 	delay := time.Duration(rand.Intn(1000)) * time.Millisecond
 	time.Sleep(delay)
 
-	recvCh := recvChans[i]
-	for target := range targetChan {
-		pm.probeTarget(recvCh, target)
+	for target := range wd.targetCh {
+		pm.probeTarget(wd, target)
 	}
 }
 
 // Probing
-func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
-	dstIP := net.ParseIP(target).To4()
-	packets := pm.buildPackets(dstIP)
+func (pm SEQ) probeTarget(wd *WorkerData, target net.IP) {
+	packets := pm.buildPackets(target)
 
 	probe := createProbe(target)
 	recvCounter := uint16(0)
@@ -372,7 +388,7 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 		for seq := uint16(0); seq < pm.requestCount; seq++ {
 			sender, senderIP := getSender(seq)
 			sendPacket(sender, packets[seq], seq, probe, &sentByteCount)
-			if pm.receivePacket(recvCh, target, senderIP.String(), seq, probe) {
+			if pm.receivePacket(wd, target, senderIP, seq, probe) {
 				recvCounter++
 			} else {
 				break // Stop probing if no reply found
@@ -399,9 +415,8 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
 
-func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
-	dstIP := net.ParseIP(target).To4()
-	packets := pm.buildPackets(dstIP)
+func (pm B2B) probeTarget(wd *WorkerData, target net.IP) {
+	packets := pm.buildPackets(target)
 
 	probe := createProbe(target)
 	//recvCounter := uint16(0)
@@ -411,7 +426,7 @@ func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
 	for {
 		// Probe Target
 		pm.sendPackets(packets, probe, sentByteCount)
-		foundAllReplies, _ := pm.receivePackets(recvCh, target, probe)
+		foundAllReplies, _ := pm.receivePackets(wd, target, probe)
 		//recvCounter = rc
 
 		if foundAllReplies { // Successfully finished probing
@@ -585,11 +600,11 @@ func setupReceiver(iface Iface) {
 	}
 }
 
-func (pm SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc string, expDst string, expSeq uint16, probe *Probe) bool {
+func (pm SEQ) receivePacket(wd *WorkerData, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) bool {
 	timeout := time.After(config.MaxRTT)
 	for {
 		select {
-		case replyInfo := <-recvCh:
+		case replyInfo := <-wd.recvCh:
 			return pm.processPacket(replyInfo, expSrc, expDst, expSeq, probe)
 		case <-timeout:
 			return false
@@ -597,13 +612,13 @@ func (pm SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc string, expDst string
 	}
 }
 
-func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc string, probe *Probe) (bool, uint16) {
+func (pm B2B) receivePackets(wd *WorkerData, expSrc net.IP, probe *Probe) (bool, uint16) {
 	var recvCounter uint16
 	repliesFound := make(chan struct{})
 	timeout := time.After(config.MaxRTT)
 	for {
 		select {
-		case replyInfo := <-recvCh:
+		case replyInfo := <-wd.recvCh:
 			pm.processPacket(recvCounter, repliesFound, replyInfo, expSrc, probe)
 		case <-repliesFound:
 			return true, recvCounter
@@ -614,7 +629,7 @@ func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc string, probe *Probe
 }
 
 // Receive Channel
-func hashIPAddrToChanId(ipAddr net.IP) int {
+func hashIPAddrToWorkerId(ipAddr net.IP) int {
 	hasher := fnv.New32a()
 	hasher.Write(ipAddr)
 	return int(hasher.Sum32() % workers)
@@ -623,25 +638,25 @@ func hashIPAddrToChanId(ipAddr net.IP) int {
 func addToRecvChan(replyInfo *ReplyInfo) {
 	if ipLayer := replyInfo.Packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
 		ip, _ := ipLayer.(*layers.IPv4)
-		chId := hashIPAddrToChanId(ip.SrcIP)
-		recvChans[chId] <- replyInfo
+		wId := hashIPAddrToWorkerId(ip.SrcIP)
+		workerDatas[wId].recvCh <- replyInfo
 	}
 }
 
 // Process
-func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc string, expDst string, expSeq uint16, probe *Probe) bool {
+func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) bool {
 	ok, src, dst, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
 		return false
 	}
 
-	if src != expSrc {
+	if !src.Equal(expSrc) {
 		log.Println("Src is not expected [Should be awaiting timeout...]")
 		return false
 	}
 
-	if dst != expDst {
+	if !dst.Equal(expDst) {
 		// Commented because this happens too often due to double replies
 		log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
 		return false
@@ -683,14 +698,14 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc string, expDst string, 
 	return true
 }
 
-func (pm B2B) processPacket(recvCounter uint16, repliesFound chan struct{}, replyInfo *ReplyInfo, expSrc string, probe *Probe) {
+func (pm B2B) processPacket(recvCounter uint16, repliesFound chan struct{}, replyInfo *ReplyInfo, expSrc net.IP, probe *Probe) {
 	ok, src, _, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
 		return
 	}
 
-	if src != expSrc {
+	if !src.Equal(expSrc) {
 		log.Println("Src is not expected")
 		return
 	}
@@ -785,7 +800,7 @@ func saveProbes() {
 	// Read from channel and write each probe to the CSV file
 	for probe := range probeSaveChan {
 		var ipData []string
-		ipData = append(ipData, probe.IPAddr)
+		ipData = append(ipData, probe.Target.String())
 
 		// Collect probe point data
 		var ipIds []string
@@ -994,19 +1009,19 @@ func (pv ProbingVars) createRawIPLayers() []layers.IPv4 {
 	return ipLayers
 }
 
-func checkIPLayer(packet gopacket.Packet) (bool, string, string, uint16) {
+func checkIPLayer(packet gopacket.Packet) (bool, net.IP, net.IP, uint16) {
 	ip, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 	if !ok {
 		log.Println("IPv4 layer invalid")
-		return false, "", "", 0
+		return false, nil, nil, 0
 	}
 
 	if !ip.DstIP.Equal(srcAIp) && !ip.DstIP.Equal(srcBIp) {
 		log.Println("DstIP not match")
-		return false, "", "", 0
+		return false, nil, nil, 0
 	}
 
-	return true, ip.SrcIP.String(), ip.DstIP.String(), ip.Id
+	return true, ip.SrcIP, ip.DstIP, ip.Id
 }
 
 // ICMP
