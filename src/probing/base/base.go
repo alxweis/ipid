@@ -563,7 +563,7 @@ func (pm B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount int) {
 	for seq := uint16(0); seq < pm.requestCount; seq++ {
 		time.Sleep(pm.requestInterval) // TODO Do with ticker
 		sender, _ := getSender(seq)
-		sendPacket(sender, packets[seq], seq, probe, sentByteCount)
+		sendPacket(sender, packets[seq], seq, probe, &sentByteCount)
 	}
 }
 
