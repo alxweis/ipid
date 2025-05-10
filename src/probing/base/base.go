@@ -375,7 +375,7 @@ func worker(i int) {
 	for target := range targetChan {
 		startTime := time.Now()
 		updateRecvChanIdent(oldIdent, target)
-		log.Printf("Worker %d: Updated RecvCh Ident in %v", i, time.Since(startTime))
+		log.Printf("Worker %d: Updated RecvCh Ident in %v (%s -> %s)", i, time.Since(startTime), oldIdent, target)
 		pm.probeTarget(recvCh, target)
 		oldIdent = target
 		//log.Printf("Worker %d finished probing target %s\n", i, target)
