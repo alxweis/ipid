@@ -373,12 +373,12 @@ func worker(i int) {
 	oldIdent := strconv.Itoa(i)
 	recvCh := pm.createRecvChan(oldIdent)
 	for target := range targetChan {
-		//updateRecvChanIdent(oldIdent, target)
+		updateRecvChanIdent(oldIdent, target)
 		//log.Printf("Worker %d: Updated RecvCh Ident in %v (%s -> %s)", i, time.Since(startTime), oldIdent, target)
 		//startTime := time.Now() // TODO Remove later
 		pm.probeTarget(recvCh, target)
 		//log.Printf("Worker %d took %v for probing target %s", i, time.Since(startTime), target)
-		//oldIdent = target
+		oldIdent = target
 		//log.Printf("Worker %d finished probing target %s\n", i, target)
 	}
 }
@@ -661,7 +661,7 @@ func getRecvChan(ident string) (chan *ReplyInfo, bool) {
 func addToRecvChan(replyInfo *ReplyInfo) {
 	if ipLayer := replyInfo.Packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
 		ip, _ := ipLayer.(*layers.IPv4)
-		ch, ok := getRecvChan("0")
+		ch, ok := getRecvChan(ip.SrcIP.String())
 		if ok {
 			ch <- replyInfo
 		} else {
