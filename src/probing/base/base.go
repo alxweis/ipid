@@ -1223,14 +1223,14 @@ func logStatistics() {
 	startTime := time.Now()
 
 	var (
-		lastTotalProbeCount      int64
-		lastTotalValidProbeCount int64
-		lastTotalSentByteCount   int64
+		//lastTotalProbeCount      int64
+		//lastTotalValidProbeCount int64
+		lastTotalSentByteCount int64
 	)
 
 	for range ticker.C {
-		deltaTotalProbeCount := totalProbeCount - lastTotalProbeCount
-		deltaTotalValidProbeCount := totalValidProbeCount - lastTotalValidProbeCount
+		//deltaTotalProbeCount := totalProbeCount - lastTotalProbeCount
+		//deltaTotalValidProbeCount := totalValidProbeCount - lastTotalValidProbeCount
 		deltaTotalSentByteCount := totalSentByteCount - lastTotalSentByteCount
 
 		// Percentages
@@ -1273,8 +1273,8 @@ func logStatistics() {
 		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] workers=[%d]\n",
 			timeLeft, totalProbeCount, probeCountPercentage, totalValidProbeCount, validProbeCountPercentage, sentMbps, workers)
 
-		lastTotalProbeCount = totalProbeCount
-		lastTotalValidProbeCount = totalValidProbeCount
+		//lastTotalProbeCount = totalProbeCount
+		//lastTotalValidProbeCount = totalValidProbeCount
 		lastTotalSentByteCount = totalSentByteCount
 	}
 }
