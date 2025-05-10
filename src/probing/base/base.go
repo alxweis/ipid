@@ -375,9 +375,9 @@ func worker(i int) {
 	for target := range targetChan {
 		updateRecvChanIdent(oldIdent, target)
 		//log.Printf("Worker %d: Updated RecvCh Ident in %v (%s -> %s)", i, time.Since(startTime), oldIdent, target)
-		startTime := time.Now() // TODO Remove later
+		//startTime := time.Now() // TODO Remove later
 		pm.probeTarget(recvCh, target)
-		log.Printf("Worker %d took %v for probing target %s", i, time.Since(startTime), target)
+		//log.Printf("Worker %d took %v for probing target %s", i, time.Since(startTime), target)
 		oldIdent = target
 		//log.Printf("Worker %d finished probing target %s\n", i, target)
 	}
@@ -958,7 +958,7 @@ func loadTargets(targetsBasePath string, basePath string) string {
 func loadProtocol(protocol string) *Protocol {
 	switch protocol {
 	case "icmp":
-		return ICMP // TODO Make "icmp", "tcp", "udp" constants
+		return ICMP // TODO Make Classes - "icmp", "tcp", "udp" constants
 	case "tcp":
 		return TCP
 	case "udp":
