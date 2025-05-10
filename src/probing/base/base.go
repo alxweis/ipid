@@ -311,18 +311,18 @@ func Main(mode string) {
 func cleanup() {
 	log.Println("Cleaning up...")
 
-	log.Println("Closing all receive channels")
-	for i := 0; i < workers; i++ {
-		close(workerDatas[i].recvCh)
-	}
-
-	log.Println("Closing all target channels")
+	log.Println("Closing all worker target channels")
 	for i := 0; i < workers; i++ {
 		close(workerDatas[i].targetCh)
 	}
 
 	log.Println("Wait for workers to finish")
 	workerWg.Wait()
+
+	log.Println("Closing all worker receive channels")
+	for i := 0; i < workers; i++ {
+		close(workerDatas[i].recvCh)
+	}
 
 	log.Println("Close the probe save channel")
 	close(probeSaveChan)
