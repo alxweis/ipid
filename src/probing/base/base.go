@@ -35,7 +35,7 @@ import _ "net/http/pprof"
 type ProbingMode interface {
 	createOutputDir(basePath string) string
 	createRawIPLayers() []layers.IPv4
-	probeTarget(recvChan chan *ReplyInfo, target string)
+	probeTarget(recvCh chan *ReplyInfo, target string)
 	createRecvChan(target string) chan *ReplyInfo
 }
 
@@ -371,16 +371,16 @@ func worker(i int) {
 	time.Sleep(delay)
 
 	oldIdent := strconv.Itoa(i)
-	recvChan := pm.createRecvChan(oldIdent)
+	recvCh := pm.createRecvChan(oldIdent)
 	for target := range targetChan {
 		updateRecvChanIdent(oldIdent, target)
-		pm.probeTarget(recvChan, target)
+		pm.probeTarget(recvCh, target)
 		oldIdent = target
 	}
 }
 
 // Probing
-func (pm SEQ) probeTarget(recvChan chan *ReplyInfo, target string) {
+func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 	dstIP := net.ParseIP(target).To4()
 	packets := pm.buildPackets(rawIPLayers, dstIP)
 
@@ -393,7 +393,7 @@ func (pm SEQ) probeTarget(recvChan chan *ReplyInfo, target string) {
 		for seq := uint16(0); seq < pm.requestCount; seq++ {
 			sender, senderIP := getSender(seq)
 			sendPacket(sender, packets[seq], seq, probe)
-			if pm.receivePacket(recvChan, target, senderIP.String(), seq, probe) {
+			if pm.receivePacket(recvCh, target, senderIP.String(), seq, probe) {
 				recvCounter++
 			} else {
 				break // Stop probing if no reply found
@@ -417,7 +417,7 @@ func (pm SEQ) probeTarget(recvChan chan *ReplyInfo, target string) {
 	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
 }
 
-func (pm B2B) probeTarget(recvChan chan *ReplyInfo, target string) {
+func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
 	dstIP := net.ParseIP(target).To4()
 	packets := pm.buildPackets(rawIPLayers, dstIP)
 
@@ -428,7 +428,7 @@ func (pm B2B) probeTarget(recvChan chan *ReplyInfo, target string) {
 	for {
 		// Probe Target
 		pm.sendPackets(packets, probe)
-		foundAllReplies, _ := pm.receivePackets(recvChan, target, probe)
+		foundAllReplies, _ := pm.receivePackets(recvCh, target, probe)
 		//recvCounter = rc
 
 		if foundAllReplies { // Successfully finished probing
@@ -636,10 +636,9 @@ func (pv ProbingVars) createRecvChan(ident string) chan *ReplyInfo {
 }
 
 func updateRecvChanIdent(oldIdent string, newIdent string) {
-	if ch, exists := recvChans[oldIdent]; exists {
-		delete(recvChans, oldIdent)
-		recvChans[newIdent] = ch
-	}
+	ch := recvChans[oldIdent]
+	delete(recvChans, oldIdent)
+	recvChans[newIdent] = ch
 }
 
 func getRecvChan(ident string) (chan *ReplyInfo, bool) {
@@ -655,6 +654,8 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 		ch, ok := getRecvChan(ip.SrcIP.String())
 		if ok {
 			ch <- replyInfo
+		} else {
+			log.Printf("RecvCh not found for %s", ip.SrcIP.String())
 		}
 	}
 }
