@@ -311,10 +311,14 @@ func Main(mode string) {
 func cleanup() {
 	log.Println("Cleaning up...")
 
-	log.Println("Now that all targets have been sent, close targetChan and recvChan")
+	log.Println("Closing all receive channels")
+	for i := 0; i < workers; i++ {
+		close(workerDatas[i].recvCh)
+	}
+
+	log.Println("Closing all target channels")
 	for i := 0; i < workers; i++ {
 		close(workerDatas[i].targetCh)
-		close(workerDatas[i].recvCh)
 	}
 
 	log.Println("Wait for workers to finish")
@@ -1210,14 +1214,14 @@ func logStatistics() {
 	startTime := time.Now()
 
 	var (
-		//lastTotalProbeCount      int64
-		//lastTotalValidProbeCount int64
-		lastTotalSentByteCount int64
+		lastTotalProbeCount      int64
+		lastTotalValidProbeCount int64
+		lastTotalSentByteCount   int64
 	)
 
 	for range ticker.C {
-		//deltaTotalProbeCount := totalProbeCount - lastTotalProbeCount
-		//deltaTotalValidProbeCount := totalValidProbeCount - lastTotalValidProbeCount
+		deltaTotalProbeCount := totalProbeCount - lastTotalProbeCount
+		deltaTotalValidProbeCount := totalValidProbeCount - lastTotalValidProbeCount
 		deltaTotalSentByteCount := totalSentByteCount - lastTotalSentByteCount
 
 		// Percentages
@@ -1258,10 +1262,10 @@ func logStatistics() {
 		}
 
 		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] workers=[%d]\n",
-			timeLeft, totalProbeCount, probeCountPercentage, totalValidProbeCount, validProbeCountPercentage, sentMbps, workers)
+			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, workers)
 
-		//lastTotalProbeCount = totalProbeCount
-		//lastTotalValidProbeCount = totalValidProbeCount
+		lastTotalProbeCount = totalProbeCount
+		lastTotalValidProbeCount = totalValidProbeCount
 		lastTotalSentByteCount = totalSentByteCount
 	}
 }
