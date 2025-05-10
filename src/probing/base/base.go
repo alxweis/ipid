@@ -391,12 +391,13 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 	probe := createProbe(target)
 	recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
+	sentByteCount := 0
 
 	for {
 		// Probe Target
 		for seq := uint16(0); seq < pm.requestCount; seq++ {
 			sender, senderIP := getSender(seq)
-			sendPacket(sender, packets[seq], seq, probe)
+			sendPacket(sender, packets[seq], seq, probe, sentByteCount)
 			if pm.receivePacket(recvCh, target, senderIP.String(), seq, probe) {
 				recvCounter++
 			} else {
@@ -418,7 +419,9 @@ func (pm SEQ) probeTarget(recvCh chan *ReplyInfo, target string) {
 		}
 	}
 
-	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
+	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
+
+	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d sent_bytes=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount)
 }
 
 func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
@@ -428,10 +431,11 @@ func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
 	probe := createProbe(target)
 	//recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
+	sentByteCount := 0
 
 	for {
 		// Probe Target
-		pm.sendPackets(packets, probe)
+		pm.sendPackets(packets, probe, sentByteCount)
 		foundAllReplies, _ := pm.receivePackets(recvCh, target, probe)
 		//recvCounter = rc
 
@@ -448,7 +452,9 @@ func (pm B2B) probeTarget(recvCh chan *ReplyInfo, target string) {
 		}
 	}
 
-	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft)
+	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
+
+	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d sent_bytes=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount)
 }
 
 // Send
@@ -546,18 +552,18 @@ func getSender(seq uint16) (*Sender, net.IP) {
 	}
 }
 
-func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe) {
+func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByteCount int) {
 	sender.Send(packet)
 	createProbePoint(probe, seq, time.Now().UnixNano())
-	atomic.AddInt64(&totalSentByteCount, int64(len(packet)))
+	sentByteCount += len(packet)
 	//log.Printf("Request: target=%s seq=%d\n", probe.IPAddr, seq)
 }
 
-func (pm B2B) sendPackets(payloads [][]byte, probe *Probe) {
+func (pm B2B) sendPackets(payloads [][]byte, probe *Probe, sentByteCount int) {
 	for seq := uint16(0); seq < pm.requestCount; seq++ {
 		time.Sleep(pm.requestInterval)
 		sender, _ := getSender(seq)
-		sendPacket(sender, payloads[seq], seq, probe)
+		sendPacket(sender, payloads[seq], seq, probe, sentByteCount)
 	}
 }
 
@@ -661,6 +667,8 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 		} else {
 			log.Printf("RecvCh not found for %s", ip.SrcIP.String()) // TODO Remove later
 		}
+	} else {
+		log.Printf("INvalid Reply IP Layer")
 	}
 }
 
