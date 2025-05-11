@@ -304,6 +304,18 @@ func Main(mode string) {
 	}
 }
 
+func drainChannel(ch chan net.IP) {
+	for {
+		select {
+		case <-ch:
+			// Discard the element
+		default:
+			// No more elements in the channel
+			return
+		}
+	}
+}
+
 func cleanup() {
 	log.Println("Cleaning up...")
 
@@ -313,6 +325,7 @@ func cleanup() {
 	log.Println("Closing all worker target channels")
 	for i := 0; i < workers; i++ {
 		close(workerDatas[i].targetCh)
+		drainChannel(workerDatas[i].targetCh)
 	}
 
 	log.Println("Wait for workers to finish")
