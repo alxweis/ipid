@@ -151,7 +151,7 @@ var (
 )
 
 const (
-	workers = 100
+	workers = 5000
 )
 
 var (
@@ -337,7 +337,6 @@ func cleanup() {
 		setRSTDrop(false)
 	}
 
-	log.Println("Log results")
 	log.Println("Results Directory:", outputDir)
 }
 
@@ -669,7 +668,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 
 	if !dst.Equal(expDst) {
 		// Commented because this happens too often due to double replies
-		log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
+		//log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
 		return 0
 	}
 
