@@ -308,36 +308,32 @@ func Main(mode string) {
 }
 
 func cleanup() {
-	log.Println("Cleaning up...")
-
-	log.Println("Closing and draining all worker target channels")
+	log.Println("Cleaning up workers...")
 	for i := 0; i < workers; i++ {
 		close(workerDatas[i].targetCh)
 	}
 
-	log.Println("Wait for workers to finish")
 	workerWg.Wait()
 
-	log.Println("Closing all worker receive channels")
 	for i := 0; i < workers; i++ {
 		close(workerDatas[i].recvCh)
 	}
 
-	log.Println("Close the probe save channel")
+	log.Println("Cleaning up probe save channel...")
 	close(probeSaveChan)
 	saveWg.Wait()
 
-	log.Println("Close receiving channels and wait for them to finish")
+	log.Println("Cleaning up receivers..")
 	close(stopReceiving)
 	recvWg.Wait()
 
-	log.Println("Stop recording if enabled")
 	if config.RecTraffic {
+		log.Println("Stopping record...")
 		stopRecording()
 	}
 
-	log.Println("Unblock auto-send RST when using TCP and changed")
 	if rstChanged {
+		log.Println("Unblock auto-send RST")
 		setRSTDrop(false)
 	}
 
