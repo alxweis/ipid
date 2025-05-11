@@ -299,17 +299,16 @@ func Main(mode string) {
 		select {
 		case workerDatas[wId].targetCh <- target: // Send target to worker channel
 		case <-stopRunning:
-			log.Printf("Stop filling target channel")
-			cleanup()
 			return
 		}
 	}
-
-	cleanup()
 }
 
 func cleanup() {
 	log.Println("Cleaning up...")
+
+	log.Println("Stop filling target channel")
+	close(stopRunning)
 
 	log.Println("Closing all worker target channels")
 	for i := 0; i < workers; i++ {
@@ -858,7 +857,7 @@ func setupSignalHandler() {
 	// Start a goroutine to handle the signal
 	go func() {
 		<-sigs
-		close(stopRunning)
+		cleanup()
 		os.Exit(0)
 	}()
 }

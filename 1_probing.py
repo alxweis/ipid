@@ -1,5 +1,4 @@
 import os
-import signal
 import subprocess
 import sys
 
@@ -25,7 +24,6 @@ def main():
             process.wait()
         except KeyboardInterrupt:
             print("Stopping gracefully...")
-            process.send_signal(signal.SIGINT)
             try:
                 process.wait()  # Process should clean up itself
             except KeyboardInterrupt:
