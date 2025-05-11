@@ -24,11 +24,7 @@ def main():
             process.wait()
         except KeyboardInterrupt:
             print("Stopping gracefully...")
-            try:
-                process.wait()  # Process should clean up itself
-            except KeyboardInterrupt:
-                print("Stopping forcefully...")
-                process.terminate()
+            process.wait()  # Process should clean up itself
     else:
         print_usage()
 
