@@ -178,6 +178,7 @@ var (
 	rstChanged           bool
 	outputDir            string
 	stopRunning          = make(chan struct{})
+	exit                 = false
 )
 
 func Main(mode string) {
@@ -299,7 +300,9 @@ func Main(mode string) {
 		select {
 		case workerDatas[wId].targetCh <- target: // Send target to worker channel
 		case <-stopRunning:
-			select {}
+			if exit {
+				return
+			}
 		}
 	}
 }
@@ -322,7 +325,7 @@ func cleanup() {
 	log.Println("Stop filling target channel")
 	close(stopRunning)
 
-	log.Println("Closing all worker target channels")
+	log.Println("Closing and draining all worker target channels")
 	for i := 0; i < workers; i++ {
 		close(workerDatas[i].targetCh)
 		drainChannel(workerDatas[i].targetCh)
@@ -356,6 +359,7 @@ func cleanup() {
 
 	log.Println("Log results")
 	log.Println("Results Directory:", outputDir)
+	exit = true
 }
 
 // ProbePoint
@@ -865,13 +869,12 @@ func formatBool(value bool) string {
 // Setup
 func setupSignalHandler() {
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigs, syscall.SIGTERM)
 
 	// Start a goroutine to handle the signal
 	go func() {
 		<-sigs
 		cleanup()
-		os.Exit(0)
 	}()
 }
 
