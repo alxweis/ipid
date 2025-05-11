@@ -299,7 +299,7 @@ func Main(mode string) {
 		select {
 		case workerDatas[wId].targetCh <- target: // Send target to worker channel
 		case <-stopRunning:
-			return
+			select {}
 		}
 	}
 }
