@@ -307,25 +307,12 @@ func Main(mode string) {
 	cleanup()
 }
 
-func drainChannel(ch chan net.IP) {
-	for {
-		select {
-		case <-ch:
-			// Discard the element
-		default:
-			// No more elements in the channel
-			return
-		}
-	}
-}
-
 func cleanup() {
 	log.Println("Cleaning up...")
 
 	log.Println("Closing and draining all worker target channels")
 	for i := 0; i < workers; i++ {
 		close(workerDatas[i].targetCh)
-		drainChannel(workerDatas[i].targetCh)
 	}
 
 	log.Println("Wait for workers to finish")
@@ -385,7 +372,12 @@ func worker(wd *WorkerData) {
 	time.Sleep(delay)
 
 	for target := range wd.targetCh {
-		pm.probeTarget(wd.recvCh, target)
+		select {
+		case <-stopSignal:
+			return
+		default:
+			pm.probeTarget(wd.recvCh, target)
+		}
 	}
 }
 
