@@ -12,7 +12,6 @@ import (
 	"github.com/google/gopacket/pcapgo"
 	"github.com/ilyakaznacheev/cleanenv"
 	"golang.org/x/net/ipv4"
-	"hash/fnv"
 	"log"
 	"math/rand"
 	"net"
