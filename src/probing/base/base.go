@@ -126,11 +126,6 @@ type WorkerData struct {
 	recvCh   chan *ReplyInfo
 }
 
-type TargetQueueItem struct {
-	WorkerId int
-	Target   net.IP
-}
-
 var (
 	ICMP = &Protocol{
 		Id:           "icmp",
@@ -156,7 +151,7 @@ var (
 )
 
 const (
-	workers = 5000
+	workers = 4000
 )
 
 var (
@@ -167,7 +162,6 @@ var (
 	workerWg             sync.WaitGroup
 	recvWg               sync.WaitGroup
 	saveWg               sync.WaitGroup
-	distWg               sync.WaitGroup
 	stopReceiving        = make(chan struct{})
 	probeSaveChan        = make(chan *Probe, workers*2)
 	workerDatas          [workers]*WorkerData
@@ -184,7 +178,6 @@ var (
 	rstChanged           bool
 	outputDir            string
 	stopSignal           = make(chan struct{})
-	targetQueueCh        = make(chan *TargetQueueItem, workers*2)
 )
 
 func Main(mode string) {
@@ -214,9 +207,6 @@ func Main(mode string) {
 	// Load protocol and raw IP layers
 	proto = loadProtocol(config.Protocol)
 	rawIPLayers = pm.probingVars().createRawIPLayers()
-
-	distWg.Add(1)
-	go distributeTargets()
 
 	// Setup senders
 	senderA = setupSender(config.IfaceA)
@@ -278,7 +268,7 @@ func Main(mode string) {
 	for i := 0; i < workers; i++ {
 		workerWg.Add(1)
 		workerDatas[i] = &WorkerData{
-			targetCh: make(chan net.IP, 2), // TODO May change later
+			targetCh: make(chan net.IP, 10), // TODO May change later
 			recvCh:   make(chan *ReplyInfo, pm.probingVars().requestCount),
 		}
 		go worker(workerDatas[i])
@@ -304,13 +294,10 @@ func Main(mode string) {
 			continue
 		}
 
-		targetQueueItem := &TargetQueueItem{
-			WorkerId: hashIPAddrToWorkerId(target),
-			Target:   target,
-		}
+		wId := hashIPAddrToWorkerId(target)
 
 		select {
-		case targetQueueCh <- targetQueueItem: // Send target to worker channel
+		case workerDatas[wId].targetCh <- target: // Send target to worker channel
 		case <-stopSignal:
 			cleanup()
 			return
@@ -320,26 +307,7 @@ func Main(mode string) {
 	cleanup()
 }
 
-func distributeTargets() {
-	defer distWg.Done()
-
-	for item := range targetQueueCh {
-		select {
-		case workerDatas[item.WorkerId].targetCh <- item.Target:
-		case <-stopSignal:
-			return
-		default:
-			targetQueueCh <- item
-			time.Sleep(time.Millisecond * 100)
-		}
-	}
-}
-
 func cleanup() {
-	log.Println("Cleaning up target queue and distributor")
-	close(targetQueueCh)
-	distWg.Wait()
-
 	log.Println("Cleaning up workers...")
 	for i := 0; i < workers; i++ {
 		close(workerDatas[i].targetCh)
