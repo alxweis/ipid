@@ -614,13 +614,13 @@ func (pm SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc net.IP, expDst net.IP
 }
 
 func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc net.IP, probe *Probe) (bool, uint16) {
-	var recvCounter uint16
+	recvCounter := uint16(0)
 	repliesFound := make(chan struct{})
 	timeout := time.After(config.MaxRTT)
 	for {
 		select {
 		case replyInfo := <-recvCh:
-			pm.processPacket(recvCounter, repliesFound, replyInfo, expSrc, probe)
+			pm.processPacket(&recvCounter, repliesFound, replyInfo, expSrc, probe)
 		case <-repliesFound:
 			return true, recvCounter
 		case <-timeout:
@@ -688,7 +688,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 	return 1
 }
 
-func (pm B2B) processPacket(recvCounter uint16, repliesFound chan struct{}, replyInfo *ReplyInfo, expSrc net.IP, probe *Probe) {
+func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, replyInfo *ReplyInfo, expSrc net.IP, probe *Probe) {
 	ok, src, _, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
@@ -721,8 +721,8 @@ func (pm B2B) processPacket(recvCounter uint16, repliesFound chan struct{}, repl
 	pp.IpId = ipId
 	pp.Check = true
 	log.Printf("Reply: src=[%s] seq=[%d] rtt=[%v] ipid=[%d]\n", src, replyInfo.Seq, rtt, ipId)
-	recvCounter++
-	if recvCounter == pm.requestCount {
+	*recvCounter++
+	if *recvCounter == pm.requestCount {
 		close(repliesFound)
 	}
 }
