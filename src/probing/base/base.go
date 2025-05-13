@@ -146,7 +146,7 @@ var (
 )
 
 const (
-	workers = 1000
+	workers = 4096
 )
 
 var (
@@ -347,7 +347,7 @@ func worker(ident uint16) {
 	defer workerWg.Done()
 
 	// Random delay before starting
-	delay := time.Duration(rand.Intn(1000)) * time.Millisecond
+	delay := time.Duration(rand.Intn(workers)) * time.Millisecond
 	time.Sleep(delay)
 
 	recvCh := recvChans[ident]
