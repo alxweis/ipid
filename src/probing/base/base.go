@@ -668,7 +668,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 	}
 
 	if pp.Check {
-		log.Printf("[%s] Already received reply", src)
+		log.Printf("[%s] Already received reply for request %d", src, replyInfo.Seq)
 		return 0
 	}
 
@@ -704,7 +704,7 @@ func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, rep
 	}
 
 	if pp.Check {
-		log.Printf("[%s] Already received reply for request %d", src, replyInfo.Seq)
+		//log.Printf("[%s] Already received reply for request %d", src, replyInfo.Seq)
 		return
 	}
 
