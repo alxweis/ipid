@@ -347,7 +347,7 @@ func worker(ident uint16) {
 	defer workerWg.Done()
 
 	// Random delay before starting
-	delay := time.Duration(rand.Intn(workers)) * time.Millisecond
+	delay := time.Duration(rand.Intn(workers*2)) * time.Millisecond
 	time.Sleep(delay)
 
 	recvCh := recvChans[ident]
