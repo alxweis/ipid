@@ -407,16 +407,16 @@ func (pm B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP
 	packets := pm.buildPackets(target, workerId)
 
 	probe := createProbe(target)
-	recvCounter := uint16(0)
+	//recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
 	sentByteCount := 0
-	startTime := time.Now()
+	//startTime := time.Now()
 
 	for {
 		// Probe Target
 		pm.sendPackets(packets, probe, &sentByteCount)
-		foundAllReplies, rc := pm.receivePackets(recvCh, target, probe)
-		recvCounter = rc
+		foundAllReplies, _ := pm.receivePackets(recvCh, target, probe)
+		//recvCounter = rc
 
 		if foundAllReplies { // Successfully finished probing
 			probeSaveChan <- probe
@@ -433,7 +433,7 @@ func (pm B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP
 
 	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
 
-	log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
+	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
 
 // Send
@@ -720,7 +720,7 @@ func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, rep
 	pp.ReceivedTime = replyInfo.Time
 	pp.IpId = ipId
 	pp.Check = true
-	log.Printf("Reply: src=[%s] seq=[%d] rtt=[%v] ip_id=[%d]\n", src, replyInfo.Seq, rtt, ipId)
+	//log.Printf("Reply: src=[%s] seq=[%d] rtt=[%v] ip_id=[%d]\n", src, replyInfo.Seq, rtt, ipId)
 	*recvCounter++
 	if *recvCounter == pm.requestCount {
 		close(repliesFound)
