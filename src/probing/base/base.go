@@ -648,36 +648,36 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 	}
 
 	if !src.Equal(expSrc) {
-		//log.Printf("[%s] Src is not expected (exp=%s) [If expSrc comes within timeout forget and continue else return false...]", src.String(), expSrc.String())
+		//log.Printf("[%s] Src is not expected (exp_src=[%s]) [If expSrc comes within timeout forget and continue else return false...]", src.String(), expSrc.String())
 		return 2
 	}
 
 	if !dst.Equal(expDst) {
 		// Commented because this happens too often due to double replies
-		//log.Printf("[%s] Dst is not expected (dst=%s exp_dst=%s)", src, dst, expDst)
+		//log.Printf("[%s] Dst is not expected (dst=[%s] exp_dst=[%s])", src, dst, expDst)
 		return 0
 	}
 
 	if replyInfo.Seq != expSeq {
 		// Commented because this happens too often due to double replies
-		log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, replyInfo.Seq, expSeq)
+		log.Printf("[%s] Seq is not expected (seq=[%d] exp_seq=[%d])", src, replyInfo.Seq, expSeq)
 		return 0
 	}
 
 	pp, ok := probe.Data[replyInfo.Seq]
 	if !ok {
-		log.Println("No entry for probe")
+		log.Printf("[%s] No entry for probe", src)
 		return 0
 	}
 
 	if pp.Check {
-		log.Println("Already received reply")
+		log.Printf("[%s] Already received reply", src)
 		return 0
 	}
 
 	rtt := time.Duration(replyInfo.Time - pp.SentTime)
 	if rtt > config.MaxRTT {
-		log.Printf("RTT too high (rtt=%v, src=%s)", rtt, src)
+		log.Printf("[%s] RTT too high (rtt=[%v])", src, rtt)
 		return 0
 	}
 
