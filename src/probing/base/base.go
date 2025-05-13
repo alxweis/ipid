@@ -410,10 +410,11 @@ func (pm B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP
 	//recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
 	sentByteCount := 0
+	//startTime := time.Now()
 
 	for {
 		// Probe Target
-		pm.sendPackets(packets, probe, sentByteCount)
+		pm.sendPackets(packets, probe, &sentByteCount)
 		foundAllReplies, _ := pm.receivePackets(recvCh, target, probe)
 		//recvCounter = rc
 
@@ -432,7 +433,7 @@ func (pm B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP
 
 	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
 
-	//log.Printf("Finished probing target=%s received=%d/%d used_retries=%d sent_bytes=%d", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount)
+	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
 
 // Send
@@ -537,11 +538,16 @@ func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByt
 	//log.Printf("Request: target=%s seq=%d\n", probe.IPAddr, seq)
 }
 
-func (pm B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount int) {
+func (pm B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount *int) {
+	ticker := time.NewTicker(pm.requestInterval)
+	defer ticker.Stop()
+
 	for seq := uint16(0); seq < pm.requestCount; seq++ {
-		time.Sleep(pm.requestInterval) // TODO Do with ticker
+		if seq > 0 {
+			<-ticker.C
+		}
 		sender, _ := getSender(seq)
-		sendPacket(sender, packets[seq], seq, probe, &sentByteCount)
+		sendPacket(sender, packets[seq], seq, probe, sentByteCount)
 	}
 }
 
