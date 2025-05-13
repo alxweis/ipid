@@ -569,7 +569,7 @@ func setupReceiver(iface Iface) {
 	if proto.Filter != "" {
 		protoFilter += " and " + proto.Filter
 	}
-	bpfFilter := fmt.Sprintf("ip and %s and dst host %s", protoFilter, iface.Ip)
+	bpfFilter := fmt.Sprintf("ip and (%s) and (dst host %s or dst host %s)", protoFilter, config.IfaceA.Ip, config.IfaceB.Ip)
 	bpfInstr, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet, ifc.MTU, bpfFilter)
 	if err != nil {
 		panic(err)
