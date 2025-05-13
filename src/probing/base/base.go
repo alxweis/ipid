@@ -634,10 +634,9 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 	seq, workerId, ok := proto.GetLayerData(replyInfo)
 
 	if ok && seq < pm.probingVars().requestCount && workerId < workers {
+		log.Printf("WorkerId=[%d] Seq=[%d]", workerId, seq)
 		replyInfo.Seq = seq
 		recvChans[workerId] <- replyInfo
-	} else {
-		log.Printf("No ok! seq=[%d] worker_id=[%d]", seq, workerId)
 	}
 }
 
