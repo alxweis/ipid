@@ -584,6 +584,7 @@ func setupReceiver(iface Iface) {
 	for {
 		select {
 		case packet := <-packetSource:
+			log.Println("Received a packet!")
 			go addToRecvChan(&ReplyInfo{
 				Packet: packet,
 				Time:   time.Now().UnixNano(),
