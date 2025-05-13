@@ -539,12 +539,9 @@ func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByt
 }
 
 func (pm B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount *int) {
-	ticker := time.NewTicker(pm.requestInterval)
-	defer ticker.Stop()
-
 	for seq := uint16(0); seq < pm.requestCount; seq++ {
 		if seq > 0 {
-			<-ticker.C
+			time.Sleep(pm.requestInterval)
 		}
 		sender, _ := getSender(seq)
 		sendPacket(sender, packets[seq], seq, probe, sentByteCount)
