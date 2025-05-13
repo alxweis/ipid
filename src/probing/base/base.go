@@ -400,7 +400,7 @@ func (pm SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP
 
 	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
 
-	log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
+	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
 
 func (pm B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP) {
@@ -584,7 +584,6 @@ func setupReceiver(iface Iface) {
 	for {
 		select {
 		case packet := <-packetSource:
-			log.Println("Received a packet!")
 			go addToRecvChan(&ReplyInfo{
 				Packet: packet,
 				Time:   time.Now().UnixNano(),
@@ -635,7 +634,6 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 	seq, workerId, ok := proto.GetLayerData(replyInfo)
 
 	if ok && seq < pm.probingVars().requestCount && workerId < workers {
-		log.Printf("WorkerId=[%d] Seq=[%d]", workerId, seq)
 		replyInfo.Seq = seq
 		recvChans[workerId] <- replyInfo
 	}
