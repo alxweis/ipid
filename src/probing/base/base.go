@@ -696,7 +696,7 @@ func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, rep
 	}
 
 	if !src.Equal(expSrc) {
-		log.Printf("Src is not expected (src=%d exp_src=%d)", src, expSrc)
+		//log.Printf("Src is not expected (src=%d exp_src=%d)", src, expSrc)
 		return
 	}
 
@@ -707,7 +707,7 @@ func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, rep
 	}
 
 	if pp.Check {
-		log.Println("Already received reply")
+		//log.Println("Already received reply")
 		return
 	}
 
