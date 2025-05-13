@@ -696,24 +696,24 @@ func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, rep
 	}
 
 	if !src.Equal(expSrc) {
-		//log.Printf("Src is not expected (src=%d exp_src=%d)", src, expSrc)
+		//log.Printf("[%s] Src is not expected (exp_src=[%s]) [If expSrc comes within timeout forget and continue else return false...]", src.String(), expSrc.String())
 		return
 	}
 
 	pp, ok := probe.Data[replyInfo.Seq]
 	if !ok {
-		log.Println("No entry for probe")
+		log.Printf("[%s] No entry for probe", src)
 		return
 	}
 
 	if pp.Check {
-		log.Println("Already received reply")
+		log.Printf("[%s] Already received reply", src)
 		return
 	}
 
 	rtt := time.Duration(replyInfo.Time - pp.SentTime)
 	if rtt > config.MaxRTT {
-		log.Printf("RTT too high (rtt=%v, src=%s)", rtt, src)
+		log.Printf("[%s] RTT too high (rtt=[%v])", src, rtt)
 		return
 	}
 
