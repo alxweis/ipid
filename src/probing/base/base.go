@@ -146,7 +146,7 @@ var (
 )
 
 const (
-	workers = 4096
+	workers = 1
 )
 
 var (
