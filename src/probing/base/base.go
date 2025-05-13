@@ -535,7 +535,7 @@ func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByt
 	sender.Send(packet)
 	createProbePoint(probe, seq, time.Now().UnixNano())
 	*sentByteCount += len(packet)
-	//log.Printf("Request: target=%s seq=%d\n", probe.IPAddr, seq)
+	log.Printf("Request: target=[%s] seq=[%d]\n", probe.Target, seq)
 }
 
 func (pm B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount *int) {
