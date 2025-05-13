@@ -696,7 +696,7 @@ func (pm B2B) processPacket(recvCounter uint16, repliesFound chan struct{}, repl
 	}
 
 	if !src.Equal(expSrc) {
-		//log.Println("Src is not expected")
+		log.Printf("Src is not expected (src=%d exp_src=%d)", src, expSrc)
 		return
 	}
 
@@ -720,7 +720,7 @@ func (pm B2B) processPacket(recvCounter uint16, repliesFound chan struct{}, repl
 	pp.ReceivedTime = replyInfo.Time
 	pp.IpId = ipId
 	pp.Check = true
-	//log.Printf("Reply: src=%s seq=%d rtt=%v ipid=%d\n", src, seq, rtt, ipId)
+	log.Printf("Reply: src=[%s] seq=[%d] rtt=[%v] ipid=[%d]\n", src, replyInfo.Seq, rtt, ipId)
 	recvCounter++
 	if recvCounter == pm.requestCount {
 		close(repliesFound)
