@@ -104,6 +104,7 @@ type Probe struct {
 type ReplyInfo struct {
 	Packet gopacket.Packet
 	Time   int64
+	Seq    uint16
 }
 
 type Protocol struct {
@@ -111,7 +112,7 @@ type Protocol struct {
 	Filter       string
 	IpLayer      layers.IPProtocol
 	CreateLayers func(ipLayers []layers.IPv4, workerId uint16, requestCount uint16) [][]byte
-	CheckLayer   func(packet gopacket.Packet, requestCount uint16) (bool, uint16)
+	GetLayerData func(replyInfo *ReplyInfo) (uint16, uint16, bool)
 }
 
 type Sender struct {
@@ -126,26 +127,26 @@ var (
 		Filter:       "icmp[icmptype] == icmp-echoreply",
 		IpLayer:      layers.IPProtocolICMPv4,
 		CreateLayers: createICMPLayers,
-		CheckLayer:   checkICMPLayer,
+		GetLayerData: getDataICMPLayer,
 	}
 	TCP = &Protocol{
 		Id:           "tcp",
 		Filter:       "",
 		IpLayer:      layers.IPProtocolTCP,
 		CreateLayers: createTCPLayers,
-		CheckLayer:   checkTCPLayer,
+		GetLayerData: getDataTCPLayer,
 	}
 	UDP = &Protocol{
 		Id:           "udp",
 		Filter:       "",
 		IpLayer:      layers.IPProtocolUDP,
 		CreateLayers: createUDPLayers,
-		CheckLayer:   checkUDPLayer,
+		GetLayerData: getDataUDPLayer,
 	}
 )
 
 const (
-	workers = 4000
+	workers = 4096
 )
 
 var (
@@ -624,14 +625,11 @@ func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc net.IP, probe *Probe
 
 // Receive Channel
 func addToRecvChan(replyInfo *ReplyInfo) {
-	if icmp, ok := replyInfo.Packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); ok {
-		// TODO Only works for ICMP for now
-		if icmp.TypeCode == layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoReply, 0) {
-			_, workerId := decode(icmp.Seq)
-			if 0 < workerId && workerId < workers {
-				recvChans[workerId] <- replyInfo
-			}
-		}
+	seq, workerId, ok := proto.GetLayerData(replyInfo)
+
+	if ok && seq < pm.probingVars().requestCount && workerId < workers {
+		replyInfo.Seq = seq
+		recvChans[workerId] <- replyInfo
 	}
 }
 
@@ -654,19 +652,13 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 		return 0
 	}
 
-	ok, seq := proto.CheckLayer(replyInfo.Packet, pm.requestCount)
-	if !ok {
-		log.Println("Protocol layer invalid")
-		return 0
-	}
-
-	if seq != expSeq {
+	if replyInfo.Seq != expSeq {
 		// Commented because this happens too often due to double replies
-		log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, seq, expSeq)
+		log.Printf("[%s] Seq is not expected (seq=%d exp_seq=%d)", src, replyInfo.Seq, expSeq)
 		return 0
 	}
 
-	pp, ok := probe.Data[seq]
+	pp, ok := probe.Data[replyInfo.Seq]
 	if !ok {
 		log.Println("No entry for probe")
 		return 0
@@ -698,17 +690,11 @@ func (pm B2B) processPacket(recvCounter uint16, repliesFound chan struct{}, repl
 	}
 
 	if !src.Equal(expSrc) {
-		log.Println("Src is not expected")
+		//log.Println("Src is not expected")
 		return
 	}
 
-	ok, seq := proto.CheckLayer(replyInfo.Packet, pm.requestCount)
-	if !ok {
-		log.Println("Protocol layer invalid")
-		return
-	}
-
-	pp, ok := probe.Data[seq]
+	pp, ok := probe.Data[replyInfo.Seq]
 	if !ok {
 		log.Println("No entry for probe")
 		return
@@ -974,6 +960,18 @@ func buildLayers(payloadLayers ...gopacket.SerializableLayer) []byte {
 	return pBuf.Bytes()
 }
 
+// encode encodes the 4-bit number a and the 12-bit number b into a 16-bit number x.
+func encode(a, b uint16) uint16 {
+	return (a << 12) | (b & 0xFFF) // Shift a to the upper 4 bits, and set b to the lower 12 bits
+}
+
+// decode decodes the 16-bit number x back into the 4-bit number a and the 12-bit number b.
+func decode(x uint16) (uint16, uint16) {
+	a := x >> 12   // Extract the upper 4 bits of x for a
+	b := x & 0xFFF // Extract the lower 12 bits of x for b
+	return a, b
+}
+
 // IP
 func (pv ProbingVars) createRawIPLayers() []layers.IPv4 {
 	ipLayers := make([]layers.IPv4, pv.requestCount)
@@ -1033,28 +1031,28 @@ func createICMPLayers(ipLayers []layers.IPv4, workerId uint16, requestCount uint
 	return pList
 }
 
-// encode encodes the 4-bit number a and the 12-bit number b into a 16-bit number x.
-func encode(a, b uint16) uint16 {
-	return (a << 12) | (b & 0xFFF) // Shift a to the upper 4 bits, and set b to the lower 12 bits
-}
+//func checkICMPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
+//	if icmp, ok := packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); ok {
+//		if icmp.TypeCode == layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoReply, 0) {
+//			seq, _ := decode(icmp.Seq)
+//			if seq < requestCount {
+//				return true, seq
+//			}
+//		}
+//	}
+//	return false, 0
+//}
 
-// decode decodes the 16-bit number x back into the 4-bit number a and the 12-bit number b.
-func decode(x uint16) (uint16, uint16) {
-	a := x >> 12   // Extract the upper 4 bits of x for a
-	b := x & 0xFFF // Extract the lower 12 bits of x for b
-	return a, b
-}
-
-func checkICMPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
-	if icmp, ok := packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); ok {
+func getDataICMPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
+	if icmp, ok := replyInfo.Packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); ok {
 		if icmp.TypeCode == layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoReply, 0) {
-			seq, _ := decode(icmp.Seq)
-			if seq < requestCount {
-				return true, seq
-			}
+			seq, workerId := decode(icmp.Seq)
+			return seq, workerId, true
 		}
+	} else {
+		log.Println("ICMP layer not found")
 	}
-	return false, 0
+	return 0, 0, false
 }
 
 // TCP
@@ -1082,18 +1080,28 @@ func createTCPLayers(ipLayers []layers.IPv4, workerId uint16, requestCount uint1
 	return pList
 }
 
-func checkTCPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
-	if tcp, ok := packet.Layer(layers.LayerTypeTCP).(*layers.TCP); ok {
-		seq, _ := decode(uint16(tcp.Ack - 1))
-		if seq < requestCount {
-			return true, seq
-		} else {
-			log.Println("TCP Ack is invalid")
-		}
+//func checkTCPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
+//	if tcp, ok := packet.Layer(layers.LayerTypeTCP).(*layers.TCP); ok {
+//		seq, _ := decode(uint16(tcp.Ack - 1))
+//		if seq < requestCount {
+//			return true, seq
+//		} else {
+//			log.Println("TCP Ack is invalid")
+//		}
+//	} else {
+//		log.Println("TCP layer not found")
+//	}
+//	return false, 0
+//}
+
+func getDataTCPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
+	if tcp, ok := replyInfo.Packet.Layer(layers.LayerTypeTCP).(*layers.TCP); ok {
+		seq, workerId := decode(uint16(tcp.Ack - 1))
+		return seq, workerId, true
 	} else {
 		log.Println("TCP layer not found")
 	}
-	return false, 0
+	return 0, 0, false
 }
 
 // UDP
@@ -1131,17 +1139,39 @@ func createUDPLayers(ipLayers []layers.IPv4, workerId uint16, requestCount uint1
 	return pList
 }
 
-func checkUDPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
-	if _, udpOk := packet.Layer(layers.LayerTypeUDP).(*layers.UDP); udpOk {
-		if dns, dnsOk := packet.Layer(layers.LayerTypeDNS).(*layers.DNS); dnsOk {
-			if _, icmpOk := packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); !icmpOk {
+//func checkUDPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
+//	if _, udpOk := packet.Layer(layers.LayerTypeUDP).(*layers.UDP); udpOk {
+//		if dns, dnsOk := packet.Layer(layers.LayerTypeDNS).(*layers.DNS); dnsOk {
+//			if _, icmpOk := packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); !icmpOk {
+//				if dns.QR {
+//					seq, _ := decode(dns.ID)
+//					if seq < requestCount {
+//						return true, seq
+//					} else {
+//						log.Println("DNS ID is invalid")
+//					}
+//				} else {
+//					log.Println("DNS QR is invalid")
+//				}
+//			} else {
+//				log.Println("ICMP Layer found")
+//			}
+//		} else {
+//			log.Println("DNS Layer not found")
+//		}
+//	} else {
+//		log.Println("UDP Layer not found")
+//	}
+//	return false, 0
+//}
+
+func getDataUDPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
+	if _, udpOk := replyInfo.Packet.Layer(layers.LayerTypeUDP).(*layers.UDP); udpOk {
+		if dns, dnsOk := replyInfo.Packet.Layer(layers.LayerTypeDNS).(*layers.DNS); dnsOk {
+			if _, icmpOk := replyInfo.Packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); !icmpOk {
 				if dns.QR {
-					seq, _ := decode(dns.ID)
-					if seq < requestCount {
-						return true, seq
-					} else {
-						log.Println("DNS ID is invalid")
-					}
+					seq, workerId := decode(dns.ID)
+					return seq, workerId, true
 				} else {
 					log.Println("DNS QR is invalid")
 				}
@@ -1154,7 +1184,7 @@ func checkUDPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
 	} else {
 		log.Println("UDP Layer not found")
 	}
-	return false, 0
+	return 0, 0, false
 }
 
 // Record Traffic
