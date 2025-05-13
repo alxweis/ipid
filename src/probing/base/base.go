@@ -707,7 +707,7 @@ func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, rep
 	}
 
 	if pp.Check {
-		log.Printf("[%s] Already received reply", src)
+		log.Printf("[%s] Already received reply for request %d (other_received_reply_time=[%v])", src, replyInfo.Seq, pp.ReceivedTime)
 		return
 	}
 
