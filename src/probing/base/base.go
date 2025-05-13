@@ -369,7 +369,7 @@ func (pm SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP
 	recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
 	sentByteCount := 0
-	startTime := time.Now()
+	//startTime := time.Now()
 
 	for {
 		// Probe Target
