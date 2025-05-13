@@ -33,3 +33,7 @@ def analyze_response_rate(targets_file: str, ts_name: str):
                               f'{"ip" if ts_name == config.ts_ip_col_name else "os"}_response_rate.png')
     plt.savefig(image_file)
     print(f"Plot has been saved as: {image_file}")
+
+
+def start(result_dir: str):
+    pass

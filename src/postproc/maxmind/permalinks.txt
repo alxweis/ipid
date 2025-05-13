@@ -1,0 +1,2 @@
+GeoLite2-ASN.mmdb       https://download.maxmind.com/geoip/databases/GeoLite2-ASN/download?suffix=tar.gz
+GeoLite2-Country.mmdb   https://download.maxmind.com/geoip/databases/GeoLite2-Country/download?suffix=tar.gz

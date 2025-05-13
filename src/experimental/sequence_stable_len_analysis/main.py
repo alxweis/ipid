@@ -1,18 +1,16 @@
-import math
 import os.path
-import random
+import os.path
 from collections import OrderedDict
-from enum import Enum
 
 import numpy as np
-import pandas as pd
 import polars as pl
 import seaborn as sns
 from matplotlib import pyplot as plt
-from scipy.stats import chisquare
 
 from core import EXP_SEQUENCE_STABLE_LEN_ANALYSIS
+from core.classifier import IPIDSequence, Pattern, get_pattern, pattern_generation_map
 from core.utils import config
+
 
 # We have a given random sequence: (A-B-C-D-E-F-...)
 
@@ -38,213 +36,6 @@ from core.utils import config
 # During probing, calculate the pattern after each new number in the sequence is obtained. Stop collecting further
 # numbers once the current sequence index exceeds the MinStableCorrectCount for the identified pattern
 # Define threshold: Avg MinStableCorrectCount + 2 * Std MinStableCorrectCount
-
-MAX_IPID = 65535
-MIN_STEPS_BEFORE_WRAPAROUND = 3
-MAX_INC = math.ceil((MAX_IPID + 1) / MIN_STEPS_BEFORE_WRAPAROUND) - 1
-
-
-# region Class Recognition
-class IPIDSubsequence:
-    def __init__(self, sequence: np.ndarray):
-        self.sequence: np.ndarray = sequence
-        self.increments: np.ndarray = np.diff(self.sequence) % (MAX_IPID + 1)
-
-    def is_increasing(self) -> bool:
-        return np.all((1 <= self.increments) & (self.increments <= MAX_INC))
-
-
-class IPIDSequence:
-    def __init__(self, sequence: list[int] | tuple[int, ...] | np.ndarray):
-        arr = np.array(sequence, dtype=int)
-        self.full = IPIDSubsequence(arr)
-        self.even = IPIDSubsequence(arr[0::2])
-        self.odd = IPIDSubsequence(arr[1::2])
-
-    def __len__(self):
-        return len(self.full.sequence)
-
-
-class Pattern(Enum):
-    REFLECTION = "Reflection"
-    CONSTANT = "Constant"
-    GLOBAL = "Global"
-    LOCAL_EQ1 = "Local (=1)"  # per-destination/ per-connection counter
-    LOCAL_GE1 = "Local (≥1)"  # per-bucket counter
-    MULTI_GLOBAL = "Multi Global"  # per-cpu counter when >1 cpu
-    RANDOM = "Random"
-    FALLBACK = "Fallback"
-    NONE = "None"
-
-
-def nrm_entropy(values: np.ndarray) -> float:
-    unique_values, counts = np.unique(values, return_counts=True)
-    probabilities = counts / counts.sum()
-    entropy = -np.sum(probabilities * np.log2(probabilities))
-    max_entropy = np.log2(len(unique_values))  # Max Entropy based on unique values
-    return entropy / max_entropy
-
-
-def p_value(values: np.ndarray) -> float:
-    intervals = int(math.ceil(math.sqrt(len(values))))
-    interval_edges = np.linspace(0, MAX_IPID, intervals + 1)
-    observed_frequencies, _ = np.histogram(values, bins=interval_edges)
-    total_numbers = len(values)
-    expected_frequencies = np.full(intervals, total_numbers / intervals)
-
-    chi2_stat, p = chisquare(f_obs=observed_frequencies, f_exp=expected_frequencies)
-    return p
-
-
-def is_uniform(values: np.ndarray, alpha: float) -> bool:
-    return p_value(values) > alpha
-
-
-def is_constant(seq: IPIDSequence) -> bool:
-    return np.all(seq.full.increments == 0)
-
-
-def is_local(seq: IPIDSequence) -> bool:
-    return seq.even.is_increasing() and seq.odd.is_increasing()
-
-
-def is_local_eq1(seq: IPIDSequence) -> bool:
-    return (is_local(seq)
-            and np.all(seq.even.increments == 1)
-            and np.all(seq.odd.increments == 1))
-
-
-def is_local_ge1(seq: IPIDSequence) -> bool:
-    return (is_local(seq)
-            and np.all(seq.even.increments >= 1)
-            and np.all(seq.odd.increments >= 1))
-
-
-def is_global(seq: IPIDSequence) -> bool:
-    return seq.full.is_increasing()
-
-
-def is_random(seq: IPIDSequence) -> bool:
-    alpha = 0.01
-    return is_uniform(seq.full.increments, alpha) and is_uniform(seq.even.increments, alpha) and is_uniform(
-        seq.odd.increments,
-        alpha)
-
-
-def is_anomalous(seq: IPIDSequence) -> bool:
-    return not has_pattern(seq)
-
-
-def has_pattern(seq: IPIDSequence) -> bool:
-    return (
-            is_constant(seq)
-            or is_local_eq1(seq)
-            or is_local_ge1(seq)
-            or is_global(seq)
-            or is_random(seq)
-    )
-
-
-def get_pattern(seq: IPIDSequence, get_all=False) -> list[Pattern] | Pattern:
-    result = []
-    if is_constant(seq):
-        result.append(Pattern.CONSTANT)
-    if is_global(seq):
-        result.append(Pattern.GLOBAL)
-    if is_local_eq1(seq):
-        result.append(Pattern.LOCAL_EQ1)
-    if is_local_ge1(seq):
-        result.append(Pattern.LOCAL_GE1)
-    if is_random(seq):
-        result.append(Pattern.RANDOM)
-    if is_anomalous(seq):
-        result.append(Pattern.FALLBACK)
-    return result if get_all else result[0]
-
-
-# endregion
-
-
-# region Sequence Generation
-def random_ipid() -> int:
-    return random.randint(0, MAX_IPID)
-
-
-def clamp(value: int, min_value: int, max_value: int) -> int:
-    return max(min_value, min(value, max_value))
-
-
-def increment_ipid(ipid: int, inc: int) -> int:
-    return (ipid + inc) % (MAX_IPID + 1)
-
-
-def constant_ipid_sequence(length: int) -> IPIDSequence:
-    seq = []
-    s = random_ipid()
-    for i in range(length):
-        seq.append(s)
-    return IPIDSequence(seq)
-
-
-def local_eq1_ipid_sequence(length: int) -> IPIDSequence:
-    seq = []
-    a = random_ipid()
-    b = random_ipid()
-    for i in range(length):
-        if i % 2 == 0:
-            a = increment_ipid(a, 1)
-            seq.append(a)
-        else:
-            b = increment_ipid(b, 1)
-            seq.append(b)
-    return IPIDSequence(seq)
-
-
-def local_ge1_ipid_sequence(length: int) -> IPIDSequence:
-    seq = []
-    a = random_ipid()
-    b = random_ipid()
-    max_inc = 2000  # 1 tick = 1ms => Max RTT of 2000ms = 2000 ticks
-    for i in range(length):
-        if i % 2 == 0:
-            a = increment_ipid(a, random.randint(1, max_inc))
-            seq.append(a)
-        else:
-            b = increment_ipid(b, random.randint(1, max_inc))
-            seq.append(b)
-    return IPIDSequence(seq)
-
-
-def global_ipid_sequence(length: int) -> IPIDSequence:
-    seq = []
-    s = random_ipid()
-    avg_inc = random.randint(1, MAX_INC)  # correlated with avg pps of device
-    dev = max(int(0.5 * avg_inc), 1)  # correlated with deviation of pps of device
-
-    for i in range(length):
-        s = increment_ipid(s, clamp(avg_inc + random.randint(-dev, dev), 1, MAX_INC))
-        seq.append(s)
-    return IPIDSequence(seq)
-
-
-def random_ipid_sequence(length: int) -> IPIDSequence:
-    seq = []
-    for _ in range(length):
-        seq.append(random_ipid())
-    return IPIDSequence(seq)
-
-
-pattern_generation_map = {
-    Pattern.CONSTANT: constant_ipid_sequence,
-    Pattern.GLOBAL: global_ipid_sequence,
-    Pattern.LOCAL_EQ1: local_eq1_ipid_sequence,
-    Pattern.LOCAL_GE1: local_ge1_ipid_sequence,
-    Pattern.RANDOM: random_ipid_sequence
-}
-
-
-# endregion
-
 
 def calc_min_stable_len(seq: IPIDSequence) -> (Pattern, int):
     min_stable_len = 0
