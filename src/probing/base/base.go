@@ -1197,16 +1197,13 @@ func getDataUDPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
 
 // Record Traffic
 func startRecording() {
-	interfaces := []Iface{config.IfaceA, config.IfaceB}
-	for _, iface := range interfaces {
-		outputFile := filepath.Join(outputDir, iface.Name+".pcap")
-		cmd := exec.Command("tcpdump", "-i", iface.Name, "-w", outputFile, "-U", "-p")
-		err := cmd.Start()
-		if err != nil {
-			panic(err)
-		}
-		recordingProcesses = append(recordingProcesses, cmd)
+	outputFile := filepath.Join(outputDir, "recording.pcap")
+	cmd := exec.Command("tcpdump", "-i", "any", "-w", outputFile, "-U", "-p")
+	err := cmd.Start()
+	if err != nil {
+		panic(err)
 	}
+	recordingProcesses = append(recordingProcesses, cmd)
 }
 
 func stopRecording() {
