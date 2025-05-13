@@ -535,7 +535,7 @@ func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByt
 	sender.Send(packet)
 	createProbePoint(probe, seq, time.Now().UnixNano())
 	*sentByteCount += len(packet)
-	log.Printf("Request: target=[%s] seq=[%d]\n", probe.Target, seq)
+	//log.Printf("Request: dst=[%s] seq=[%d]\n", probe.Target, seq)
 }
 
 func (pm B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount *int) {
@@ -676,7 +676,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 	}
 
 	rtt := time.Duration(replyInfo.Time - pp.SentTime)
-	if rtt >= config.MaxRTT {
+	if rtt > config.MaxRTT {
 		log.Printf("RTT too high (rtt=%v, src=%s)", rtt, src)
 		return 0
 	}
@@ -684,7 +684,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 	pp.ReceivedTime = replyInfo.Time
 	pp.IpId = ipId
 	pp.Check = true
-	//log.Printf("Reply: src=%s seq=%d rtt=%v ip_id=%d\n", src, seq, rtt, ipId)
+	//log.Printf("Reply: src=[%s] seq=[%d] rtt=[%v] ip_id=[%d]\n", src, replyInfo.Seq, rtt, ipId)
 	return 1
 }
 
@@ -712,7 +712,7 @@ func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, rep
 	}
 
 	rtt := time.Duration(replyInfo.Time - pp.SentTime)
-	if rtt >= config.MaxRTT {
+	if rtt > config.MaxRTT {
 		log.Printf("RTT too high (rtt=%v, src=%s)", rtt, src)
 		return
 	}
@@ -720,7 +720,7 @@ func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, rep
 	pp.ReceivedTime = replyInfo.Time
 	pp.IpId = ipId
 	pp.Check = true
-	log.Printf("Reply: src=[%s] seq=[%d] rtt=[%v] ipid=[%d]\n", src, replyInfo.Seq, rtt, ipId)
+	log.Printf("Reply: src=[%s] seq=[%d] rtt=[%v] ip_id=[%d]\n", src, replyInfo.Seq, rtt, ipId)
 	*recvCounter++
 	if *recvCounter == pm.requestCount {
 		close(repliesFound)
@@ -1116,10 +1116,12 @@ func createUDPLayers(ipLayers []layers.IPv4, workerId uint16, requestCount uint1
 
 	for seq := uint16(0); seq < requestCount; seq++ {
 		ipLayer := ipLayers[seq]
+
 		pLayer := layers.UDP{
 			SrcPort: layers.UDPPort(seq + config.UdpSrcPortOffset),
 			DstPort: config.UdpDstPort,
 		}
+
 		err := pLayer.SetNetworkLayerForChecksum(&ipLayer)
 		if err != nil {
 			panic(err)
