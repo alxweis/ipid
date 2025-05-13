@@ -684,7 +684,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 	pp.ReceivedTime = replyInfo.Time
 	pp.IpId = ipId
 	pp.Check = true
-	//log.Printf("Reply: src=[%s] seq=[%d] rtt=[%v] ip_id=[%d]\n", src, replyInfo.Seq, rtt, ipId)
+	log.Printf("Reply: src=[%s] seq=[%d] rtt=[%v] ip_id=[%d]\n", src, replyInfo.Seq, rtt, ipId)
 	return 1
 }
 
