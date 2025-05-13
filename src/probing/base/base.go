@@ -636,6 +636,8 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 	if ok && seq < pm.probingVars().requestCount && workerId < workers {
 		replyInfo.Seq = seq
 		recvChans[workerId] <- replyInfo
+	} else {
+		log.Printf("No ok! seq=[%d] worker_id=[%d]", seq, workerId)
 	}
 }
 
