@@ -781,49 +781,9 @@ func saveProbes() {
 	defer saveWg.Done()
 
 	filePath := filepath.Join(outputDir, "probing.csv.zst")
-	var file *os.File
-	var err error
-	var zw *zstd.Encoder
-	var writer *bufio.Writer
 
-	// Create the file and open it in write mode (not append)
-	file, err = os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		panic(err)
-	}
-
-	// Create a CSV writer
-	zw, err = zstd.NewWriter(file)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() {
-		err = zw.Close()
-		if err != nil {
-			panic(err)
-		}
-	}()
-
-	// Write CSV header
-	writer = bufio.NewWriter(zw)
-	headerRecord := []string{config.IpColName, config.IpIdSeqColName, config.SentTsColName, config.RecvTsColName}
-	_, err = writer.WriteString(joinWithComma(headerRecord) + "\n")
-	if err != nil {
-		panic(err)
-	}
-	err = writer.Flush()
-	if err != nil {
-		panic(err)
-	}
-
-	// Close the file after writing header
-	err = file.Close()
-	if err != nil {
-		panic(err)
-	}
-
-	// Reopen the file in append mode to write probe data
-	file, err = os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
+	// Create output file
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		panic(err)
 	}
@@ -834,9 +794,9 @@ func saveProbes() {
 		}
 	}()
 
-	zw, err = zstd.NewWriter(file)
+	zw, err := zstd.NewWriter(file)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	defer func() {
 		err = zw.Close()
@@ -845,13 +805,19 @@ func saveProbes() {
 		}
 	}()
 
-	writer = bufio.NewWriter(zw)
+	writer := bufio.NewWriter(zw)
 	defer func() {
 		err = writer.Flush()
 		if err != nil {
 			panic(err)
 		}
 	}()
+
+	headerRecord := []string{config.IpColName, config.IpIdSeqColName, config.SentTsColName, config.RecvTsColName}
+	_, err = writer.WriteString(joinWithComma(headerRecord) + "\n")
+	if err != nil {
+		panic(err)
+	}
 
 	length := int(pm.probingVars().requestCount)
 	ipIds := make([]string, length)
