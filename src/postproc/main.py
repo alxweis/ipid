@@ -14,10 +14,6 @@ def parse_tuple_column(col: pl.Expr) -> Expr:
     return col.str.replace_all(r"[()]", "").str.split(",").list.eval(pl.element().cast(pl.Int64))
 
 
-def compute_rtt(sent: pl.Expr, recv: pl.Expr) -> pl.Expr:
-    return (recv - sent) / 1e6
-
-
 def detect_pattern(ip_ids: list[int]) -> str:
     ip_id_sequence = IPIDSequence(ip_ids)
     detected_pattern: Pattern = get_pattern(ip_id_sequence)
@@ -44,17 +40,17 @@ def start(result_dir: str):
         pl.scan_csv(probing_csv, ignore_errors=True)
         .with_columns([
             parse_tuple_column(pl.col("IP_ID_SEQUENCE")).alias("ip_ids"),
-            parse_tuple_column(pl.col("SEND_TS_SEQUENCE")).alias("send_ts"),
+            parse_tuple_column(pl.col("SENT_TS_SEQUENCE")).alias("send_ts"),
             parse_tuple_column(pl.col("RECEIVED_TS_SEQUENCE")).alias("recv_ts"),
         ])
         .with_columns([
-            compute_rtt(pl.col("send_ts"), pl.col("recv_ts")).alias("rtts")
+            (pl.col("recv_ts") - pl.col("send_ts")).alias("rtts"),
+            pl.col("ip_ids").map_elements(detect_pattern, return_dtype=pl.Utf8).alias("IP_ID_PATTERN"),
+            pl.col("IP").map_elements(lambda ip: get_asn(asn_reader, ip), return_dtype=pl.Utf8).alias("ASN")
         ])
         .with_columns([
             pl.col("rtts").list.mean().alias("AVG_RTT"),
             pl.col("rtts").list.std().alias("STD_RTT"),
-            pl.col("ip_ids").map_elements(detect_pattern, return_dtype=pl.Utf8).alias("IP_ID_PATTERN"),
-            pl.col("IP").map_elements(lambda ip: get_asn(asn_reader, ip), return_dtype=pl.Utf8).alias("ASN")
         ])
         .select(["IP", "IP_ID_PATTERN", "AVG_RTT", "STD_RTT", "ASN"])
     )

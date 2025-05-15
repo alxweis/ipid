@@ -9,7 +9,7 @@ def run_zmap_scan(output_file: str, max_ips: int):
         "zmap",
         "-o", output_file,
         "-N", str(max_ips),
-        "-B", config.send_bandwidth,
+        "-B", config.zmap_bandwidth,
         "-M", "icmp_echoscan",
         "--output-fields", zmap_output_fields,
         "--output-filter", "classification=echoreply && repeat=0"

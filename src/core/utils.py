@@ -31,11 +31,11 @@ class Config:
     iface_a: Interface
     iface_b: Interface
     max_rtt: str
-    send_bandwidth: str
     default_send_ip_ids: List[int]
     detect_reflected_ip_ids: bool
     reflection_send_ip_ids: List[int]
-    is_linux_low_ram: bool
+    zmap_bandwidth: str
+    use_linux_disk: bool
     ip_col_name: str
     ts_ip_col_name: str
     us_ip_col_name: str
@@ -44,7 +44,6 @@ class Config:
     ip_id_seq_col_name: str
     send_ts_seq_col_name: str
     received_ts_seq_col_name: str
-    check_seq_col_name: str
     ip_id_pattern_col_name: str
     avg_rtt_col_name: str
     std_rtt_col_name: str

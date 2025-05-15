@@ -19,7 +19,7 @@ def run_zmap_scan(output_file: str, port: str, max_ips: int):
         "-p", port,
         "-o", output_file,
         "-N", str(max_ips),
-        "-B", config.send_bandwidth,
+        "-B", config.zmap_bandwidth,
         "-M", "udp",
         "--probe-args", f"file:{service_bin}",
         "--output-fields", zmap_output_fields,

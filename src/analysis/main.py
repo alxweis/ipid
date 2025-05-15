@@ -81,7 +81,7 @@ def plot_time_between_requests(probing_csv: str, result_dir: str):
     for row in send_ts.iter_rows():
         ts = row[0]
         if ts and len(ts) > 1:
-            d = np.diff(ts) / 1e6
+            d = np.diff(ts) / 1e3 # Microseconds to milliseconds
             diffs.append(d)
 
     diffs = np.concatenate(diffs)

@@ -19,14 +19,14 @@ def setup(ip_scan_file: str) -> (str, str):
             raise FileNotFoundError(f"Error: File {ip_scan_file} does not exist")
 
         lf = None
-        if config.is_linux_low_ram:
+        if config.use_linux_disk:
             print("Decompressing file...")
             ip_scan_file = decompress_csv(ip_scan_file)
         else:
             lf = pl.scan_csv(ip_scan_file)
 
         print("Checking if OS scan was already made...")
-        if config.is_linux_low_ram:
+        if config.use_linux_disk:
             header_line = get_csv_header_linux_low_ram(ip_scan_file)
             columns = header_line.split(',')
         else:
@@ -38,7 +38,7 @@ def setup(ip_scan_file: str) -> (str, str):
 
         print("Creating file with IP addresses for OS scanning...")
         ip_addr_file = f"{ip_scan_file}.ip_addr.txt"
-        if config.is_linux_low_ram:
+        if config.use_linux_disk:
             extract_column_no_header(input_csv=ip_scan_file, column_name=config.ip_col_name, output_txt=ip_addr_file)
             ip_addr_count = count_rows_linux_low_ram(ip_addr_file)
         else:
@@ -61,7 +61,7 @@ def merge_ip_os_scan_data(ip_scan_file: str, os_scan_file: str) -> (bool, str):
     try:
         print(f"Merging: {os_scan_file} => {ip_scan_file}")  # TODO Does not work
 
-        if config.is_linux_low_ram:
+        if config.use_linux_disk:
             merged_scan_file = join_csv_linux_low_ram(original_csv=ip_scan_file, join_csv=os_scan_file,
                                                       join_column_name=config.ip_col_name)
         else:

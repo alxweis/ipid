@@ -11,6 +11,7 @@ import (
 	"github.com/google/gopacket/pcap"
 	"github.com/google/gopacket/pcapgo"
 	"github.com/ilyakaznacheev/cleanenv"
+	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/ipv4"
 	"log"
 	"math/rand"
@@ -33,7 +34,7 @@ import (
 import _ "net/http/pprof"
 
 type ProbingMode interface {
-	probingVars() ProbingVars
+	probingVars() *ProbingVars
 	probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP)
 }
 
@@ -44,17 +45,17 @@ type ProbingVars struct {
 }
 
 type B2B struct {
-	ProbingVars
+	*ProbingVars
 	requestInterval time.Duration
 }
 
-func (pm B2B) probingVars() ProbingVars { return pm.ProbingVars }
+func (pm *B2B) probingVars() *ProbingVars { return pm.ProbingVars }
 
 type SEQ struct {
-	ProbingVars
+	*ProbingVars
 }
 
-func (pm SEQ) probingVars() ProbingVars { return pm.ProbingVars }
+func (pm *SEQ) probingVars() *ProbingVars { return pm.ProbingVars }
 
 type Config struct {
 	Targets              string         `yaml:"targets"`
@@ -73,15 +74,13 @@ type Config struct {
 	IfaceA               Iface          `yaml:"iface_a"`
 	IfaceB               Iface          `yaml:"iface_b"`
 	MaxRTT               time.Duration  `yaml:"max_rtt"`
-	SendBandwidth        string         `yaml:"send_bandwidth"`
 	DefaultSendIpIds     []uint16       `yaml:"default_send_ip_ids"`
 	DetectReflectedIpIds bool           `yaml:"detect_reflected_ip_ids"`
 	ReflectionSendIpIds  []uint16       `yaml:"reflection_send_ip_ids"`
 	IpColName            string         `yaml:"ip_col_name"`
 	IpIdSeqColName       string         `yaml:"ip_id_seq_col_name"`
-	SendTsColName        string         `yaml:"send_ts_seq_col_name"`
+	SentTsColName        string         `yaml:"sent_ts_seq_col_name"`
 	RecvTsColName        string         `yaml:"received_ts_seq_col_name"`
-	CheckSeqColName      string         `yaml:"check_seq_col_name"`
 }
 
 type Iface struct {
@@ -179,6 +178,7 @@ var (
 func Main(mode string) {
 	setupSignalHandler()
 
+	// Start pprof server
 	go func() {
 		err := http.ListenAndServe("localhost:6060", nil)
 		if err != nil {
@@ -186,7 +186,8 @@ func Main(mode string) {
 		}
 	}()
 
-	runtime.GOMAXPROCS(runtime.NumCPU()) // Utilize all available CPUs
+	// Utilize all available CPUs
+	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	// Load configuration
 	loadConfig()
@@ -195,7 +196,7 @@ func Main(mode string) {
 	loadProbingMode(mode)
 
 	basePath := getBasePath()
-	outputDir = pm.probingVars().createOutputDir(basePath)
+	pm.probingVars().createOutputDir(basePath)
 
 	// Load targets file
 	targetsFile := loadTargets(config.Targets, basePath)
@@ -232,32 +233,43 @@ func Main(mode string) {
 	if err != nil {
 		panic(err)
 	}
-	defer func(f *os.File) {
-		err = f.Close()
-		if err != nil {
+	defer func() {
+		if err = f.Close(); err != nil {
 			panic(err)
 		}
-	}(f)
+	}()
 
-	// Create a scanner and skip the header
-	scanner := bufio.NewScanner(f)
-	if scanner.Scan() { // Skip header line
+	decoder, err := zstd.NewReader(f)
+	if err != nil {
+		panic(err)
 	}
+	defer decoder.Close()
+
+	scanner := bufio.NewScanner(decoder)
 
 	// Count total targets
-	for scanner.Scan() {
-		if scanner.Text() != "" {
-			totalTargetCount++
-		}
-	}
+	countTotalTargets(scanner)
 
-	// Reset scanner to read the file again
+	// Reset file pointer to first line
 	_, err = f.Seek(0, 0)
 	if err != nil {
 		panic(err)
 	}
-	scanner = bufio.NewScanner(f)
-	if scanner.Scan() { // Skip header line again
+	err = decoder.Reset(f)
+	if err != nil {
+		panic(err)
+	}
+
+	// Skip header line and find IP column index
+	ipColIndex := -1
+	if scanner.Scan() {
+		header := strings.Split(scanner.Text(), ",")
+		for i, col := range header {
+			if strings.TrimSpace(col) == config.IpColName {
+				ipColIndex = i
+				break
+			}
+		}
 	}
 
 	// Start initial workers
@@ -271,6 +283,7 @@ func Main(mode string) {
 	go logStatistics()
 
 	// Send targets to channel
+	stopReadingTargetsFile := false
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
@@ -281,7 +294,7 @@ func Main(mode string) {
 			continue
 		}
 
-		target := net.ParseIP(fields[0]).To4() // TODO: Get index of "IP" column
+		target := net.ParseIP(fields[ipColIndex]).To4()
 
 		if target == nil {
 			continue
@@ -290,12 +303,28 @@ func Main(mode string) {
 		select {
 		case targetCh <- target: // Send target to channel
 		case <-stopSignal:
-			cleanup()
-			return
+			stopReadingTargetsFile = true
+		}
+
+		if stopReadingTargetsFile {
+			break
 		}
 	}
 
 	cleanup()
+}
+
+func countTotalTargets(scanner *bufio.Scanner) {
+	if scanner.Scan() {
+		// Skip header line
+	}
+
+	totalTargetCount = 0
+	for scanner.Scan() {
+		if scanner.Text() != "" {
+			totalTargetCount++
+		}
+	}
 }
 
 func cleanup() {
@@ -362,7 +391,7 @@ func worker(ident uint16) {
 }
 
 // Probing
-func (pm SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP) {
+func (pm *SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP) {
 	packets := pm.buildPackets(target, workerId)
 
 	probe := createProbe(target)
@@ -403,7 +432,7 @@ func (pm SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP
 	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
 
-func (pm B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP) {
+func (pm *B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP) {
 	packets := pm.buildPackets(target, workerId)
 
 	probe := createProbe(target)
@@ -533,12 +562,12 @@ func getSender(seq uint16) (*Sender, net.IP) {
 
 func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByteCount *int) {
 	sender.Send(packet)
-	createProbePoint(probe, seq, time.Now().UnixNano())
+	createProbePoint(probe, seq, time.Now().UnixMicro())
 	*sentByteCount += len(packet)
 	//log.Printf("Request: dst=[%s] seq=[%d]\n", probe.Target, seq)
 }
 
-func (pm B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount *int) {
+func (pm *B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount *int) {
 	for seq := uint16(0); seq < pm.requestCount; seq++ {
 		if seq > 0 {
 			time.Sleep(pm.requestInterval)
@@ -583,7 +612,7 @@ func setupReceiver(iface Iface) {
 		case packet := <-packetSource:
 			go addToRecvChan(&ReplyInfo{
 				Packet: packet,
-				Time:   time.Now().UnixNano(),
+				Time:   time.Now().UnixMicro(),
 			})
 		case <-stopReceiving:
 			return
@@ -591,7 +620,7 @@ func setupReceiver(iface Iface) {
 	}
 }
 
-func (pm SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) bool {
+func (pm *SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) bool {
 	timeout := time.After(config.MaxRTT)
 	for {
 		select {
@@ -610,7 +639,7 @@ func (pm SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc net.IP, expDst net.IP
 	}
 }
 
-func (pm B2B) receivePackets(recvCh chan *ReplyInfo, expSrc net.IP, probe *Probe) (bool, uint16) {
+func (pm *B2B) receivePackets(recvCh chan *ReplyInfo, expSrc net.IP, probe *Probe) (bool, uint16) {
 	recvCounter := uint16(0)
 	repliesFound := make(chan struct{})
 	timeout := time.After(config.MaxRTT)
@@ -637,7 +666,7 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 }
 
 // Process
-func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) int {
+func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) int {
 	ok, src, dst, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
@@ -685,7 +714,7 @@ func (pm SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, 
 	return 1
 }
 
-func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, replyInfo *ReplyInfo, expSrc net.IP, probe *Probe) {
+func (pm *B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, replyInfo *ReplyInfo, expSrc net.IP, probe *Probe) {
 	ok, src, _, ipId := checkIPLayer(replyInfo.Packet)
 	if !ok {
 		log.Println("IPv4 layer invalid")
@@ -725,13 +754,12 @@ func (pm B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, rep
 }
 
 // Output
-func (pv ProbingVars) createOutputDir(basePath string) string {
+func (pv *ProbingVars) createOutputDir(basePath string) {
 	timeStamp := time.Now().Format("2006-01-02_15-04-05")
-	outputDir := filepath.Join("results", pv.dirName, basePath, timeStamp) // TODO Use constants for "results" or "targets"
+	outputDir = filepath.Join("results", pv.dirName, basePath, timeStamp)
 	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
 		panic(err)
 	}
-	return outputDir
 }
 
 func saveProbes() {
@@ -751,7 +779,7 @@ func saveProbes() {
 	headerWriter := csv.NewWriter(file)
 
 	// Write CSV header
-	err = headerWriter.Write([]string{config.IpColName, config.IpIdSeqColName, config.SendTsColName, config.RecvTsColName, config.CheckSeqColName})
+	err = headerWriter.Write([]string{config.IpColName, config.IpIdSeqColName, config.SentTsColName, config.RecvTsColName})
 	if err != nil {
 		panic(err)
 	}
@@ -787,20 +815,17 @@ func saveProbes() {
 		var ipIds []string
 		var sentTimes []string
 		var receivedTimes []string
-		var checks []string
 
 		for _, pp := range probe.Data {
 			ipIds = append(ipIds, strconv.Itoa(int(pp.IpId)))
 			sentTimes = append(sentTimes, strconv.FormatInt(pp.SentTime, 10))
 			receivedTimes = append(receivedTimes, strconv.FormatInt(pp.ReceivedTime, 10))
-			checks = append(checks, formatBool(pp.Check))
 		}
 
 		// Format record for CSV
 		record := append(ipData, fmt.Sprintf("(%s)", joinWithComma(ipIds)))
 		record = append(record, fmt.Sprintf("(%s)", joinWithComma(sentTimes)))
 		record = append(record, fmt.Sprintf("(%s)", joinWithComma(receivedTimes)))
-		record = append(record, fmt.Sprintf("(%s)", joinWithComma(checks)))
 
 		// Write the record to the CSV file
 		if writeErr := dataWriter.Write(record); writeErr != nil {
@@ -876,8 +901,6 @@ func getBasePath() string {
 }
 
 func loadTargets(targetsBasePath string, basePath string) string {
-	// TODO zstd -d (...)/targets.csv.zst
-
 	if targetsBasePath == "latest" {
 		dir := filepath.Join("targets", basePath)
 		allDirs, err := getSortedDirectories(dir)
@@ -892,12 +915,12 @@ func loadTargets(targetsBasePath string, basePath string) string {
 		targetsBasePath = filepath.Join(basePath, latestDir)
 	}
 
-	sourceTargetsPath := filepath.Join(targetsBasePath, "targets.csv") // TODO Make targets.csv as constant
+	sourceTargetsPath := filepath.Join(targetsBasePath, "targets.csv.zst")
 	absSourceTargetsPath, absErr := filepath.Abs(sourceTargetsPath)
 	if absErr != nil {
 		panic(absErr)
 	}
-	linkTargetsPath := filepath.Join(outputDir, "targets.csv")
+	linkTargetsPath := filepath.Join(outputDir, "targets.csv.zst")
 	linkErr := os.Symlink(absSourceTargetsPath, linkTargetsPath)
 	if linkErr != nil {
 		panic(linkErr)
@@ -909,7 +932,7 @@ func loadTargets(targetsBasePath string, basePath string) string {
 func loadProtocol(protocol string) *Protocol {
 	switch protocol {
 	case "icmp":
-		return ICMP // TODO Make Classes - "icmp", "tcp", "udp" constants
+		return ICMP
 	case "tcp":
 		return TCP
 	case "udp":
@@ -921,8 +944,8 @@ func loadProtocol(protocol string) *Protocol {
 
 func loadProbingMode(mode string) {
 	if mode == "b2b" {
-		pm = B2B{
-			ProbingVars: ProbingVars{
+		pm = &B2B{
+			ProbingVars: &ProbingVars{
 				requestCount: config.B2BReqCount,
 				retryCount:   config.B2BRetryCount,
 				dirName:      "b2b",
@@ -930,8 +953,8 @@ func loadProbingMode(mode string) {
 			requestInterval: config.B2BReqInterval,
 		}
 	} else if mode == "seq" {
-		pm = SEQ{
-			ProbingVars: ProbingVars{
+		pm = &SEQ{
+			ProbingVars: &ProbingVars{
 				requestCount: config.SEQReqCount,
 				retryCount:   config.SEQRetryCount,
 				dirName:      "seq",
@@ -943,7 +966,7 @@ func loadProbingMode(mode string) {
 }
 
 // Build
-func (pv ProbingVars) buildPackets(dstIP net.IP, workerId uint16) [][]byte {
+func (pv *ProbingVars) buildPackets(dstIP net.IP, workerId uint16) [][]byte {
 	rawIpLayersCopy := make([]layers.IPv4, len(rawIPLayers))
 
 	for i, rawIPLayer := range rawIPLayers {
@@ -976,7 +999,7 @@ func decode(x uint16) (uint16, uint16) {
 }
 
 // IP
-func (pv ProbingVars) createRawIPLayers() []layers.IPv4 {
+func (pv *ProbingVars) createRawIPLayers() []layers.IPv4 {
 	ipLayers := make([]layers.IPv4, pv.requestCount)
 
 	for seq := uint16(0); seq < pv.requestCount; seq++ {

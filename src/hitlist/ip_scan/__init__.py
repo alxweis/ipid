@@ -21,11 +21,11 @@ def cleanup(targets_file: str):
     print(f"Cleanup {targets_file}")
 
     lf = None
-    if not config.is_linux_low_ram:
+    if not config.use_linux_disk:
         lf = pl.scan_csv(targets_file)
 
     print("Verifying required columns exist in the CSV file...")
-    if config.is_linux_low_ram:
+    if config.use_linux_disk:
         header_line = get_csv_header_linux_low_ram(targets_file)
         missing_columns = [col for col in zmap_output_columns if col not in header_line.split(',')]
     else:
@@ -36,7 +36,7 @@ def cleanup(targets_file: str):
         return
 
     print("Count total rows in the file...")
-    if config.is_linux_low_ram:
+    if config.use_linux_disk:
         total_rows = count_rows_linux_low_ram(targets_file)
     else:
         total_rows = lf.select(pl.count()).collect().item()
@@ -46,7 +46,7 @@ def cleanup(targets_file: str):
         # Deduplicate
         start = time.time()
         print("Deduplicating by IP address...")
-        if config.is_linux_low_ram:
+        if config.use_linux_disk:
             removed_rows, removed_rows_percent = deduplicate_csv_linux_low_ram(input_csv=targets_file,
                                                                                total_rows=total_rows,
                                                                                column_name=ip_zmap_name)
@@ -57,7 +57,7 @@ def cleanup(targets_file: str):
         # Sort
         start = time.time()
         print("Sorting by timestamp...")
-        if config.is_linux_low_ram:
+        if config.use_linux_disk:
             sort_csv_linux_low_ram(input_csv=targets_file, column_names=[ts_zmap_name, us_zmap_name])
         else:
             lf = lf.sort([ts_zmap_name, us_zmap_name])
@@ -66,7 +66,7 @@ def cleanup(targets_file: str):
         # Rename
         start = time.time()
         print("Renaming columns...")
-        if config.is_linux_low_ram:
+        if config.use_linux_disk:
             replace_csv_header_linux_low_ram(input_csv=targets_file,
                                              new_header=f"{config.ip_col_name},{config.ts_ip_col_name},{config.us_ip_col_name}")
         else:
@@ -77,7 +77,7 @@ def cleanup(targets_file: str):
             })
         print(f"Renaming finished: {log_runtime(start)}")
 
-        if not config.is_linux_low_ram:
+        if not config.use_linux_disk:
             # Write temp file
             start = time.time()
             print("Writing the cleaned data to a temporary file...")
