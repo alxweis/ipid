@@ -253,7 +253,6 @@ func Main(mode string) {
 	// Skip header line and find IP column index
 	ipColIndex := -1
 	if scanner.Scan() {
-		log.Println("HEADER ROW: ", scanner.Text())
 		header := strings.Split(scanner.Text(), ",")
 		for i, col := range header {
 			if strings.TrimSpace(col) == config.IpColName {
@@ -337,6 +336,10 @@ func countTotalTargets(targetsFile string) {
 		if scanner.Text() != "" {
 			totalTargetCount++
 		}
+	}
+
+	if err = scanner.Err(); err != nil {
+		panic(err)
 	}
 }
 
@@ -849,13 +852,6 @@ func saveProbes() {
 
 func joinWithComma(slice []string) string {
 	return strings.Join(slice, ",")
-}
-
-func formatBool(value bool) string {
-	if value {
-		return "1"
-	}
-	return "0"
 }
 
 // Setup
