@@ -2,7 +2,6 @@ package base
 
 import (
 	"bufio"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"github.com/breml/bpfutils"
@@ -196,14 +195,14 @@ func Main(mode string) {
 	loadProbingMode(mode)
 
 	basePath := getBasePath()
-	pm.probingVars().createOutputDir(basePath)
+	createOutputDir(basePath)
 
 	// Load targets file
 	targetsFile := loadTargets(config.Targets, basePath)
 
 	// Load protocol and raw IP layers
-	proto = loadProtocol(config.Protocol)
-	rawIPLayers = pm.probingVars().createRawIPLayers()
+	loadProtocol(config.Protocol)
+	createRawIPLayers()
 
 	// Setup senders
 	senderA = setupSender(config.IfaceA)
@@ -408,7 +407,7 @@ func worker(ident uint16) {
 
 // Probing
 func (pm *SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP) {
-	packets := pm.buildPackets(target, workerId)
+	packets := buildPackets(target, workerId)
 
 	probe := createProbe(target)
 	recvCounter := uint16(0)
@@ -449,7 +448,7 @@ func (pm *SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.I
 }
 
 func (pm *B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP) {
-	packets := pm.buildPackets(target, workerId)
+	packets := buildPackets(target, workerId)
 
 	probe := createProbe(target)
 	//recvCounter := uint16(0)
@@ -770,9 +769,9 @@ func (pm *B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, re
 }
 
 // Output
-func (pv *ProbingVars) createOutputDir(basePath string) {
+func createOutputDir(basePath string) {
 	timeStamp := time.Now().Format("2006-01-02_15-04-05")
-	outputDir = filepath.Join("results", pv.dirName, basePath, timeStamp)
+	outputDir = filepath.Join("results", pm.probingVars().dirName, basePath, timeStamp)
 	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
 		panic(err)
 	}
@@ -781,9 +780,11 @@ func (pv *ProbingVars) createOutputDir(basePath string) {
 func saveProbes() {
 	defer saveWg.Done()
 
-	filePath := filepath.Join(outputDir, "probing.csv")
+	filePath := filepath.Join(outputDir, "probing.csv.zst")
 	var file *os.File
 	var err error
+	var zw *zstd.Encoder
+	var writer *bufio.Writer
 
 	// Create the file and open it in write mode (not append)
 	file, err = os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY, 0644)
@@ -792,66 +793,107 @@ func saveProbes() {
 	}
 
 	// Create a CSV writer
-	headerWriter := csv.NewWriter(file)
+	zw, err = zstd.NewWriter(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		err = zw.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	// Write CSV header
-	err = headerWriter.Write([]string{config.IpColName, config.IpIdSeqColName, config.SentTsColName, config.RecvTsColName})
+	writer = bufio.NewWriter(zw)
+	headerRecord := []string{config.IpColName, config.IpIdSeqColName, config.SentTsColName, config.RecvTsColName}
+	_, err = writer.WriteString(joinWithComma(headerRecord) + "\n")
 	if err != nil {
 		panic(err)
 	}
-	headerWriter.Flush()
+	err = writer.Flush()
+	if err != nil {
+		panic(err)
+	}
 
 	// Close the file after writing header
 	err = file.Close()
 	if err != nil {
-		return
+		panic(err)
 	}
 
 	// Reopen the file in append mode to write probe data
 	file, err = os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Fatalf("Error reopening file in append mode: %v", err)
+		panic(err)
 	}
-	defer func(file *os.File) {
+	defer func() {
 		err = file.Close()
 		if err != nil {
 			panic(err)
 		}
-	}(file)
+	}()
 
-	dataWriter := csv.NewWriter(file)
-	defer dataWriter.Flush()
+	zw, err = zstd.NewWriter(file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		err = zw.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
 
-	// Read from channel and write each probe to the CSV file
+	writer = bufio.NewWriter(zw)
+	defer func() {
+		err = writer.Flush()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	length := int(pm.probingVars().requestCount)
+	ipIds := make([]string, length)
+	sentTimes := make([]string, length)
+	receivedTimes := make([]string, length)
+
+	// Read from channel and write each probe to the output file
 	for probe := range probeSaveChan {
-		var ipData []string
-		ipData = append(ipData, probe.Target.String())
-
-		// Collect probe point data
-		var ipIds []string
-		var sentTimes []string
-		var receivedTimes []string
-
-		for _, pp := range probe.Data {
-			ipIds = append(ipIds, strconv.Itoa(int(pp.IpId)))
-			sentTimes = append(sentTimes, strconv.FormatInt(pp.SentTime, 10))
-			receivedTimes = append(receivedTimes, strconv.FormatInt(pp.ReceivedTime, 10))
+		if len(probe.Data) != length {
+			panic("Probe Data has not correct length!")
 		}
 
-		// Format record for CSV
-		record := append(ipData, fmt.Sprintf("(%s)", joinWithComma(ipIds)))
-		record = append(record, fmt.Sprintf("(%s)", joinWithComma(sentTimes)))
-		record = append(record, fmt.Sprintf("(%s)", joinWithComma(receivedTimes)))
+		for i, pp := range probe.Data {
+			if !pp.Check {
+				panic("Probe Point is not checked!")
+			}
+			ipIds[i] = strconv.Itoa(int(pp.IpId))
+			sentTimes[i] = strconv.FormatInt(pp.SentTime, 10)
+			receivedTimes[i] = strconv.FormatInt(pp.ReceivedTime, 10)
+		}
 
-		// Write the record to the CSV file
-		if writeErr := dataWriter.Write(record); writeErr != nil {
-			log.Printf("Error writing record to CSV: %v", writeErr)
+		// Format record
+		record := []string{
+			probe.Target.String(),
+			fmt.Sprintf("(%s)", joinWithComma(ipIds)),
+			fmt.Sprintf("(%s)", joinWithComma(sentTimes)),
+			fmt.Sprintf("(%s)", joinWithComma(receivedTimes)),
+		}
+
+		// Write the record to the output file
+		_, err = writer.WriteString(joinWithComma(record) + "\n")
+		if err != nil {
+			panic(err)
+		}
+		if err != nil {
+			panic(err)
 		}
 	}
 }
 
-func joinWithComma(slice []string) string {
-	return strings.Join(slice, ",")
+func joinWithComma(arr []string) string {
+	return strings.Join(arr, ",")
 }
 
 // Setup
@@ -939,14 +981,14 @@ func loadTargets(targetsBasePath string, basePath string) string {
 	return linkTargetsPath
 }
 
-func loadProtocol(protocol string) *Protocol {
+func loadProtocol(protocol string) {
 	switch protocol {
 	case "icmp":
-		return ICMP
+		proto = ICMP
 	case "tcp":
-		return TCP
+		proto = TCP
 	case "udp":
-		return UDP
+		proto = UDP
 	default:
 		panic("Unknown protocol")
 	}
@@ -976,7 +1018,7 @@ func loadProbingMode(mode string) {
 }
 
 // Build
-func (pv *ProbingVars) buildPackets(dstIP net.IP, workerId uint16) [][]byte {
+func buildPackets(dstIP net.IP, workerId uint16) [][]byte {
 	rawIpLayersCopy := make([]layers.IPv4, len(rawIPLayers))
 
 	for i, rawIPLayer := range rawIPLayers {
@@ -984,7 +1026,7 @@ func (pv *ProbingVars) buildPackets(dstIP net.IP, workerId uint16) [][]byte {
 		rawIpLayersCopy[i].DstIP = dstIP
 	}
 
-	return proto.CreateLayers(rawIpLayersCopy, workerId, pv.requestCount)
+	return proto.CreateLayers(rawIpLayersCopy, workerId, pm.probingVars().requestCount)
 }
 
 func buildLayers(payloadLayers ...gopacket.SerializableLayer) []byte {
@@ -1009,10 +1051,10 @@ func decode(x uint16) (uint16, uint16) {
 }
 
 // IP
-func (pv *ProbingVars) createRawIPLayers() []layers.IPv4 {
-	ipLayers := make([]layers.IPv4, pv.requestCount)
+func createRawIPLayers() {
+	ipLayers := make([]layers.IPv4, pm.probingVars().requestCount)
 
-	for seq := uint16(0); seq < pv.requestCount; seq++ {
+	for seq := uint16(0); seq < pm.probingVars().requestCount; seq++ {
 		_, srcIP := getSender(seq)
 
 		id := config.DefaultSendIpIds[int(seq)%len(config.DefaultSendIpIds)]
@@ -1031,7 +1073,7 @@ func (pv *ProbingVars) createRawIPLayers() []layers.IPv4 {
 
 		ipLayers[seq] = ipLayer
 	}
-	return ipLayers
+	rawIPLayers = ipLayers
 }
 
 func checkIPLayer(packet gopacket.Packet) (bool, net.IP, net.IP, uint16) {
