@@ -42,7 +42,7 @@ class Config:
     os_col_name: str
     ts_os_col_name: str
     ip_id_seq_col_name: str
-    send_ts_seq_col_name: str
+    sent_ts_seq_col_name: str
     received_ts_seq_col_name: str
     ip_id_pattern_col_name: str
     avg_rtt_col_name: str

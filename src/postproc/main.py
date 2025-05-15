@@ -50,16 +50,17 @@ def start(result_dir: str):
             pl.col("IP").map_elements(lambda ip: get_asn(asn_reader, ip), return_dtype=pl.Utf8).alias("ASN")
         ])
         .with_columns([
-            pl.col("rtts").list.mean().alias("AVG_RTT"),
-            pl.col("rtts").list.std().alias("STD_RTT"),
+            pl.col("rtts").list.mean().cast(pl.Int64).alias("AVG_RTT"),
+            pl.col("rtts").list.std().cast(pl.Int64).alias("STD_RTT"),
         ])
         .select(["IP", "IP_ID_PATTERN", "AVG_RTT", "STD_RTT", "ASN"])
     )
 
+    tmp_eval_csv = eval_csv.removesuffix(".zst") + ".tmp"
+    lf.sink_csv(tmp_eval_csv)
+
     asn_reader.close()
 
-    tmp_eval_csv = eval_csv.removesuffix(".zst") + ".tmp"
-    lf.sink_csv(tmp_eval_csv, float_precision=4)
     subprocess.run(["zstd", "-T0", "--rm", "-o", eval_csv, tmp_eval_csv], check=True)
 
     end_time = time.time()

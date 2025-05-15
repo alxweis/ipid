@@ -72,7 +72,7 @@ def plot_pattern_distribution(eval_csv: str, result_dir: str):
 def plot_time_between_requests(probing_csv: str, result_dir: str):
     send_ts = (
         pl.scan_csv(probing_csv)
-        .select(pl.col("SEND_TS_SEQUENCE").str.strip_chars("()").str.split(",").list.eval(
+        .select(pl.col("SENT_TS_SEQUENCE").str.strip_chars("()").str.split(",").list.eval(
             pl.element().cast(pl.Int64)).alias("send_ts"))
         .collect()
         .select("send_ts")
@@ -91,7 +91,7 @@ def plot_time_between_requests(probing_csv: str, result_dir: str):
     filtered = diffs[(diffs >= lower) & (diffs <= upper)]
 
     plt.figure(figsize=(10, 7))
-    sns.histplot(filtered, bins=80, stat="percent")
+    sns.histplot(filtered, bins=100, stat="percent")
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
     plt.xlabel("Time between Requests (ms)", fontsize=18)
