@@ -239,13 +239,13 @@ func Main(mode string) {
 		}
 	}()
 
-	decoder, err := zstd.NewReader(f)
+	zr, err := zstd.NewReader(f)
 	if err != nil {
 		panic(err)
 	}
-	defer decoder.Close()
+	defer zr.Close()
 
-	scanner := bufio.NewScanner(decoder)
+	scanner := bufio.NewScanner(zr)
 
 	// Count total targets
 	countTotalTargets(scanner)
@@ -255,7 +255,7 @@ func Main(mode string) {
 	if err != nil {
 		panic(err)
 	}
-	err = decoder.Reset(f)
+	err = zr.Reset(f)
 	if err != nil {
 		panic(err)
 	}
@@ -310,6 +310,10 @@ func Main(mode string) {
 		if stopReadingTargetsFile {
 			break
 		}
+	}
+
+	if err = scanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 
 	cleanup()
