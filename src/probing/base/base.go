@@ -263,6 +263,7 @@ func Main(mode string) {
 	// Skip header line and find IP column index
 	ipColIndex := -1
 	if scanner.Scan() {
+		log.Println("HEADER ROW: ", scanner.Text())
 		header := strings.Split(scanner.Text(), ",")
 		for i, col := range header {
 			if strings.TrimSpace(col) == config.IpColName {
@@ -853,6 +854,7 @@ func setupSignalHandler() {
 	// Start a goroutine to handle the signal
 	go func() {
 		<-sigs
+		log.Println("Received signal, exiting...")
 		close(stopSignal)
 	}()
 }
