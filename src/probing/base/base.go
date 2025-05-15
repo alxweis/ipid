@@ -228,7 +228,10 @@ func Main(mode string) {
 	go setupReceiver(config.IfaceA)
 	go setupReceiver(config.IfaceB)
 
-	// Open targets file
+	// Count total targets
+	countTotalTargets(targetsFile)
+
+	// Open targetsFile
 	f, err := os.Open(targetsFile)
 	if err != nil {
 		panic(err)
@@ -246,20 +249,6 @@ func Main(mode string) {
 	defer zr.Close()
 
 	scanner := bufio.NewScanner(zr)
-
-	// Count total targets
-	countTotalTargets(scanner)
-	log.Println("Total targets:", totalTargetCount)
-
-	// Reset file pointer to first line
-	_, err = f.Seek(0, 0)
-	if err != nil {
-		panic(err)
-	}
-	err = zr.Reset(f)
-	if err != nil {
-		panic(err)
-	}
 
 	// Skip header line and find IP column index
 	ipColIndex := -1
@@ -320,7 +309,25 @@ func Main(mode string) {
 	cleanup()
 }
 
-func countTotalTargets(scanner *bufio.Scanner) {
+func countTotalTargets(targetsFile string) {
+	f, err := os.Open(targetsFile)
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		if err = f.Close(); err != nil {
+			panic(err)
+		}
+	}()
+
+	zr, err := zstd.NewReader(f)
+	if err != nil {
+		panic(err)
+	}
+	defer zr.Close()
+
+	scanner := bufio.NewScanner(zr)
+
 	if scanner.Scan() {
 		// Skip header line
 	}
