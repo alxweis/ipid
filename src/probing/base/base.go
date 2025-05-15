@@ -842,9 +842,9 @@ func saveProbes() {
 		// Format record
 		record := []string{
 			probe.Target.String(),
-			fmt.Sprintf("(%s)", joinWithComma(ipIds)),
-			fmt.Sprintf("(%s)", joinWithComma(sentTimes)),
-			fmt.Sprintf("(%s)", joinWithComma(receivedTimes)),
+			fmt.Sprintf("\"%s\"", joinWithComma(ipIds)),
+			fmt.Sprintf("\"%s\"", joinWithComma(sentTimes)),
+			fmt.Sprintf("\"%s\"", joinWithComma(receivedTimes)),
 		}
 
 		// Write the record to the output file

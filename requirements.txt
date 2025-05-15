@@ -8,3 +8,4 @@ scikit-learn~=1.6.1
 geoip2~=5.0.1
 scipy~=1.15.2
 polars~=1.29.0
+zstandard~=0.23.0

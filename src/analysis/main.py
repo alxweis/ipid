@@ -72,7 +72,8 @@ def plot_pattern_distribution(eval_csv: str, result_dir: str):
 def plot_time_between_requests(probing_csv: str, result_dir: str):
     send_ts = (
         pl.scan_csv(probing_csv)
-        .select(pl.col("SEND_TS_SEQUENCE").str.strip_chars("()").str.split(",").list.eval(pl.element().cast(pl.Int64)).alias("send_ts"))
+        .select(pl.col("SEND_TS_SEQUENCE").str.strip_chars("()").str.split(",").list.eval(
+            pl.element().cast(pl.Int64)).alias("send_ts"))
         .collect()
         .select("send_ts")
     )
@@ -81,7 +82,7 @@ def plot_time_between_requests(probing_csv: str, result_dir: str):
     for row in send_ts.iter_rows():
         ts = row[0]
         if ts and len(ts) > 1:
-            d = np.diff(ts) / 1e3 # Microseconds to milliseconds
+            d = np.diff(ts) / 1e3  # Microseconds to milliseconds
             diffs.append(d)
 
     diffs = np.concatenate(diffs)
@@ -102,8 +103,8 @@ def plot_time_between_requests(probing_csv: str, result_dir: str):
 
 
 def start(result_dir: str):
-    eval_csv = os.path.join(result_dir, "eval.csv")
-    probing_csv = os.path.join(result_dir, "probing.csv")
+    eval_csv = os.path.join(result_dir, "eval.csv.zst")
+    probing_csv = os.path.join(result_dir, "probing.csv.zst")
     # asn_csv = os.path.join(ASN_CSV)
 
     plot_pattern_distribution(eval_csv, result_dir)

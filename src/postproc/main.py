@@ -1,4 +1,5 @@
 import os
+import subprocess
 import time
 
 import geoip2.database
@@ -11,7 +12,7 @@ from postproc import GEOLITE_ASN_DB
 
 
 def parse_tuple_column(col: pl.Expr) -> Expr:
-    return col.str.replace_all(r"[()]", "").str.split(",").list.eval(pl.element().cast(pl.Int64))
+    return col.str.split(",").list.eval(pl.element().cast(pl.Int64))
 
 
 def detect_pattern(ip_ids: list[int]) -> str:
@@ -31,8 +32,8 @@ def get_asn(asn_reader: geoip2.database.Reader, ip: str) -> str:
 def start(result_dir: str):
     start_time = time.time()
 
-    probing_csv = os.path.join(result_dir, "probing.csv")
-    eval_csv = os.path.join(result_dir, "eval.csv")
+    probing_csv = os.path.join(result_dir, "probing.csv.zst")
+    eval_csv = os.path.join(result_dir, "eval.csv.zst")
 
     asn_reader = geoip2.database.Reader(GEOLITE_ASN_DB)
 
@@ -55,9 +56,11 @@ def start(result_dir: str):
         .select(["IP", "IP_ID_PATTERN", "AVG_RTT", "STD_RTT", "ASN"])
     )
 
-    lf.sink_csv(eval_csv, float_precision=4)
-
     asn_reader.close()
+
+    tmp_eval_csv = eval_csv.removesuffix(".zst") + ".tmp"
+    lf.sink_csv(tmp_eval_csv, float_precision=4)
+    subprocess.run(["zstd", "-T0", "--rm", "-o", eval_csv, tmp_eval_csv], check=True)
 
     end_time = time.time()
     print(f"Total execution time: {end_time - start_time:.2f} seconds")
