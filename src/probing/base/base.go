@@ -249,6 +249,7 @@ func Main(mode string) {
 
 	// Count total targets
 	countTotalTargets(scanner)
+	log.Println("Total targets:", totalTargetCount)
 
 	// Reset file pointer to first line
 	_, err = f.Seek(0, 0)
@@ -341,7 +342,7 @@ func cleanup() {
 	close(probeSaveChan)
 	saveWg.Wait()
 
-	log.Println("Cleaning up receivers..")
+	log.Println("Cleaning up receivers...")
 	close(stopReceiving)
 	recvWg.Wait()
 
