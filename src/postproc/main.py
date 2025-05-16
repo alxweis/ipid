@@ -29,6 +29,14 @@ def get_asn(asn_reader: geoip2.database.Reader, ip: str) -> str:
         return "None"
 
 
+def get_continent(country_reader: geoip2.database.Reader, ip: str) -> str:
+    try:
+        country_response = country_reader.country(ip)
+        return str(country_response.continent.name)
+    except AddressNotFoundError:
+        return "None"
+
+
 def start(result_dir: str):
     start_time = time.time()
 
