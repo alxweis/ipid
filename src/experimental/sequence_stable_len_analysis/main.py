@@ -1,6 +1,7 @@
 import os.path
 import os.path
-from collections import OrderedDict
+from collections import Counter
+from itertools import chain
 
 import numpy as np
 import polars as pl
@@ -9,33 +10,22 @@ from matplotlib import pyplot as plt
 
 from core import EXP_SEQUENCE_STABLE_LEN_ANALYSIS
 from core.classifier import IPIDSequence, Pattern, get_pattern, pattern_generation_map
-from core.utils import config
+from postproc.main import parse_tuple_column
 
 
-# We have a given random sequence: (A-B-C-D-E-F-...)
+# We have a given sequence: (A-B-C-D-E-F-...)
 
-# 3 Indices: (A-B-C)                => Result: Global (F)
-# 4 Indices: (A-B-C-D)              => Result: Global (F)
-# 5 Indices: (A-B-C-D-E)            => Result: Global (F)
-# 6 Indices: (A-B-C-D-E-F)          => Result: Random (C)
-# 7 Indices: (A-B-C-D-E-F-G)        => Result: Random (C)
-# 8 Indices: (A-B-C-D-E-F-G-H-...)  => Result: Random (C)
-# ==> Correct Result:               Random
-# ==> My Result:                    Random
-# ==> MinStableCorrectCount:        6
-# ==> This sequence had to be at least 6 numbers long to determine the result correctly
-# Repeat this process for many more random sequences and save the MinStableCorrectCount
-# Calculate average and standard deviation value for all MinStableCorrectCount values
-# Repeat this process for all patterns (Constant, Local, Global, Random)
-# E.g. Result:
-# Pattern   Avg MinStableCorrectCount   Std MinStableCorrectCount
-# Constant  3                           1
-# Local     4                           0.5
-# Global    6                           1.5
-# Random    8                           1
-# During probing, calculate the pattern after each new number in the sequence is obtained. Stop collecting further
-# numbers once the current sequence index exceeds the MinStableCorrectCount for the identified pattern
-# Define threshold: Avg MinStableCorrectCount + 2 * Std MinStableCorrectCount
+# Length = 3: (A-B-C)                => Classification: X
+# Length = 4: (A-B-C-D)              => Classification: X
+# Length = 5: (A-B-C-D-E)            => Classification: X
+# Length = 6: (A-B-C-D-E-F)          => Classification: Y (MIN STABLE LENGTH)
+# Length = 7: (A-B-C-D-E-F-G)        => Classification: Y
+# Length = 8: (A-B-C-D-E-F-G-H)      => Classification: Y
+# Length = 9: (A-B-C-D-E-F-G-H-I)    => Classification: Y
+# Length = 10: (A-B-C-D-E-F-G-H-I-J) => Classification: Y (MAX LENGTH)
+# ==> Min. Length for Stable Classification:     6
+# ==> After 6 numbers the final classification could already be determined
+
 
 def calc_min_stable_len(seq: IPIDSequence) -> (Pattern, int):
     min_stable_len = 0
@@ -56,73 +46,44 @@ def calc_min_stable_len(seq: IPIDSequence) -> (Pattern, int):
     return last_classified_pattern, min_stable_len
 
 
-def evaluate(pattern_to_min_stable_lens, output_dir: str, filename: str):
-    os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, filename + ".txt")
+def plot_pattern_to_min_stable_lens(pattern_to_min_stable_lens: dict[Pattern, list[int]], sequence_length: int,
+                                    output_dir: str, filename: str):
+    pattern_to_min_stable_lens = dict(
+        sorted(pattern_to_min_stable_lens.items(), key=lambda item: list(Pattern).index(item[0])))
 
-    with open(output_file, 'w', encoding='utf-8') as file:
-        # Calculate and print average and standard deviation
-        for stable_pattern, min_stable_lens in pattern_to_min_stable_lens.items():
-            if min_stable_lens:
-                avg = np.mean(min_stable_lens)
-                std = np.std(min_stable_lens)
-                file.write(f"{stable_pattern.value}: avg = {avg:.2f}, std = {std:.2f}\n")
-            else:
-                file.write(f"{stable_pattern.value}: no stable classification found.\n")
+    patterns = list(pattern_to_min_stable_lens.keys())
+    all_values = list(chain.from_iterable(pattern_to_min_stable_lens.values()))
+    min_value = min(all_values)
+    min_stable_lens = np.arange(min_value, sequence_length + 1)
 
-    # Print the content of the file
-    with open(output_file, 'r', encoding='utf-8') as file:
-        print(file.read())
+    freq_matrix = np.zeros((len(min_stable_lens), len(patterns)), dtype=float)
 
-    # Create boxplot
-    plot_stable_len_boxplot(pattern_to_min_stable_lens, output_dir, filename)
+    for col_idx, pattern in enumerate(patterns):
+        values = pattern_to_min_stable_lens[pattern]
+        total = len(values)
+        counts = Counter(values)
+        for y_val, count in counts.items():
+            row_idx = y_val - min_value
+            freq_matrix[row_idx, col_idx] = (count / total) * 100  # convert to percent
 
-
-def plot_stable_len_boxplot(pattern_to_min_stable_lens: dict[Pattern, list[int]], output_dir: str, filename: str):
-    labels = []
-    data = []
-
-    for pattern, lengths in pattern_to_min_stable_lens.items():
-        if lengths:
-            labels.append(pattern.value)
-            data.append(lengths)
-
-    # Setting a nicer style for the plot
-    sns.set(style="whitegrid")
-
-    # Create the figure and axis
-    plt.figure(figsize=(12, 8))
-
-    # Create a horizontal boxplot
-    box = plt.boxplot(data, vert=False, patch_artist=True,
-                      boxprops=dict(facecolor='skyblue', color='blue'),
-                      whiskerprops=dict(color='blue'),
-                      capprops=dict(color='blue'),
-                      medianprops=dict(color='red'))
-
-    # Customizing the plot labels and title
-    plt.yticks(ticks=range(1, len(labels) + 1), labels=labels, fontsize=12)
-    plt.xlabel("Sequence Length to Stable Classification", fontsize=14)
-    plt.ylabel("IPID Pattern", fontsize=14)
-    plt.title("Distribution of Minimum Stable Classification Length for IPID Patterns", fontsize=16)
-
-    # Adding grid for clarity
-    plt.grid(True, axis='x', linestyle='--', alpha=0.7)
-
-    # Adjust layout to make sure everything fits nicely
+    plt.figure(figsize=(7, 7))
+    sns.heatmap(freq_matrix, annot=True, fmt=".0f", cmap="Blues",
+                xticklabels=[p.value for p in patterns],
+                yticklabels=min_stable_lens,
+                cbar_kws={'label': 'Relative Frequency (%)'})
+    plt.gca().collections[0].colorbar.ax.yaxis.label.set_size(16)
+    plt.xlabel("Class", fontsize=18)
+    plt.xticks(rotation=60, fontsize=16)
+    plt.ylabel("Sequence Length", fontsize=18)
+    plt.yticks(rotation=0, fontsize=16)
     plt.tight_layout()
-
-    # Save the plot to a file
-    output_file = os.path.join(output_dir, filename + ".png")
-    plt.savefig(output_file, bbox_inches='tight', dpi=300)
-    print(f"Plot saved at {output_file}")
+    os.makedirs(output_dir, exist_ok=True)
+    plt.savefig(os.path.join(output_dir, filename), bbox_inches='tight')
     plt.close()
 
 
 def analyze_sequence_stable_lens_synthetic(sequence_count_per_pattern: int, sequence_length: int):
-    pattern_to_min_stable_lens: OrderedDict[Pattern, list[int]] = OrderedDict(
-        (p, []) for p in Pattern
-    )
+    pattern_to_min_stable_lens: dict[Pattern, list[int]] = {}
 
     for _, create_seq in pattern_generation_map.items():
         for _ in range(sequence_count_per_pattern):
@@ -133,30 +94,41 @@ def analyze_sequence_stable_lens_synthetic(sequence_count_per_pattern: int, sequ
             if min_stable_len > 0:
                 pattern_to_min_stable_lens.setdefault(last_classified_pattern, []).append(min_stable_len)
 
-    evaluate(pattern_to_min_stable_lens, EXP_SEQUENCE_STABLE_LEN_ANALYSIS,
-             f"min_sequence_stable_lens_synthetic_{sequence_count_per_pattern * len(pattern_generation_map)}_{sequence_length}")
+    plot_pattern_to_min_stable_lens(pattern_to_min_stable_lens, sequence_length,
+                                    os.path.join(EXP_SEQUENCE_STABLE_LEN_ANALYSIS,
+                                                 f"{sequence_count_per_pattern * len(pattern_generation_map)}_{sequence_length}"),
+                                    "result.pdf")
 
 
 def analyze_sequence_stable_lens_natural(probing_csv: str):
-    def parse_sequence(seq_str: str) -> IPIDSequence:
-        return IPIDSequence(np.fromstring(seq_str[1:-1], sep=",", dtype=int))
+    pattern_to_min_stable_lens: dict[Pattern, list[int]] = {}
+    sequence_length = -1
 
-    pattern_to_min_stable_lens: OrderedDict[Pattern, list[int]] = OrderedDict(
-        (p, []) for p in Pattern
-    )
+    def process_ip_ids(ip_ids):
+        ip_id_sequence = IPIDSequence(ip_ids)
 
-    sequences = pl.read_csv(probing_csv, columns=[config.ip_id_seq_col_name])
-    row_count = sequences.height
+        nonlocal sequence_length
+        if sequence_length < 0:
+            sequence_length = len(ip_id_sequence.full.sequence)
 
-    first_seq = parse_sequence(sequences[0, 0])
-    sequence_length = len(first_seq)
+        classified_pattern, min_stable_len = calc_min_stable_len(ip_id_sequence)
+        return classified_pattern.value, min_stable_len
 
-    for row in sequences.iter_rows():
-        seq = parse_sequence(row[0])
+    df = (pl.scan_csv(probing_csv)
+          .with_columns(parse_tuple_column(pl.col("IP_ID_SEQUENCE")).alias("ip_ids"))
+          .with_columns(pl.col("ip_ids").map_elements(process_ip_ids, return_dtype=pl.Object).alias("result"))
+          .with_columns(
+        [pl.col("result").map_elements(lambda x: x[0], return_dtype=pl.Utf8).alias("classified_pattern"),
+         pl.col("result").map_elements(lambda x: x[1], return_dtype=pl.Int64).alias("min_stable_len")])
+          .drop("result")
+          .select(["classified_pattern", "min_stable_len"])
+          .collect())
 
-        last_classified_pattern, min_stable_len = calc_min_stable_len(seq)
+    for row in df.iter_rows():
+        if row[1] > 0:
+            pattern_to_min_stable_lens.setdefault(Pattern(row[0]), []).append(row[1])
 
-        if min_stable_len > 0:
-            pattern_to_min_stable_lens.setdefault(last_classified_pattern, []).append(min_stable_len)
-
-    evaluate(pattern_to_min_stable_lens, os.path.dirname(probing_csv), "min_sequence_stable_lens")
+    output_dir = os.path.join(os.path.dirname(probing_csv), "analysis")
+    os.makedirs(output_dir, exist_ok=True)
+    plot_pattern_to_min_stable_lens(pattern_to_min_stable_lens, sequence_length, output_dir,
+                                    "min_sequence_stable_lens.pdf")

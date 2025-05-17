@@ -1,82 +1,98 @@
 import datetime
+import json
+import os
 import subprocess
 import sys
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from core.utils import config
+from core.utils import config, runtime
 from hitlist.os_scan import setup, cleanup, extract_os_name
 
-# Lock for synchronizing file writes
-write_lock = threading.Lock()
 
-# Initialize counters for logging
-processed_count = 0
-result_count = 0
-start_time = time.time()
+def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
+    result_count = 0
 
+    print(f"Starting DNS scan for IP addresses in {ips_tmp_file}")
+    print(f"Results will be written to {targets_os_file}")
 
-def process_ip_addr(ip: str, os_scan_file: str):
-    global processed_count, result_count
+    with open(targets_os_file, 'w') as f:
+        f.write(f"{config.ip_col_name},{config.os_col_name},{config.ts_os_col_name},{config.us_os_col_name}\n")
 
     try:
-        result = subprocess.run(
-            ['dig', f'@{ip}', 'version.bind', 'CH', 'TXT', '+short', '+retry=0', '+time=1'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
+        with subprocess.Popen(
+                [
+                    "zdns", "TXT",
+                    "--class", "CHAOS",
+                    "--name-server-mode",
+                    "--override-name", "version.bind",
+                    "--input-file", ips_tmp_file,
+                    "--retries", "1",
+                    "--threads", "200",
+                    "--timeout", "5",
+                    "--udp-only"
+                ],
+                stdout=subprocess.PIPE,
+                text=True,
+                bufsize=1
+        ) as zdns_process, open(targets_os_file, 'a') as outfile:
 
-        os_name = extract_os_name(result.stdout)
-        timestamp = int(datetime.datetime.now().timestamp())
+            start_time = time.time()
+            processed_count = 0
+            last_log_time = start_time
 
-        if result.returncode == 0 and os_name:
-            # Synchronized writing to the file
-            with write_lock:
-                with open(os_scan_file, 'a') as f:
-                    f.write(f"{ip},{os_name},{timestamp}\n")
+            for line in zdns_process.stdout:
+                processed_count += 1
 
-            # Increment result_count when OS is detected
-            with threading.Lock():
-                result_count += 1
+                now = time.time()
+                if now - last_log_time >= 1:
+                    elapsed = now - start_time
+                    rate = processed_count / elapsed if elapsed > 0 else 0
+                    print(
+                        f"Processed {processed_count} IPAddresses, {result_count} with OS detected ({rate:.1f} IPAddresses/s)")
+                    last_log_time = now
 
-        # Increment processed_count for each IP processed
-        with threading.Lock():
-            processed_count += 1
+                try:
+                    data = json.loads(line.strip())
 
-        # Log progress every 1000 processed IPs
-        if processed_count % 1000 == 0:
-            elapsed_time = time.time() - start_time
-            rate = processed_count / elapsed_time
-            print(f"Processed {processed_count} IPs, {result_count} with OS detected ({rate:.1f} IPs/sec)")
+                    answers = data.get('answers', [])
+                    if answers and len(answers) > 0:
+                        server = answers[0].get('data', '')
+                    else:
+                        continue
+
+                    if not server:
+                        continue
+
+                    ip = data.get('name', '')
+                    server_str = ",".join(server) if isinstance(server, list) else str(server)
+                    os_name = extract_os_name(server_str)
+                    now = datetime.datetime.now()
+                    ts_seconds = now.timestamp()
+                    ts_microseconds = now.microsecond
+
+                    if os_name:
+                        outfile.write(f"{ip},{os_name},{ts_seconds},{ts_microseconds}\n")
+                        result_count += 1
+
+                except json.JSONDecodeError:
+                    continue
+                except Exception as e:
+                    print(f"Error processing line: {str(e)}", file=sys.stderr)
+
+            return_code = zdns_process.wait()
+            if return_code != 0:
+                print(f"Warning: zdns exited with code {return_code}", file=sys.stderr)
+
+        print(f"Scan complete. Identified OS for {result_count} out of {processed_count} IPs.")
 
     except Exception as e:
-        print(f"Exception occurred for IP {ip}: {e}", file=sys.stderr)
+        print(f"Error running zdns: {str(e)}", file=sys.stderr)
 
 
-def run_dig_dns_scan(ip_addr_file: str, os_scan_file: str):
-    print(f"Starting DNS scan: input_file=[{ip_addr_file}] output_file=[{os_scan_file}]")
-
-    with open(os_scan_file, 'w') as f:
-        f.write(f"{config.ip_col_name},{config.os_col_name},{config.ts_os_col_name}\n")
-
-    futures = []
-    with ThreadPoolExecutor(max_workers=30) as executor:
-        with open(ip_addr_file, 'r') as f:
-            for line in f:
-                ip = line.strip()
-                future = executor.submit(process_ip_addr, ip, os_scan_file)  # TODO Better approach
-                futures.append(future)
-
-        # Wait for all futures to complete and handle any exceptions
-        for future in as_completed(futures):
-            future.result()  # Optional: can catch errors that occurred in the thread
-
-
-def start(ip_scan_file: str):
-    ip_addr_file, ip_scan_file = setup(ip_scan_file)
-    os_scan_file = ip_scan_file + ".os_scan.csv"
-
-    run_dig_dns_scan(ip_addr_file, os_scan_file)
-    cleanup(ip_scan_file=ip_scan_file, ip_addr_file=ip_addr_file, os_scan_file=os_scan_file)
+def start(targets_path: str):
+    start_time = time.time()
+    ips_tmp_file = setup(targets_path)
+    targets_os_file = os.path.join(targets_path, "targets_os.csv")
+    run_zdns_scan(ips_tmp_file, targets_os_file)
+    result_file = cleanup(ips_tmp_file=ips_tmp_file, targets_os_file=targets_os_file)
+    print(f"DNS OS-Scan finished: {runtime(start_time)} result=[{result_file}]")

@@ -1,6 +1,8 @@
+import os
 import subprocess
+import time
 
-from core.utils import config
+from core.utils import config, runtime
 from hitlist.ip_scan import zmap_output_fields, cleanup
 
 
@@ -18,6 +20,9 @@ def run_zmap_scan(output_file: str, max_ips: int):
     subprocess.run(command)
 
 
-def start(output_file: str, max_ips: int):
-    run_zmap_scan(output_file, max_ips)
-    cleanup(output_file)
+def start(targets_path: str, max_ips: int):
+    start_time = time.time()
+    targets_file = os.path.join(targets_path, "targets.csv")
+    run_zmap_scan(targets_file, max_ips)
+    result_file = cleanup(targets_file)
+    print(f"ICMP IP-Scan finished: {runtime(start_time)} result=[{result_file}]")

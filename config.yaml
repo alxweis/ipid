@@ -21,7 +21,7 @@ b2b_retry_count: 0
 seq_request_count: 10 # <= 16
 seq_retry_count: 0
 
-# Other
+# Probing
 iface_a:
   name: "eth0"
   ip: "141.76.94.12"
@@ -35,14 +35,14 @@ reflection_send_ip_ids: [3717,3718,3719] # Sequence must not match with any know
 
 # Hitlist
 zmap_bandwidth: "30M" # Bandwidth for zmap scans
-use_linux_disk: true # Enables disk-based calculations on low-RAM Linux systems
 
-# Dataframe column names
+# Dataframe column names # TODO Use Dataframe column names as reference in other scripts
 ip_col_name: "IP"
 ts_ip_col_name: "TS_IP"
 us_ip_col_name: "US_IP"
 os_col_name: "OS"
 ts_os_col_name: "TS_OS"
+us_os_col_name: "US_OS"
 
 ip_id_seq_col_name: "IP_ID_SEQUENCE"
 sent_ts_seq_col_name: "SENT_TS_SEQUENCE"
@@ -52,7 +52,3 @@ ip_id_pattern_col_name: "IP_ID_PATTERN"
 avg_rtt_col_name: "AVG_RTT"
 std_rtt_col_name: "STD_RTT"
 asn_col_name: "ASN"
-
-as_org_col_name: "AS_ORGANIZATION"
-country_col_name: "COUNTRY"
-continent_col_name: "CONTINENT"

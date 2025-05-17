@@ -71,8 +71,8 @@ def get_enable_os_scan(index: int) -> bool:
 def get_targets_path(index: int) -> (str, str, str):
     if len(sys.argv) > index:
         targets_path = sys.argv[index]
-        # value has format: targets/<protocol>/<port>/<YYYY-MM-DD_HH-MM-SS>/targets.csv.zst
-        pattern = r"^targets/(icmp|tcp|udp)/(\d{1,5})/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}/targets\.csv\.zst$"
+        # value has format: targets/<protocol>/<port>/<YYYY-MM-DD_HH-MM-SS>
+        pattern = r"^targets/(icmp|tcp|udp)/(\d{1,5})/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$"
         match = re.match(pattern, targets_path)
         if match:
             protocol = match.group(1)
@@ -98,14 +98,13 @@ def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool)
     print(f"Max IPs: {'No Limit' if max_ips == 0 else max_ips}")
     print(f"Enable OS Scan: {enable_os_scan}")
 
-    output_dir = create_output_dir(protocol, port)
-    output_file = os.path.join(output_dir, "targets.csv")
+    targets_path = create_output_dir(protocol, port)
     if protocol == "icmp":
-        icmp.start(output_file=output_file, max_ips=max_ips)
+        icmp.start(targets_path=targets_path, max_ips=max_ips)
     elif protocol == "tcp":
-        tcp.start(output_file=output_file, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
+        tcp.start(targets_path=targets_path, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
     elif protocol == "udp":
-        udp.start(output_file=output_file, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
+        udp.start(targets_path=targets_path, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
     else:
         print_usage()
 

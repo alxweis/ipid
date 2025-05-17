@@ -1,5 +1,4 @@
 import os
-import subprocess
 import time
 
 import geoip2.database
@@ -8,6 +7,7 @@ from geoip2.errors import AddressNotFoundError
 from polars import Expr
 
 from core.classifier import IPIDSequence, get_pattern, Pattern
+from core.utils import compress_file, runtime
 from postproc import GEOLITE_ASN_DB
 
 
@@ -42,6 +42,7 @@ def start(result_dir: str):
 
     probing_csv = os.path.join(result_dir, "probing.csv.zst")
     eval_csv = os.path.join(result_dir, "eval.csv.zst")
+    eval_tmp = os.path.join(result_dir, "eval.tmp")
 
     asn_reader = geoip2.database.Reader(GEOLITE_ASN_DB)
 
@@ -64,12 +65,10 @@ def start(result_dir: str):
         .select(["IP", "IP_ID_PATTERN", "AVG_RTT", "STD_RTT", "ASN"])
     )
 
-    tmp_eval_csv = eval_csv.removesuffix(".zst") + ".tmp"
-    lf.sink_csv(tmp_eval_csv)
+    lf.sink_csv(eval_tmp)
 
     asn_reader.close()
 
-    subprocess.run(["zstd", "-T0", "--rm", "-o", eval_csv, tmp_eval_csv], check=True)
+    eval_csv = compress_file(eval_tmp, eval_csv)
 
-    end_time = time.time()
-    print(f"Total execution time: {end_time - start_time:.2f} seconds")
+    print(f"Post-Processing finished: {runtime(start_time)} result=[{eval_csv}]")

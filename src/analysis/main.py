@@ -1,4 +1,5 @@
 import os.path
+import time
 
 import geoip2.database
 import matplotlib.pyplot as plt
@@ -7,38 +8,57 @@ import polars as pl
 import seaborn as sns
 
 from core.classifier import Pattern, IPIDSequence
-from core.utils import config
+from core.utils import config, runtime
 from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import get_continent, parse_tuple_column
 
 
-def analyze_response_rate(targets_file: str, ts_name: str):
-    lf = pl.scan_csv(targets_file)
+def plot_response_rate(targets_csv: str, ts_type: str):
+    ts_col_name = None
+    if ts_type == "ip":
+        ts_col_name = config.ts_ip_col_name
+    elif ts_type == "os":
+        ts_col_name = config.ts_os_col_name
 
-    min_ts = lf.select(pl.min(ts_name)).collect().item()
-
-    histogram_data = lf.select(
-        ((pl.col(ts_name) - min_ts) / 3600).alias("hours_since_start")
-    ).collect()
-
-    plt.figure(figsize=(12, 6))
-    plt.hist(
-        histogram_data["hours_since_start"],
-        bins=50,
-        edgecolor='black',
-        linewidth=1.0,
-        alpha=0.75
+    df = (
+        pl.scan_csv(targets_csv)
+        .select([ts_col_name, "IP"])
+        .group_by(ts_col_name)
+        .agg(pl.count("IP").alias("count"))
+        .sort(ts_col_name)
+        .collect()
     )
-    plt.xlabel('Time (h)', fontsize=12)
-    plt.ylabel(f'Number of {"Collected IP Addresses" if ts_name == config.ts_ip_col_name else "Detected OSes"}',
-               fontsize=12)
-    plt.grid(True, linestyle='--', alpha=0.6)
-    plt.tight_layout()
 
-    image_file = os.path.join(os.path.dirname(targets_file),
-                              f'{"ip" if ts_name == config.ts_ip_col_name else "os"}_response_rate.png')
-    plt.savefig(image_file)
-    print(f"Plot has been saved as: {image_file}")
+    plt.figure(figsize=(10, 6))
+
+    start_time = df[ts_col_name][0]
+    end_time = df[ts_col_name][-1]
+    time_diff = end_time - start_time
+
+    if time_diff > 3600:
+        unit = 3600.0
+        label = "h"
+    elif time_diff > 60:
+        unit = 60.0
+        label = "m"
+    else:
+        unit = 1.0
+        label = "s"
+
+    time_values = (df[ts_col_name] - start_time) / unit
+    plt.plot(time_values, df["count"], alpha=0.3, linewidth=0.7, color='#1f77b4')
+    plt.plot(time_values, df["count"], marker="o", linestyle="None", markersize=3, alpha=1, color='#1f77b4')
+    plt.xlabel(f"Time (in {label}, 1s interval)", fontsize=18)
+    plt.xticks(fontsize=16)
+    plt.ylabel("Identified Targets", fontsize=18)
+    plt.yticks(fontsize=16)
+    plt.ylim(bottom=0)
+    plt.grid(True, linestyle="--", alpha=0.6)
+    # plt.title(f"Response Rate for {ts_type.upper()}-Scan", fontsize=18)
+    plt.tight_layout()
+    output_dir = os.path.join(os.path.dirname(targets_csv), "analysis_targets")
+    plt.savefig(os.path.join(output_dir, f"response_rate_{ts_type}_scan.pdf"), bbox_inches="tight")
+    plt.close()
 
 
 def plot_pattern_distribution(eval_csv: str, output_dir: str):
@@ -201,10 +221,12 @@ def plot_increment_distribution(probing_csv: str, eval_csv: str, pattern: Patter
 
 
 def start(result_dir: str):
+    start_time = time.time()
+
     eval_csv = os.path.join(result_dir, "eval.csv.zst")
     probing_csv = os.path.join(result_dir, "probing.csv.zst")
 
-    plot_output_dir = os.path.join(result_dir, "plots")
+    plot_output_dir = os.path.join(result_dir, "analysis")
     os.makedirs(plot_output_dir, exist_ok=True)
 
     plot_pattern_distribution(eval_csv, plot_output_dir)
@@ -213,3 +235,5 @@ def start(result_dir: str):
     plot_increment_distribution(probing_csv, eval_csv, Pattern.GLOBAL, plot_output_dir)
     plot_increment_distribution(probing_csv, eval_csv, Pattern.LOCAL_GE1, plot_output_dir)
     plot_increment_distribution(probing_csv, eval_csv, Pattern.RANDOM, plot_output_dir)
+
+    print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")
