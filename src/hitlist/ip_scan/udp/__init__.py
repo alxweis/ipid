@@ -39,4 +39,4 @@ def start(targets_path: str, port: str, max_ips: int, enable_os_scan: bool):
     print(f"UDP({port}) IP-Scan finished: {runtime(start_time)} result=[{result_file}]")
 
     if enable_os_scan:
-        subprocess.run(["python3", "0_hitlist.py", "os_scan", result_file])
+        subprocess.run(["python3", "0_hitlist.py", "os_scan", os.path.dirname(result_file)])
