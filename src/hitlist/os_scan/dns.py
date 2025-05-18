@@ -72,7 +72,7 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
                     server_str = ",".join(server) if isinstance(server, list) else str(server)
                     os_name = extract_os_name(server_str)
                     now = datetime.datetime.now()
-                    ts_seconds = now.timestamp()
+                    ts_seconds = int(now.timestamp())
                     ts_microseconds = now.microsecond
 
                     if os_name:
