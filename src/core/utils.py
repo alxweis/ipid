@@ -60,16 +60,24 @@ def load_config(path: str) -> Config:
 config = load_config('config.yaml')
 
 
-def runtime(start: float) -> str:
-    elapsed = int(time.time() - start)
-    hours, remainder = divmod(elapsed, 3600)
+def seconds_to_str(secs: int) -> str:
+    hours, remainder = divmod(int(secs), 3600)
     minutes, seconds = divmod(remainder, 60)
+
+    ts = ""
     if hours > 0:
-        ts = f"{hours}h{minutes}m{seconds}s"
-    elif minutes > 0:
-        ts = f"{minutes}m{seconds}s"
-    else:
-        ts = f"{seconds}s"
+        ts += f"{hours}h"
+    if minutes > 0:
+        ts += f"{minutes}m"
+    if seconds > 0 or not ts:
+        ts += f"{seconds}s"
+
+    return ts
+
+
+def runtime(start: float) -> str:
+    elapsed_seconds = int(time.time() - start)
+    ts = seconds_to_str(elapsed_seconds)
     return f"runtime=[{ts}]"
 
 
