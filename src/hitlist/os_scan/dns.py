@@ -55,8 +55,13 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
                     data = json.loads(line.strip())
 
                     answers = data.get('answers', [])
-                    if answers and len(answers) > 0:
-                        server = answers[0].get('data', '')
+                    if answers:
+                        datas = []
+                        for ans in answers:
+                            data = ans.get('data', '')
+                            if data:
+                                datas.append(data)
+                        server = ",".join(datas)
                     else:
                         continue
 

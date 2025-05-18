@@ -46,26 +46,37 @@ def start(result_dir: str):
 
     asn_reader = geoip2.database.Reader(GEOLITE_ASN_DB)
 
-    lf = (
-        pl.scan_csv(probing_csv, ignore_errors=True)
-        .with_columns([
-            parse_tuple_column(pl.col("IP_ID_SEQUENCE")).alias("ip_ids"),
-            parse_tuple_column(pl.col("SENT_TS_SEQUENCE")).alias("send_ts"),
-            parse_tuple_column(pl.col("RECEIVED_TS_SEQUENCE")).alias("recv_ts"),
-        ])
-        .with_columns([
-            (pl.col("recv_ts") - pl.col("send_ts")).alias("rtts"),
-            pl.col("ip_ids").map_elements(detect_pattern, return_dtype=pl.Utf8).alias("IP_ID_PATTERN"),
-            pl.col("IP").map_elements(lambda ip: get_asn(asn_reader, ip), return_dtype=pl.Utf8).alias("ASN")
-        ])
-        .with_columns([
-            pl.col("rtts").list.mean().cast(pl.Int64).alias("AVG_RTT"),
-            pl.col("rtts").list.std().cast(pl.Int64).alias("STD_RTT"),
-        ])
-        .select(["IP", "IP_ID_PATTERN", "AVG_RTT", "STD_RTT", "ASN"])
-    )
+    batch_size = 1_000_000
+    offset = 0
+    first_batch = True
 
-    lf.sink_csv(eval_tmp)
+    while True:
+        try:
+            df = pl.read_csv(probing_csv, skip_rows=offset, n_rows=batch_size, ignore_errors=True)
+
+            if df.height == 0:
+                break
+
+            df = df.with_columns([
+                parse_tuple_column(pl.col("IP_ID_SEQUENCE")).alias("ip_ids"),
+                parse_tuple_column(pl.col("SENT_TS_SEQUENCE")).alias("send_ts"),
+                parse_tuple_column(pl.col("RECEIVED_TS_SEQUENCE")).alias("recv_ts"),
+            ]).with_columns([
+                (pl.col("recv_ts") - pl.col("send_ts")).alias("rtts"),
+                pl.col("ip_ids").map_elements(detect_pattern, return_dtype=pl.Utf8).alias("IP_ID_PATTERN"),
+                pl.col("IP").map_elements(lambda ip: get_asn(asn_reader, ip), return_dtype=pl.Utf8).alias("ASN")
+            ]).with_columns([
+                pl.col("rtts").list.mean().cast(pl.Int64).alias("AVG_RTT"),
+                pl.col("rtts").list.std().cast(pl.Int64).alias("STD_RTT"),
+            ]).select(["IP", "IP_ID_PATTERN", "AVG_RTT", "STD_RTT", "ASN"])
+
+            df.write_csv(eval_tmp, append=not first_batch)
+            first_batch = False
+            offset += batch_size
+
+        except Exception as e:
+            print(f"Error processing chunk starting at row {offset}: {e}")
+            break
 
     asn_reader.close()
 
