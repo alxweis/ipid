@@ -23,7 +23,7 @@ This project is designed **exclusively for Linux systems**. It requires **two ne
      ip: "<your_first_interface_ipv4_address>"   # e.g. 123.45.67.89
    iface_b:
      name: "<your_second_interface_name>"  # e.g. eth1
-     ip: "<your_second_interface_ipv4_address>"  # e.g. 123.45.67.95
+     ip: "<your_second_interface_ipv4_address>"  # e.g. 123.45.67.90
    ```
 
 3. All other parameters in `config.yaml` can be optionally adjusted as needed.
@@ -51,7 +51,7 @@ python3 0_hitlist.py os_scan <targets_path>
 **Example Prompts:**
 ```
 python3 0_hitlist.py ip_scan icmp 10M     // Finds 10M IPv4 addresses responding to ICMP Echo Requests
-python3 0_hitlist.py ip_scan tcp 80 1M true     // Finds 1M IPv4 addresses responding to TCP SYN on port 80. Runs OS fingerprinting
+python3 0_hitlist.py ip_scan tcp 80 0 true     // Finds all IPv4 addresses responding to TCP SYN on port 80. Runs OS fingerprinting
 python3 0_hitlist.py ip_scan udp 53 250K false     // Finds 250K IPv4 addresses responding to DNS (UDP) on port 53
 python3 0_hitlist.py os_scan targets/tcp/80/2006-01-02_15-04-05      // Runs OS fingerprinting on IP list from the given path
 ```

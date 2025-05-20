@@ -44,8 +44,8 @@ def process_row_optimized(row_data: Dict[str, Any], asn_reader) -> Tuple:
         return None
 
 
-def worker_process(rows_batch: List[Dict], asn_db_path: str) -> List:
-    asn_reader = geoip2.database.Reader(asn_db_path)
+def worker_process(rows_batch: List[Dict]) -> List:
+    asn_reader = geoip2.database.Reader(GEOLITE_ASN_DB)
     results = []
 
     for row_data in rows_batch:
@@ -85,17 +85,16 @@ def start(result_dir: str):
 
     num_cpus = mp.cpu_count()
     num_workers = max(1, num_cpus - 1)
-    print(f"Verwende {num_workers} CPU-Kerne für die Verarbeitung")
+    print(f"Using {num_workers} CPU cores for processing")
 
     batch_size = 1000
     chunk_size = batch_size * num_workers
 
-    print(f"Zähle Zeilen in der Eingabedatei...")
+    print(f"Counting lines in the input file...")
     total_rows = count_lines_in_zst(probing_csv)
-    print(f"Insgesamt {total_rows} Zeilen zu verarbeiten")
+    print(f"Total {total_rows} rows to process")
 
     pool = mp.Pool(processes=num_workers)
-    worker_func = partial(worker_process, asn_db_path=GEOLITE_ASN_DB)
 
     dctx = zstd.ZstdDecompressor()
     cctx = zstd.ZstdCompressor(level=3, threads=2)
@@ -124,7 +123,7 @@ def start(result_dir: str):
             batches = [all_rows[i:i + batch_size] for i in range(0, len(all_rows), batch_size)]
 
             all_results = []
-            for batch_results in pool.map(worker_func, batches):
+            for batch_results in pool.map(worker_process, batches):
                 all_results.extend(batch_results)
 
             if all_results:
@@ -153,4 +152,4 @@ def start(result_dir: str):
     pool.close()
     pool.join()
 
-    print(f"Post-Processing finished: result=[{eval_csv}]")
+    print(f"Post-processing finished: result=[{eval_csv}]")
