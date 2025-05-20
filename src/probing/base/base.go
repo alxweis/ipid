@@ -218,9 +218,9 @@ func Main(mode string) {
 	}
 
 	// Block auto-send RST when using TCP
-	if proto.Id == "tcp" {
-		rstChanged = setRSTDrop(true)
-	}
+	//if proto.Id == "tcp" {
+	//	rstChanged = setRSTDrop(true)
+	//}
 
 	// Start receivers
 	recvWg.Add(2)
@@ -360,10 +360,10 @@ func cleanup() {
 		stopRecording()
 	}
 
-	if rstChanged {
-		log.Println("Unblock auto-send RST")
-		setRSTDrop(false)
-	}
+	//if rstChanged {
+	//	log.Println("Unblock auto-send RST")
+	//	setRSTDrop(false)
+	//}
 
 	log.Println("Results Directory:", outputDir)
 }
