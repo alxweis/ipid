@@ -4,12 +4,29 @@ Measurement and Analysis of the IP Identification Field in IPv4
 
 ## Setup
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
-```
+This project is designed **exclusively for Linux systems**. It requires **two network interfaces**, each with a **publicly reachable IPv4 address**. Without this setup, the measurements will not work.
+
+1. Create and activate a virtual environment:
+
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   pip install -e .
+   ```
+
+2. **Configure your network interfaces** in `config.yaml`:
+
+   ```yaml
+   iface_a:
+     name: "<your_first_interface_name>"   # e.g. eth0
+     ip: "<your_first_interface_ipv4_address>"   # e.g. 123.45.67.89
+   iface_b:
+     name: "<your_second_interface_name>"  # e.g. eth1
+     ip: "<your_second_interface_ipv4_address>"  # e.g. 123.45.67.95
+   ```
+
+3. All other parameters in `config.yaml` can be optionally adjusted as needed.
 
 ## Pipeline
 
@@ -27,16 +44,44 @@ python3 0_hitlist.py ip_scan udp <port> [max_ips] [enable_os_scan]
 python3 0_hitlist.py os_scan <targets_path>
 ```
 
+**Output:**
+* IP-Scan: `targets/<protocol>/<port>/<timestamp>/targets.csv.zst`
+* OS-Scan: `targets/<protocol>/<port>/<timestamp>/targets_os.csv.zst`
+
+**Example Prompts:**
+```
+python3 0_hitlist.py ip_scan icmp 10M     // Finds 10M IPv4 addresses responding to ICMP Echo Requests
+python3 0_hitlist.py ip_scan tcp 80 1M true     // Finds 1M IPv4 addresses responding to TCP SYN on port 80. Runs OS fingerprinting
+python3 0_hitlist.py ip_scan udp 53 250K false     // Finds 250K IPv4 addresses responding to DNS (UDP) on port 53
+python3 0_hitlist.py os_scan targets/tcp/80/2006-01-02_15-04-05      // Runs OS fingerprinting on IP list from the given path
+```
+
 ### 1. Probing
 
-Configure your desired parameters in `config.yaml`.
+Configure your desired parameters in `config.yaml`:
+```yaml
+targets: "targets/<protocol>/<port>/<timestamp>"
+protocol: "<protocol>"
+
+# TCP
+tcp_dst_port: 80
+tcp_request_flags: "S" # S=SYN A=ACK R=RST, e.g. "SA" for SYN-ACK
+
+# UDP
+udp_dst_port: 53
+```
+Other parameters in `config.yaml` can be optionally adjusted as needed.
 
 Available commands for probing:
 
 ```
-python3 1_probing.py b2b
-python3 1_probing.py seq
+python3 1_probing.py b2b   // Refers to Back-To-Back Probing (B2B)
+python3 1_probing.py seq   // Refers to Sequential Probing (SEQ)
 ```
+See `config.yaml` for optional probing parameters.
+
+**Output:**
+* `results/<protocol>/<port>/<timestamp>/probing.csv.zst`
 
 ### 2. Post-Processing
 
@@ -46,6 +91,9 @@ After probing, process the collected data using:
 python3 2_postproc.py <result_path>
 ```
 
+**Output:**
+* `results/<protocol>/<port>/<timestamp>/eval.csv.zst`
+
 ### 3. Analysis
 
 Once post-processing is complete, analyze the processed data with:
@@ -54,66 +102,5 @@ Once post-processing is complete, analyze the processed data with:
 python3 3_analysis.py <result_path>
 ```
 
-
-
-
-
-
-
-
-## Example Pipeline
-
-### 0. Hitlist
-
-Generate a list of 10 million IPv4 addresses that respond to TCP/80 SYN packets with a TCP reply.
-After collecting the IPs, perform OS fingerprinting to determine the operating system for each IP on port 80.
-
-**Command:**
-```
-python3 0_hitlist.py ip_scan tcp 80 10M true
-```
-
 **Output:**
-* IP scan: `targets/tcp/80/<timestamp>/targets.csv.zst`
-* OS fingerprinting (enabled by `enable_os_scan=true`): `targets/tcp/80/<timestamp>/targets_os.csv.zst`
-
-### 1. Probing
-
-Edit the following fields in `config.yaml`:
-```yaml
-targets: "targets/tcp/80/<timestamp>"
-protocol: "tcp"
-tcp_dst_port: 80
-tcp_request_flags: "S"
-```
-
-Use the **Sequential** method for probing:
-
-**Command:**
-```
-python3 1_probing.py seq
-```
-
-**Output:**
-* Probing results: `results/seq/tcp/80/<timestamp>/probing.csv.zst`
-
-### 2. Post-Processing
-
-Process the probing results:
-
-**Command:**
-```
-python3 2_postproc.py results/seq/tcp/80/<timestamp>
-```
-
-### 3. Analysis
-
-Analyze the processed data:
-
-**Command:**
-```
-python3 3_analysis.py results/seq/tcp/80/<timestamp>
-```
-
-**Output:**
-* Analysis results: `results/seq/tcp/80/<timestamp>/analysis`
+* Plots are saved as .pdf-files at: `results/<protocol>/<port>/<timestamp>/analysis/`

@@ -6,11 +6,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import seaborn as sns
+from geoip2.errors import AddressNotFoundError
 
 from core.classifier import Pattern, IPIDSequence
 from core.utils import config, runtime
 from postproc import GEOLITE_COUNTRY_DB
-from postproc.main import get_continent, parse_tuple_column
+from postproc.main import parse_tuple_column
+
+
+def get_continent(country_reader: geoip2.database.Reader, ip: str) -> str:
+    try:
+        country_response = country_reader.country(ip)
+        return str(country_response.continent.name)
+    except AddressNotFoundError:
+        return "None"
 
 
 def plot_response_rate(targets_csv: str, ts_type: str):

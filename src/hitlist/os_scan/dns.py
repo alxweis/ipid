@@ -46,9 +46,10 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
                 now = time.time()
                 if now - last_log_time >= 1:
                     elapsed = now - start_time
-                    rate = processed_count / elapsed if elapsed > 0 else 0
+                    processed_rate = processed_count / elapsed if elapsed > 0 else 0
+                    result_rate = result_count / elapsed if elapsed > 0 else 0
                     print(
-                        f"Processed {processed_count} IPAddresses, {result_count} with OS detected ({rate:.1f} IPAddresses/s)")
+                        f"Processing: processed_ips=[{processed_count}] detected_ips=[{result_count}] processing_rate=[{processed_rate:.0f}] detection_rate=[{result_rate:.0f}]")
                     last_log_time = now
 
                 try:
