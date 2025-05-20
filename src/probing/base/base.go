@@ -933,12 +933,12 @@ func loadTargets(targetsBasePath string, basePath string) string {
 		targetsBasePath = filepath.Join(basePath, latestDir)
 	}
 
-	sourceTargetsPath := filepath.Join(targetsBasePath, "targets.csv.zst")
+	sourceTargetsPath := filepath.Join(targetsBasePath, "targets_os.csv.zst")
 	absSourceTargetsPath, absErr := filepath.Abs(sourceTargetsPath)
 	if absErr != nil {
 		panic(absErr)
 	}
-	linkTargetsPath := filepath.Join(outputDir, "targets.csv.zst")
+	linkTargetsPath := filepath.Join(outputDir, "targets_os.csv.zst")
 	linkErr := os.Symlink(absSourceTargetsPath, linkTargetsPath)
 	if linkErr != nil {
 		panic(linkErr)
