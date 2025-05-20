@@ -7,7 +7,6 @@ from collections import Counter
 from functools import partial
 
 import geoip2.database
-import geoip2.database
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -257,7 +256,8 @@ def plot_avg_rtt_per_continent(params: ProcessingParams):
         if rtt_count < total_rtt_count * 0.01:
             continue
 
-        sample_size = min(int(total_value_sum * (rtt_count / float(total_rtt_count))), rtt_count)
+        preferred_sample_size = int(round(total_value_sum * rtt_count / float(total_rtt_count)))
+        sample_size = min(preferred_sample_size, rtt_count)
         arr_sampled = np.random.choice(arr_cut, size=sample_size, replace=False)
         continent_to_rtts_numpy[continent] = arr_sampled
         continents[continent] = rtt_count
@@ -295,6 +295,7 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
     pool = mp.Pool(processes=params.num_workers)
     probing_dctx = zstd.ZstdDecompressor()
     eval_dctx = zstd.ZstdDecompressor()
+    func = partial(get_increments_for_pattern, pattern=pattern)
 
     def prepare_row_data(row) -> np.ndarray:
         return np.fromstring(row.IP_ID_SEQUENCE, sep=",", dtype=np.int32)
@@ -307,8 +308,8 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
 
         progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        probing_iter = pd.read_csv(probing_text_reader, chunksize=params.chunk_size() // 2)
-        eval_iter = pd.read_csv(eval_text_reader, chunksize=params.chunk_size() // 2)
+        probing_iter = pd.read_csv(probing_text_reader, chunksize=params.chunk_size())
+        eval_iter = pd.read_csv(eval_text_reader, chunksize=params.chunk_size())
 
         for probing_chunk_df in probing_iter:
             eval_chunk_df = next(eval_iter)
@@ -321,6 +322,7 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
             all_rows = []
             for row in chunk_df.itertuples(index=False):
                 try:
+                    assert row.IP_ID_PATTERN == pattern.value
                     row_data = prepare_row_data(row)
                     all_rows.append(row_data)
                 except Exception:
@@ -328,7 +330,6 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
 
             batches = [all_rows[i:i + params.batch_size] for i in range(0, len(all_rows), params.batch_size)]
 
-            func = partial(get_increments_for_pattern, pattern=pattern)
             for batch_increments_for_pattern in pool.map(func, batches):
                 increments.extend(batch_increments_for_pattern)
 
@@ -389,11 +390,11 @@ def start(result_dir: str):
     params = ProcessingParams(num_workers=num_workers, batch_size=batch_size, total_rows=total_rows_probing_csv,
                               probing_csv=probing_csv, eval_csv=eval_csv, output_dir=plot_output_dir)
 
-    plot_pattern_distribution(params)
-    plot_time_between_requests(params)
-    plot_avg_rtt_per_continent(params)
-    plot_increment_distribution(params, Pattern.GLOBAL)
-    plot_increment_distribution(params, Pattern.LOCAL_GE1)
-    plot_increment_distribution(params, Pattern.RANDOM)
+    # plot_pattern_distribution(params)
+    # plot_time_between_requests(params)
+    # plot_avg_rtt_per_continent(params)
+    # plot_increment_distribution(params, Pattern.GLOBAL)
+    plot_increment_distribution(params, Pattern.LOCAL_EQ1)
+    # plot_increment_distribution(params, Pattern.RANDOM)
 
     print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")

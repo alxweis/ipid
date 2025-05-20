@@ -21,7 +21,7 @@ class IPIDSubsequence:
 
 class IPIDSequence:
     def __init__(self, sequence: list[int] | tuple[int, ...] | np.ndarray):
-        arr = np.array(sequence, dtype=int)
+        arr = np.array(sequence, dtype=np.int32)
         self.full = IPIDSubsequence(arr)
         self.even = IPIDSubsequence(arr[0::2])
         self.odd = IPIDSubsequence(arr[1::2])
