@@ -1,3 +1,4 @@
+import collections
 import io
 import multiprocessing as mp
 import os
@@ -84,7 +85,7 @@ class ProcessingParams:
         return self.batch_size * self.num_workers
 
 
-def count_pattern(batch: pd.DataFrame):
+def count_pattern(batch: pd.DataFrame) -> collections.Counter:
     return Counter(batch["IP_ID_PATTERN"])
 
 
@@ -140,8 +141,13 @@ def plot_pattern_distribution(params: ProcessingParams):
     plt.close()
 
 
-def calc_time_between_requests(row_data: np.ndarray) -> np.ndarray:
-    return np.diff(row_data) / 1e3
+def calc_time_between_requests(rows_batch: list[np.ndarray]) -> list[np.ndarray]:
+    results = []
+
+    for row_data in rows_batch:
+        results.append(np.diff(row_data) / 1e3)
+
+    return results
 
 
 def plot_time_between_requests(params: ProcessingParams):
@@ -201,11 +207,11 @@ def plot_time_between_requests(params: ProcessingParams):
 
 def get_continent_rtts(batch: pd.DataFrame) -> dict[str, list[float]]:
     country_reader = geoip2.database.Reader(GEOLITE_COUNTRY_DB)
-
     continent_to_rtts = {}
+
     for _, row in batch.iterrows():
         ip = row["IP"]
-        avg_rtt = int(row["AVG_RTT"]) / 1e3
+        avg_rtt = row["AVG_RTT"] / 1e3
         try:
             continent = str(country_reader.country(ip).continent.name)
         except AddressNotFoundError:
@@ -283,11 +289,17 @@ def plot_avg_rtt_per_continent(params: ProcessingParams):
     plt.close()
 
 
-def get_increments_for_pattern(row_data: np.ndarray, pattern: Pattern) -> np.ndarray:
-    ip_id_sequence = IPIDSequence(row_data)
-    if pattern in {Pattern.LOCAL_EQ1, Pattern.LOCAL_GE1}:
-        return np.concatenate([ip_id_sequence.even.increments, ip_id_sequence.odd.increments])
-    return ip_id_sequence.full.increments
+def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -> list[np.ndarray]:
+    results = []
+
+    for row_data in rows_batch:
+        ip_id_sequence = IPIDSequence(row_data)
+        if pattern in {Pattern.LOCAL_EQ1, Pattern.LOCAL_GE1}:
+            results.append(np.concatenate([ip_id_sequence.even.increments, ip_id_sequence.odd.increments]))
+        else:
+            results.append(ip_id_sequence.full.increments)
+
+    return results
 
 
 def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
@@ -295,7 +307,7 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
     pool = mp.Pool(processes=params.num_workers)
     probing_dctx = zstd.ZstdDecompressor()
     eval_dctx = zstd.ZstdDecompressor()
-    func = partial(get_increments_for_pattern, pattern=pattern)
+    worker_func = partial(get_increments_for_pattern, pattern=pattern)
 
     def prepare_row_data(row) -> np.ndarray:
         return np.fromstring(row.IP_ID_SEQUENCE, sep=",", dtype=np.int32)
@@ -330,7 +342,7 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
 
             batches = [all_rows[i:i + params.batch_size] for i in range(0, len(all_rows), params.batch_size)]
 
-            for batch_increments_for_pattern in pool.map(func, batches):
+            for batch_increments_for_pattern in pool.map(worker_func, batches):
                 increments.extend(batch_increments_for_pattern)
 
             progress_bar.update(chunk_length)
@@ -390,11 +402,11 @@ def start(result_dir: str):
     params = ProcessingParams(num_workers=num_workers, batch_size=batch_size, total_rows=total_rows_probing_csv,
                               probing_csv=probing_csv, eval_csv=eval_csv, output_dir=plot_output_dir)
 
-    # plot_pattern_distribution(params)
-    # plot_time_between_requests(params)
-    # plot_avg_rtt_per_continent(params)
-    # plot_increment_distribution(params, Pattern.GLOBAL)
-    plot_increment_distribution(params, Pattern.LOCAL_EQ1)
-    # plot_increment_distribution(params, Pattern.RANDOM)
+    plot_pattern_distribution(params)
+    plot_time_between_requests(params)
+    plot_avg_rtt_per_continent(params)
+    plot_increment_distribution(params, Pattern.GLOBAL)
+    plot_increment_distribution(params, Pattern.LOCAL_GE1)
+    plot_increment_distribution(params, Pattern.RANDOM)
 
     print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")
