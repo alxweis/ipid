@@ -1,5 +1,6 @@
 import collections
 import io
+import math
 import multiprocessing as mp
 import os
 import os.path
@@ -72,11 +73,13 @@ def plot_response_rate(targets_csv: str, ts_type: str):
 
 
 class ProcessingParams:
-    def __init__(self, num_workers: int, batch_size: int, total_rows: int, probing_csv: str, eval_csv: str,
+    def __init__(self, num_workers: int, batch_size: int, total_rows: int, total_samples: int, probing_csv: str,
+                 eval_csv: str,
                  output_dir: str):
         self.num_workers = num_workers
         self.batch_size = batch_size
         self.total_rows = total_rows
+        self.total_samples = total_samples
         self.probing_csv = probing_csv
         self.eval_csv = eval_csv
         self.output_dir = output_dir
@@ -84,12 +87,17 @@ class ProcessingParams:
     def chunk_size(self):
         return self.batch_size * self.num_workers
 
+    def samples_per_chunk(self):
+        total_chunks = int(math.ceil(self.total_rows / self.chunk_size()))
+        return int(round(self.total_samples / float(total_chunks)))
+
 
 def count_pattern(batch: pd.DataFrame) -> collections.Counter:
     return Counter(batch["IP_ID_PATTERN"])
 
 
 def plot_pattern_distribution(params: ProcessingParams):
+    print("Computing Pattern Distribution...")
     pattern_counter = Counter()
     pool = mp.Pool(processes=params.num_workers)
     dctx = zstd.ZstdDecompressor()
@@ -121,6 +129,7 @@ def plot_pattern_distribution(params: ProcessingParams):
     order = [p for p in full_order if p in df["class"].values]
 
     # Plot
+    print("Plotting Pattern Distribution...")
     plt.figure(figsize=(7, 7))
     ax = sns.barplot(
         x="class",
@@ -151,6 +160,7 @@ def calc_time_between_requests(rows_batch: list[np.ndarray]) -> list[np.ndarray]
 
 
 def plot_time_between_requests(params: ProcessingParams):
+    print("Computing Time Between Requests...")
     time_between_requests = []
     pool = mp.Pool(processes=params.num_workers)
     dctx = zstd.ZstdDecompressor()
@@ -164,10 +174,11 @@ def plot_time_between_requests(params: ProcessingParams):
 
         progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size()):
+        for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(), usecols=["SENT_TS_SEQUENCE"]):
+            sample_df = chunk_df.sample(n=min(len(chunk_df), params.samples_per_chunk()))
             all_rows = []
 
-            for row in chunk_df.itertuples(index=False):
+            for row in sample_df.itertuples(index=False):
                 try:
                     row_data = prepare_row_data(row)
                     all_rows.append(row_data)
@@ -187,6 +198,8 @@ def plot_time_between_requests(params: ProcessingParams):
     pool.join()
 
     # Plot
+    print(f"Total datapoints: {len(time_between_requests)}")
+    print("Plotting Time Between Requests...")
     deltas = np.array(time_between_requests, dtype=np.float32)
     q = np.percentile(deltas, 99.9)
     deltas_cut = deltas[deltas <= q]
@@ -223,6 +236,7 @@ def get_continent_rtts(batch: pd.DataFrame) -> dict[str, list[float]]:
 
 
 def plot_avg_rtt_per_continent(params: ProcessingParams):
+    print("Computing Avg RTT Per Continent...")
     continent_to_rtts = {}
     pool = mp.Pool(processes=params.num_workers)
     dctx = zstd.ZstdDecompressor()
@@ -234,8 +248,9 @@ def plot_avg_rtt_per_continent(params: ProcessingParams):
 
         progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size()):
-            batches = [chunk_df[i:i + params.batch_size] for i in range(0, len(chunk_df), params.batch_size)]
+        for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(), usecols=["IP", "AVG_RTT"]):
+            sample_df = chunk_df.sample(n=min(len(chunk_df), params.samples_per_chunk()))
+            batches = [sample_df[i:i + params.batch_size] for i in range(0, len(sample_df), params.batch_size)]
 
             for batch_continent_to_rtts in pool.map(get_continent_rtts, batches):
                 for continent, rtts in batch_continent_to_rtts.items():
@@ -252,7 +267,6 @@ def plot_avg_rtt_per_continent(params: ProcessingParams):
     # Plot
     continent_to_rtts_numpy = {}
     continents = {}
-    total_value_sum = 5_000_000
     for continent, rtts in continent_to_rtts.items():
         arr = np.array(rtts, dtype=np.float32)
         q = np.percentile(arr, 99)
@@ -262,13 +276,13 @@ def plot_avg_rtt_per_continent(params: ProcessingParams):
         if rtt_count < total_rtt_count * 0.01:
             continue
 
-        preferred_sample_size = int(round(total_value_sum * rtt_count / float(total_rtt_count)))
-        sample_size = min(preferred_sample_size, rtt_count)
-        arr_sampled = np.random.choice(arr_cut, size=sample_size, replace=False)
-        continent_to_rtts_numpy[continent] = arr_sampled
+        continent_to_rtts_numpy[continent] = arr_cut
         continents[continent] = rtt_count
 
     order = sorted(continents, key=continents.get, reverse=True)
+
+    print(f"Total datapoints: {sum(continents.values())} - {continents}")
+    print("Plotting Avg RTT Per Continent...")
 
     df = pd.DataFrame([
         {"continent": cont, "rtts": val}
@@ -303,6 +317,7 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
 
 
 def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
+    print(f"Computing Increment Distribution for {pattern.value}...")
     increments = []
     pool = mp.Pool(processes=params.num_workers)
     probing_dctx = zstd.ZstdDecompressor()
@@ -320,8 +335,8 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
 
         progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        probing_iter = pd.read_csv(probing_text_reader, chunksize=params.chunk_size())
-        eval_iter = pd.read_csv(eval_text_reader, chunksize=params.chunk_size())
+        probing_iter = pd.read_csv(probing_text_reader, chunksize=params.chunk_size(), usecols=["IP", "IP_ID_SEQUENCE"])
+        eval_iter = pd.read_csv(eval_text_reader, chunksize=params.chunk_size(), usecols=["IP", "IP_ID_PATTERN"])
 
         for probing_chunk_df in probing_iter:
             eval_chunk_df = next(eval_iter)
@@ -329,10 +344,12 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
             assert probing_chunk_df["IP"].equals(eval_chunk_df["IP"])
             chunk_df = pd.concat([probing_chunk_df, eval_chunk_df.drop(columns="IP")], axis=1)
             chunk_length = len(chunk_df)
+
             chunk_df = chunk_df[chunk_df["IP_ID_PATTERN"] == pattern.value]
+            sample_df = chunk_df.sample(n=min(len(chunk_df), params.samples_per_chunk()))
 
             all_rows = []
-            for row in chunk_df.itertuples(index=False):
+            for row in sample_df.itertuples(index=False):
                 try:
                     assert row.IP_ID_PATTERN == pattern.value
                     row_data = prepare_row_data(row)
@@ -353,14 +370,14 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
     pool.join()
 
     # Plot
+    print(f"Total datapoints: {len(increments)}")
+    print(f"Plotting Increment Distribution for {pattern.value}...")
     increments_numpy = np.array(increments, dtype=np.int32)
     q = np.percentile(increments_numpy, 99)
     increments_cut = increments_numpy[increments_numpy <= q]
-    sample_size = min(10_000_000, len(increments_cut))
-    increments_sampled = np.random.choice(increments_cut, size=sample_size, replace=False)
 
     plt.figure(figsize=(10, 6))
-    sns.histplot(increments_sampled, bins=100, stat="percent")
+    sns.histplot(increments_cut, bins=100, stat="percent")
     plt.xlabel("IP-ID Increment", fontsize=18)
     plt.xticks(fontsize=16)
     plt.xlim(left=0)
@@ -383,11 +400,11 @@ def start(result_dir: str):
     plot_output_dir = os.path.join(result_dir, "analysis")
     os.makedirs(plot_output_dir, exist_ok=True)
 
-    num_cpus = mp.cpu_count()
-    num_workers = max(1, num_cpus - 1)
-    print(f"Using {num_workers} CPU cores for processing")
+    num_workers = max(1, mp.cpu_count() - 1)
+    print(f"Using {num_workers} workers for processing")
 
     batch_size = 5000
+    total_samples = 300_000
 
     print(f"Counting lines of probing_csv file...")
     total_rows_probing_csv = count_lines_in_zst(probing_csv)
@@ -400,7 +417,8 @@ def start(result_dir: str):
     assert total_rows_eval_csv == total_rows_probing_csv, "probing_csv and eval_csv should have same line count!"
 
     params = ProcessingParams(num_workers=num_workers, batch_size=batch_size, total_rows=total_rows_probing_csv,
-                              probing_csv=probing_csv, eval_csv=eval_csv, output_dir=plot_output_dir)
+                              total_samples=total_samples, probing_csv=probing_csv, eval_csv=eval_csv,
+                              output_dir=plot_output_dir)
 
     plot_pattern_distribution(params)
     plot_time_between_requests(params)
