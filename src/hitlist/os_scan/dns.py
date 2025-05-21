@@ -29,7 +29,8 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
                     "--retries", "1",
                     "--threads", "200",
                     "--timeout", "5",
-                    "--udp-only"
+                    "--udp-only",
+                    "--quiet"
                 ],
                 stdout=subprocess.PIPE,
                 text=True,
@@ -53,25 +54,28 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
                     last_log_time = now
 
                 try:
-                    data = json.loads(line.strip())
+                    response = json.loads(line.strip())
+
+                    data = response.get('data', {})
+                    if not data:
+                        continue
 
                     answers = data.get('answers', [])
                     if answers:
-                        datas = []
+                        ans_datas = []
                         for ans in answers:
-                            data = ans.get('data', '')
-                            if data:
-                                datas.append(data)
-                        server = ",".join(datas)
+                            ans_data = ans.get('data', '')
+                            if ans_data:
+                                ans_datas.append(ans_data)
+                        server = ",".join(ans_datas)
                     else:
                         continue
 
                     if not server:
                         continue
 
-                    ip = data.get('name', '')
-                    server_str = ",".join(server) if isinstance(server, list) else str(server)
-                    os_name = extract_os_name(server_str)
+                    ip = response.get('name', '')
+                    os_name = extract_os_name(server)
                     now = datetime.datetime.now()
                     ts_seconds = int(now.timestamp())
                     ts_microseconds = now.microsecond
