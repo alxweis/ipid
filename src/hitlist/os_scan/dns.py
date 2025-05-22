@@ -58,7 +58,7 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
 
                     data = response.get('results', {}).get('TXT', {}).get('data', {})
                     if not data:
-                        print("No Data")
+                        continue
 
                     answers = data.get('answers', [])
                     if answers:
@@ -69,16 +69,13 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
                                 infos.append(info)
                         server = ",".join(infos)
                     else:
-                        print("No Answers")
                         continue
 
                     if not server:
-                        print("No Server Info")
                         continue
 
                     resolver_info = data.get('resolver', '')
                     if not resolver_info:
-                        print("No Resolver Info")
                         continue
 
                     ip = resolver_info.split(':')[0]
