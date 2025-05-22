@@ -54,7 +54,7 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
                     last_log_time = now
 
                 try:
-                    print(line.strip())
+                    print(f"{line.strip()}\n\n")
                     # response = json.loads(line.strip())
 
                     # data = response.get('data', {})
