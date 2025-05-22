@@ -54,41 +54,42 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
                     last_log_time = now
 
                 try:
-                    print(f"{line.strip()}\n\n")
-                    # response = json.loads(line.strip())
+                    response = json.loads(line.strip())
 
-                    # data = response.get('data', {})
-                    # if not data:
-                    #     print("No Data")
-                    #     continue
-                    #
-                    # answers = data.get('answers', [])
-                    # if answers:
-                    #     ans_datas = []
-                    #     for ans in answers:
-                    #         ans_data = ans.get('data', '')
-                    #         if ans_data:
-                    #             ans_datas.append(ans_data)
-                    #         else:
-                    #             print("Answer Data is empty")
-                    #     server = ",".join(ans_datas)
-                    # else:
-                    #     print("No Answers")
-                    #     continue
-                    #
-                    # if not server:
-                    #     print("No Server Info")
-                    #     continue
-                    #
-                    # ip = response.get('name', '')
-                    # os_name = extract_os_name(server)
-                    # now = datetime.datetime.now()
-                    # ts_seconds = int(now.timestamp())
-                    # ts_microseconds = now.microsecond
-                    #
-                    # if os_name:
-                    #     outfile.write(f"{ip},{os_name},{ts_seconds},{ts_microseconds}\n")
-                    #     result_count += 1
+                    data = response.get('results', {}).get('TXT', {}).get('data', {})
+                    if not data:
+                        print("No Data")
+
+                    answers = data.get('answers', [])
+                    if answers:
+                        infos = []
+                        for ans in answers:
+                            info = ans.get('answer', '')
+                            if info:
+                                infos.append(info)
+                        server = ",".join(infos)
+                    else:
+                        print("No Answers")
+                        continue
+
+                    if not server:
+                        print("No Server Info")
+                        continue
+
+                    resolver_info = data.get('resolver', '')
+                    if not resolver_info:
+                        print("No Resolver Info")
+                        continue
+
+                    ip = resolver_info.split(':')[0]
+                    os_name = extract_os_name(server)
+                    now = datetime.datetime.now()
+                    ts_seconds = int(now.timestamp())
+                    ts_microseconds = now.microsecond
+
+                    if os_name:
+                        outfile.write(f"{ip},{os_name},{ts_seconds},{ts_microseconds}\n")
+                        result_count += 1
 
                 except json.JSONDecodeError:
                     continue
