@@ -27,7 +27,7 @@ def run_zdns_scan(ips_tmp_file: str, targets_os_file: str):
                     "--override-name", "version.bind",
                     "--input-file", ips_tmp_file,
                     "--retries", "1",
-                    "--threads", "200",
+                    "--threads", "400",
                     "--timeout", "5",
                     "--udp-only",
                     "--quiet"
