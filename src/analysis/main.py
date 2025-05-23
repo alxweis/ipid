@@ -20,11 +20,12 @@ from tqdm import tqdm
 
 from core.classifier import IPIDSequence, Pattern
 from core.utils import config, runtime
+from hitlist.os_scan import linux_distros, bsd, apple, windows
 from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import count_lines_in_zst
 
 
-def plot_response_rate(targets_csv: str, ts_type: str):
+def plot_response_rate(targets_csv: str, ts_type: str): # TODO Fix this
     ts_col_name = None
     if ts_type == "ip":
         ts_col_name = config.ts_ip_col_name
@@ -73,23 +74,53 @@ def plot_response_rate(targets_csv: str, ts_type: str):
 
 
 class ProcessingParams:
-    def __init__(self, num_workers: int, batch_size: int, total_rows: int, total_samples: int, probing_csv: str,
-                 eval_csv: str,
-                 output_dir: str):
+    def __init__(self, num_workers: int, batch_size: int, total_rows: int, total_samples: int, targets_csv: str,
+                 is_os_scan: bool, probing_csv: str, eval_csv: str, output_dir: str):
         self.num_workers = num_workers
         self.batch_size = batch_size
         self.total_rows = total_rows
         self.total_samples = total_samples
+        self.targets_csv = targets_csv
+        self.is_os_scan = is_os_scan
         self.probing_csv = probing_csv
         self.eval_csv = eval_csv
         self.output_dir = output_dir
 
-    def chunk_size(self):
+    def chunk_size(self) -> int:
         return self.batch_size * self.num_workers
 
-    def samples_per_chunk(self):
+    def samples_per_chunk(self) -> int:
         total_chunks = int(math.ceil(self.total_rows / self.chunk_size()))
         return int(round(self.total_samples / float(total_chunks)))
+
+    def targets_ip_csv(self) -> str:
+        if self.is_os_scan:
+            real_targets_os_csv = os.readlink(self.targets_csv)
+            real_targets_os_dir = os.path.dirname(real_targets_os_csv)
+            return os.path.join(real_targets_os_dir, "targets.csv.zst")
+        return self.targets_csv
+
+    def targets_os_csv(self) -> str:
+        if self.is_os_scan:
+            return self.targets_csv
+        raise ValueError("This result is not based on OS scan")
+
+    def save(self):
+        os.makedirs(self.output_dir, exist_ok=True)
+        params = {
+            "Number of Workers": self.num_workers,
+            "Batch Size": self.batch_size,
+            "Total Rows": self.total_rows,
+            "Total Samples": self.total_samples,
+            "Targets CSV": self.targets_csv,
+            "Is OS Scan": self.is_os_scan,
+            "Probing CSV": self.probing_csv,
+            "Eval CSV": self.eval_csv,
+            "Output Dir": self.output_dir
+        }
+        with open(os.path.join(self.output_dir, "params.txt"), "w") as f:
+            for key, value in params.items():
+                f.write(f"{key}: {value}\n")
 
 
 def count_pattern(batch: pd.DataFrame) -> collections.Counter:
@@ -108,7 +139,7 @@ def plot_pattern_distribution(params: ProcessingParams):
 
         progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size()):
+        for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(), usecols=["IP", "IP_ID_PATTERN"]):
             batches = [chunk_df[i:i + params.batch_size] for i in range(0, len(chunk_df), params.batch_size)]
 
             for batch_pattern_counter in pool.map(count_pattern, batches):
@@ -122,8 +153,8 @@ def plot_pattern_distribution(params: ProcessingParams):
     pool.join()
 
     total = sum(pattern_counter.values())
-    relative = {k: (v / total) * 100 for k, v in pattern_counter.items()}
-    df = pd.DataFrame(list(relative.items()), columns=['class', 'percentage'])
+    df = pd.DataFrame(list(pattern_counter.items()), columns=['class', 'absolute'])
+    df['relative'] = (df['absolute'] / float(total)) * 100
 
     full_order = [p.value for p in Pattern]
     order = [p for p in full_order if p in df["class"].values]
@@ -133,8 +164,8 @@ def plot_pattern_distribution(params: ProcessingParams):
     plt.figure(figsize=(7, 7))
     ax = sns.barplot(
         x="class",
-        y="percentage",
-        data=df,
+        y="relative",
+        data=df[["class", "relative"]],
         order=order
     )
     for container in ax.containers:
@@ -146,7 +177,88 @@ def plot_pattern_distribution(params: ProcessingParams):
     plt.ylim(bottom=0, top=100)
     plt.grid(True, axis="y", linestyle='--', alpha=0.6)
     plt.tight_layout()
-    plt.savefig(os.path.join(params.output_dir, "pattern_distribution.pdf"), bbox_inches="tight")
+
+    output_dir = os.path.join(params.output_dir, "pattern_distribution")
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
+        f.write(f"Total Absolute: {total}\n")
+        f.write(f"Class Distribution:\n{df.to_string(index=False)}")
+    df.to_pickle(os.path.join(output_dir, "data.pkl"))
+    plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches="tight")
+
+    plt.close()
+
+
+def plot_pattern_distribution_for_oses(params: ProcessingParams, oses: list[str]):
+    print(f"Computing Pattern Distribution for OSes {oses}...")
+    pattern_counter = Counter()
+    pool = mp.Pool(processes=params.num_workers)
+    eval_dctx = zstd.ZstdDecompressor()
+    targets_dctx = zstd.ZstdDecompressor()
+
+    with open(params.eval_csv, "rb") as eval_f, open(params.targets_os_csv(), "rb") as targets_f:
+        eval_reader = eval_dctx.stream_reader(eval_f)
+        eval_text_reader = io.TextIOWrapper(eval_reader, encoding="utf-8")
+
+        targets_reader = targets_dctx.stream_reader(targets_f)
+        targets_text_reader = io.TextIOWrapper(targets_reader, encoding="utf-8")
+
+        progress_bar = tqdm(total=params.total_rows, unit="rows")
+
+        eval_iter = pd.read_csv(eval_text_reader, chunksize=params.chunk_size(), usecols=["IP", "IP_ID_PATTERN"])
+        targets_df = pd.read_csv(targets_text_reader, usecols=["IP", "OS"])
+
+        for eval_chunk_df in eval_iter:
+            chunk_df = pd.merge(eval_chunk_df, targets_df, on="IP", how="left")
+            chunk_df = chunk_df.dropna()
+            chunk_df = chunk_df[chunk_df["OS"].isin(oses)]
+
+            batches = [chunk_df[i:i + params.batch_size] for i in range(0, len(chunk_df), params.batch_size)]
+
+            for batch_pattern_counter in pool.map(count_pattern, batches):
+                pattern_counter.update(batch_pattern_counter)
+
+            progress_bar.update(len(eval_chunk_df))
+
+        progress_bar.close()
+
+    pool.close()
+    pool.join()
+
+    total = sum(pattern_counter.values())
+    df = pd.DataFrame(list(pattern_counter.items()), columns=['class', 'absolute'])
+    df['relative'] = (df['absolute'] / float(total)) * 100
+
+    full_order = [p.value for p in Pattern]
+    order = [p for p in full_order if p in df["class"].values]
+
+    # Plot
+    print(f"Plotting Pattern Distribution for OSes {oses}...")
+    plt.figure(figsize=(7, 7))
+    ax = sns.barplot(
+        x="class",
+        y="relative",
+        data=df[["class", "relative"]],
+        order=order
+    )
+    for container in ax.containers:
+        ax.bar_label(container, fmt='%.1f%%', label_type='edge', padding=3, fontsize=16)
+    plt.xlabel("Class", fontsize=18)
+    plt.xticks(rotation=60, fontsize=16)
+    plt.ylabel("Percentage (%)", fontsize=18)
+    plt.yticks(fontsize=16)
+    plt.ylim(bottom=0, top=100)
+    plt.grid(True, axis="y", linestyle='--', alpha=0.6)
+    plt.tight_layout()
+
+    output_dir = os.path.join(params.output_dir, "pattern_distribution_for_oses", "+".join(oses))
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
+        f.write(f"Total Absolute: {total}\n")
+        f.write(f"Class Distribution:\n{df.to_string(index=False)}")
+    df.to_pickle(os.path.join(output_dir, "data.pkl"))
+    plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches="tight")
+
     plt.close()
 
 
@@ -214,7 +326,14 @@ def plot_time_between_requests(params: ProcessingParams):
     plt.ylim(bottom=0)
     plt.grid(True, axis="both", linestyle='--', alpha=0.6)
     plt.tight_layout()
-    plt.savefig(os.path.join(params.output_dir, "time_between_requests.pdf"), bbox_inches="tight")
+
+    output_dir = os.path.join(params.output_dir, "time_between_requests")
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
+        f.write(f"Total Hist Values: {len(deltas_cut)}\n")
+    np.save(os.path.join(output_dir, "data.npy"), deltas_cut)
+    plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches="tight")
+
     plt.close()
 
 
@@ -299,7 +418,16 @@ def plot_avg_rtt_per_continent(params: ProcessingParams):
     plt.ylim(bottom=0)
     plt.grid(True, axis="y", linestyle='--', alpha=0.6)
     plt.tight_layout()
-    plt.savefig(os.path.join(params.output_dir, "rtt_per_continent.pdf"), bbox_inches="tight")
+
+    output_dir = os.path.join(params.output_dir, "rtt_per_continent")
+    os.makedirs(output_dir, exist_ok=True)
+    df_counts = df.groupby("continent").size().reset_index(name="rtts_count")
+    with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
+        f.write(f"Total Count: {df_counts["rtts_count"].sum()}\n")
+        f.write(f"RTTs Count Per Continent:\n{df_counts.to_string(index=False)}")
+    df.to_pickle(os.path.join(output_dir, "data.pkl"))
+    plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches="tight")
+
     plt.close()
 
 
@@ -386,8 +514,14 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
     plt.ylim(bottom=0)
     plt.grid(True, axis="both", linestyle="--", alpha=0.6)
     plt.tight_layout()
-    plt.savefig(os.path.join(params.output_dir, f"inc_distribution_{pattern.value.lower().replace(" ", "")}.pdf"),
-                bbox_inches="tight")
+
+    output_dir = os.path.join(params.output_dir, "inc_distribution", pattern.value.lower().replace(" ", ""))
+    os.makedirs(output_dir, exist_ok=True)
+    with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
+        f.write(f"Total Hist Values: {len(increments_cut)}\n")
+    np.save(os.path.join(output_dir, "data.npy"), increments_cut)
+    plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches="tight")
+
     plt.close()
 
 
@@ -396,6 +530,15 @@ def start(result_dir: str):
 
     eval_csv = os.path.join(result_dir, "eval.csv.zst")
     probing_csv = os.path.join(result_dir, "probing.csv.zst")
+    targets_ip_csv = os.path.join(result_dir, "targets.csv.zst")
+    targets_os_csv = os.path.join(result_dir, "targets_os.csv.zst")
+
+    if os.path.exists(targets_os_csv):
+        targets_csv = targets_os_csv
+        is_os_scan = True
+    else:
+        targets_csv = targets_ip_csv
+        is_os_scan = False
 
     plot_output_dir = os.path.join(result_dir, "analysis")
     os.makedirs(plot_output_dir, exist_ok=True)
@@ -417,14 +560,21 @@ def start(result_dir: str):
     assert total_rows_eval_csv == total_rows_probing_csv, "probing_csv and eval_csv should have same line count!"
 
     params = ProcessingParams(num_workers=num_workers, batch_size=batch_size, total_rows=total_rows_probing_csv,
-                              total_samples=total_samples, probing_csv=probing_csv, eval_csv=eval_csv,
-                              output_dir=plot_output_dir)
+                              total_samples=total_samples, targets_csv=targets_csv, is_os_scan=is_os_scan,
+                              probing_csv=probing_csv, eval_csv=eval_csv, output_dir=plot_output_dir)
 
+    params.save()
     plot_pattern_distribution(params)
     plot_time_between_requests(params)
     plot_avg_rtt_per_continent(params)
     plot_increment_distribution(params, Pattern.GLOBAL)
     plot_increment_distribution(params, Pattern.LOCAL_GE1)
     plot_increment_distribution(params, Pattern.RANDOM)
+
+    if params.is_os_scan:
+        plot_pattern_distribution_for_oses(params, linux_distros)
+        plot_pattern_distribution_for_oses(params, windows)
+        plot_pattern_distribution_for_oses(params, bsd)
+        plot_pattern_distribution_for_oses(params, apple)
 
     print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")

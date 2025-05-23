@@ -933,7 +933,7 @@ func loadTargets(targetsBasePath string, basePath string) string {
 		targetsBasePath = filepath.Join(basePath, latestDir)
 	}
 
-	sourceTargetsPath := filepath.Join(targetsBasePath, "targets_os.csv.zst")
+	sourceTargetsPath := filepath.Join(targetsBasePath, "targets_os.csv.zst") // TODO Fix this + Serialize first to bytestream, then send + IP -> Hash
 	absSourceTargetsPath, absErr := filepath.Abs(sourceTargetsPath)
 	if absErr != nil {
 		panic(absErr)

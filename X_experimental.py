@@ -20,6 +20,8 @@ def print_usage():
     print(f"    python {filename} 2 <result_path>")
     print("  3 - Analyze Response Rate for IP-Scan or OS-Scan:")
     print(f"    python {filename} 3 <result_path> <ip|os>")
+    print("  4 - Analyze Intersections:")  # TODO Implement this
+    print(f"    python {filename} 4 <targets_path> <targets_path> ...")
     sys.exit(1)
 
 

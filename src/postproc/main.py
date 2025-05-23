@@ -1,7 +1,6 @@
 import io
 import multiprocessing as mp
 import os
-from functools import partial
 from typing import List, Tuple, Dict, Any
 
 import geoip2.database

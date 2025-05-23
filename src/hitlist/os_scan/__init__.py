@@ -7,8 +7,32 @@ import zstandard as zstd
 
 from core.utils import config, compress_file
 
-os_regex = "ubuntu|centos|debian|redhat|ret hat|rhel|fedora|gentoo|opensuse|euleros|zorin|linux|windows server|windows|win|freebsd|openbsd|netbsd|bsd|macos|darwin|solaris|fritz|rasp|openwrt|lede|dd-wrt|ddwrt|wrt|vyos|vyatta|pfsense|routeros|mikrotik|edgeos|airos|unifi|ubiquiti|junos|juniper|cisco ios|ios-xe|nx-os|ios|cisco|fortios|fortinet|forti|sonicos|sonicwall|sonic|arubaos|aruba|draytek|drayos|vigor|dray|zynos|zyxel|aix|hp-ux|hpux|z/os|zos|openvms|vms|vrp|busybox|vxworks|qnx|freertos|openembedded|yocto|utm|gaia|router|server"
-os_pattern = re.compile(os_regex, re.IGNORECASE)
+linux_distros = [
+    "ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo", "opensuse", "euleros", "zorin",
+    "linux"
+]
+windows = [
+    "windows server", "windows", "win"
+]
+bsd = [
+    "freebsd", "openbsd", "netbsd", "bsd"
+]
+apple = [
+    "macos", "darwin"
+]
+server = ['server']
+router = ['router']
+
+oses = [
+    "ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo", "opensuse", "euleros", "zorin",
+    "linux", "windows server", "windows", "win", "freebsd", "openbsd", "netbsd", "bsd", "macos", "darwin", "solaris",
+    "fritz", "rasp", "openwrt", "lede", "dd-wrt", "ddwrt", "wrt", "vyos", "vyatta", "pfsense", "routeros", "mikrotik",
+    "edgeos", "airos", "unifi", "ubiquiti", "junos", "juniper", "cisco ios", "ios-xe", "nx-os", "ios", "cisco",
+    "fortios", "fortinet", "forti", "sonicos", "sonicwall", "sonic", "arubaos", "aruba", "draytek", "drayos", "vigor",
+    "dray", "zynos", "zyxel", "aix", "hp-ux", "hpux", "z/os", "zos", "openvms", "vms", "vrp", "busybox", "vxworks",
+    "qnx", "freertos", "openembedded", "yocto", "utm", "gaia", "router", "server"
+]
+os_pattern = re.compile("|".join(oses), re.IGNORECASE)
 
 
 def setup(targets_path: str) -> str:
