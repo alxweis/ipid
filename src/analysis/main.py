@@ -8,13 +8,13 @@ import os.path
 import time
 from collections import Counter
 from functools import partial
+from pathlib import Path
 
 import duckdb
 import geoip2.database
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import polars as pl
 import seaborn as sns
 import zstandard as zstd
 from geoip2.errors import AddressNotFoundError
@@ -27,26 +27,43 @@ from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import count_lines_in_zst
 
 
-def plot_response_rate(targets_csv: str, ts_type: str):  # TODO Fix this
+def plot_response_rate(targets_csv: str, ts_type: str):
     ts_col_name = None
     if ts_type == "ip":
         ts_col_name = config.ts_ip_col_name
     elif ts_type == "os":
         ts_col_name = config.ts_os_col_name
 
-    df = (
-        pl.scan_csv(targets_csv)
-        .select([ts_col_name, "IP"])
-        .group_by(ts_col_name)
-        .agg(pl.count("IP").alias("count"))
-        .sort(ts_col_name)
-        .collect()
-    )
+    conn = duckdb.connect()
+
+    try:
+        # Query 1: Aggregierte Daten
+        agg_query = f"""
+        SELECT {ts_col_name}, COUNT(IP) as count
+        FROM read_csv_auto('{targets_csv}', compression='zstd')
+        GROUP BY {ts_col_name}
+        ORDER BY {ts_col_name}
+        """
+
+        # Query 2: Min/Max für Zeitbereich (sehr schnell mit Index-Scan)
+        minmax_query = f"""
+        SELECT MIN({ts_col_name}) as start_time, MAX({ts_col_name}) as end_time
+        FROM read_csv_auto('{targets_csv}', compression='zstd')
+        """
+
+        # Beide Queries ausführen
+        agg_result = conn.execute(agg_query).fetchnumpy()
+        minmax_result = conn.execute(minmax_query).fetchone()
+
+        timestamps = agg_result[ts_col_name]
+        counts = agg_result['count']
+        start_time, end_time = minmax_result
+
+    finally:
+        conn.close()
 
     plt.figure(figsize=(10, 6))
 
-    start_time = df[ts_col_name][0]
-    end_time = df[ts_col_name][-1]
     time_diff = end_time - start_time
 
     if time_diff > 3600:
@@ -59,20 +76,154 @@ def plot_response_rate(targets_csv: str, ts_type: str):  # TODO Fix this
         unit = 1.0
         label = "s"
 
-    time_values = (df[ts_col_name] - start_time) / unit
-    plt.plot(time_values, df["count"], alpha=0.3, linewidth=0.7, color='#1f77b4')
-    plt.plot(time_values, df["count"], marker="o", linestyle="None", markersize=3, alpha=1, color='#1f77b4')
+    time_values = (timestamps - start_time) / unit
+
+    plt.plot(time_values, counts, alpha=0.3, linewidth=0.7, color='#1f77b4')
+    plt.plot(time_values, counts, marker="o", linestyle="None", markersize=3, alpha=1, color='#1f77b4')
     plt.xlabel(f"Time (in {label}, 1s interval)", fontsize=18)
     plt.xticks(fontsize=16)
     plt.ylabel("Identified Targets", fontsize=18)
     plt.yticks(fontsize=16)
     plt.ylim(bottom=0)
     plt.grid(True, linestyle="--", alpha=0.6)
-    # plt.title(f"Response Rate for {ts_type.upper()}-Scan", fontsize=18)
     plt.tight_layout()
-    output_dir = os.path.join(os.path.dirname(targets_csv), "analysis_targets")
+
+    output_dir = os.path.join(os.path.dirname(targets_csv), "analysis")
+    os.makedirs(output_dir, exist_ok=True)
     plt.savefig(os.path.join(output_dir, f"response_rate_{ts_type}_scan.pdf"), bbox_inches="tight")
     plt.close()
+
+
+def calc_intersections(target_csvs: list[str], on: str):
+    if len(target_csvs) < 2:
+        print("❌ At least 2 files required for intersection")
+        return
+
+    conn = duckdb.connect()
+
+    print("=" * 80)
+    print(f"🔍 INTERSECTION ANALYSIS - Column: {on}")
+    print("=" * 80)
+
+    # 1. Individual file statistics
+    file_stats = {}
+    temp_tables = []
+
+    for i, file_path in enumerate(target_csvs):
+        file_name = Path(file_path).name
+        table_name = f"file_{i}"
+        temp_tables.append(table_name)
+
+        print(f"\n📁 File: {file_name}")
+        print("-" * 50)
+
+        try:
+            # Create temporary table
+            conn.execute(f"""
+                CREATE TEMP TABLE {table_name} AS 
+                SELECT DISTINCT {on} 
+                FROM read_csv_auto('{file_path}', compression='zstd')
+                WHERE {on} IS NOT NULL
+            """)
+
+            # Statistics for individual file
+            total_values = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+            sample_values = conn.execute(f"SELECT {on} FROM {table_name} LIMIT 5").fetchall()
+
+            file_stats[file_name] = total_values
+
+            print(f"   Unique values: {total_values:,}")
+            print(f"   Sample values: {', '.join([str(val[0]) for val in sample_values[:3]])}")
+
+        except Exception as e:
+            print(f"   ❌ Error reading file: {e}")
+            return
+
+    # 2. Pairwise intersections
+    print(f"\n🔗 PAIRWISE INTERSECTIONS")
+    print("-" * 50)
+
+    for i in range(len(temp_tables)):
+        for j in range(i + 1, len(temp_tables)):
+            file1 = Path(target_csvs[i]).name
+            file2 = Path(target_csvs[j]).name
+
+            intersection_count = conn.execute(f"""
+                SELECT COUNT(*) FROM (
+                    SELECT {on} FROM {temp_tables[i]}
+                    INTERSECT
+                    SELECT {on} FROM {temp_tables[j]}
+                )
+            """).fetchone()[0]
+
+            percentage1 = (intersection_count / file_stats[file1]) * 100 if file_stats[file1] > 0 else 0
+            percentage2 = (intersection_count / file_stats[file2]) * 100 if file_stats[file2] > 0 else 0
+
+            print(f"   {file1} ∩ {file2}:")
+            print(f"     Common values: {intersection_count:,}")
+            print(f"     Percentage of {file1}: {percentage1:.1f}%")
+            print(f"     Percentage of {file2}: {percentage2:.1f}%")
+
+    # 3. Complete intersection of all files
+    print(f"\n🎯 COMPLETE INTERSECTION (all {len(target_csvs)} files)")
+    print("-" * 60)
+
+    # Dynamic intersection across all tables
+    intersect_query = f"SELECT {on} FROM {temp_tables[0]}"
+    for table in temp_tables[1:]:
+        intersect_query += f" INTERSECT SELECT {on} FROM {table}"
+
+    # Calculate intersection
+    intersection_result = conn.execute(f"""
+        WITH intersection AS ({intersect_query})
+        SELECT COUNT(*) as total_count, array_agg({on}) as value_list
+        FROM intersection
+    """).fetchone()
+
+    total_intersection = intersection_result[0]
+    intersection_values = intersection_result[1] if intersection_result[1] else []
+
+    print(f"   Common values in ALL files: {total_intersection:,}")
+
+    if total_intersection > 0:
+        print(f"   Sample common values:")
+        for value in intersection_values[:10]:  # Show first 10 values
+            print(f"     • {value}")
+
+        if total_intersection > 10:
+            print(f"     ... and {total_intersection - 10} more")
+
+    # 4. Percentage overlap per file
+    print(f"\n📊 OVERLAP PERCENTAGE PER FILE")
+    print("-" * 40)
+
+    for i, file_path in enumerate(target_csvs):
+        file_name = Path(file_path).name
+        total_in_file = file_stats[file_name]
+        percentage = (total_intersection / total_in_file) * 100 if total_in_file > 0 else 0
+
+        print(f"   {file_name}:")
+        print(f"     {total_intersection:,} of {total_in_file:,} values ({percentage:.1f}%)")
+        print(f"     {'█' * int(percentage/5)}{' ' * (20-int(percentage/5))} {percentage:.1f}%")
+
+    # 5. Union (all unique values)
+    union_query = f"SELECT {on} FROM {temp_tables[0]}"
+    for table in temp_tables[1:]:
+        union_query += f" UNION SELECT {on} FROM {table}"
+
+    total_unique = conn.execute(f"""
+        WITH all_values AS ({union_query})
+        SELECT COUNT(*) FROM all_values
+    """).fetchone()[0]
+
+    print(f"\n🌐 OVERALL STATISTICS")
+    print("-" * 30)
+    print(f"   Total unique values: {total_unique:,}")
+    print(f"   Common values: {total_intersection:,}")
+    print(f"   Overlap percentage: {(total_intersection/total_unique)*100:.1f}%")
+
+    conn.close()
+    print("\n" + "=" * 80)
 
 
 class ProcessingParams:

@@ -1,7 +1,7 @@
 import os
 import sys
 
-from analysis.main import plot_response_rate
+from analysis.main import plot_response_rate, calc_intersections
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
     analyze_sequence_stable_lens_natural
@@ -19,9 +19,9 @@ def print_usage():
     print("  2 - Analyze Sequence Stable Lengths (Natural):")
     print(f"    python {filename} 2 <result_path>")
     print("  3 - Analyze Response Rate for IP-Scan or OS-Scan:")
-    print(f"    python {filename} 3 <result_path> <ip|os>")
-    print("  4 - Analyze Intersections:")  # TODO Implement this
-    print(f"    python {filename} 4 <targets_path> <targets_path> ...")
+    print(f"    python {filename} 3 <targets_path> <ip|os>")
+    print("  4 - Analyze Intersections:")
+    print(f"    python {filename} 4 <ip|os> <targets_path> <targets_path> ...")
     sys.exit(1)
 
 
@@ -64,8 +64,22 @@ def main():
             print_usage()
             return
 
-        targets_csv = os.path.join(result_path, "targets.csv.zst")
+        file_name = "targets.csv.zst" if ts_type == "ip" else "targets_os.csv.zst"
+        targets_csv = os.path.join(result_path, file_name)
         plot_response_rate(targets_csv=targets_csv, ts_type=ts_type)
+    elif mode == 4:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        ts_type = sys.argv[2]
+        if ts_type not in {"ip", "os"}:
+            print_usage()
+            return
+
+        file_name = "targets.csv.zst" if ts_type == "ip" else "targets_os.csv.zst"
+        targets_paths = [os.path.join(tps, file_name) for tps in sys.argv[3:]]
+        calc_intersections(targets_paths, on="IP")
     else:
         print_usage()
 
