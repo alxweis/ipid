@@ -169,12 +169,11 @@ var (
 	senderB              *Sender
 	rawIPLayers          []layers.IPv4
 	proto                *Protocol
-	rstChanged           bool
 	outputDir            string
 	stopSignal           = make(chan struct{})
 )
 
-func Main(mode string) {
+func Main(mode string, targetsType string) {
 	setupSignalHandler()
 
 	// Start pprof server
@@ -198,7 +197,7 @@ func Main(mode string) {
 	createOutputDir(basePath)
 
 	// Load targets file
-	targetsFile := loadTargets(config.Targets, basePath)
+	targetsFile := loadTargets(config.Targets, targetsType, basePath)
 
 	// Load protocol and raw IP layers
 	loadProtocol(config.Protocol)
@@ -216,11 +215,6 @@ func Main(mode string) {
 	if config.RecTraffic {
 		startRecording()
 	}
-
-	// Block auto-send RST when using TCP
-	//if proto.Id == "tcp" {
-	//	rstChanged = setRSTDrop(true)
-	//}
 
 	// Start receivers
 	recvWg.Add(2)
@@ -359,11 +353,6 @@ func cleanup() {
 		log.Println("Stopping record...")
 		stopRecording()
 	}
-
-	//if rstChanged {
-	//	log.Println("Unblock auto-send RST")
-	//	setRSTDrop(false)
-	//}
 
 	log.Println("Results Directory:", outputDir)
 }
@@ -918,7 +907,7 @@ func getBasePath() string {
 	}
 }
 
-func loadTargets(targetsBasePath string, basePath string) string {
+func loadTargets(targetsBasePath string, targetsType string, basePath string) string {
 	if targetsBasePath == "latest" {
 		dir := filepath.Join("targets", basePath)
 		allDirs, err := getSortedDirectories(dir)
@@ -933,7 +922,11 @@ func loadTargets(targetsBasePath string, basePath string) string {
 		targetsBasePath = filepath.Join(basePath, latestDir)
 	}
 
-	sourceTargetsPath := filepath.Join(targetsBasePath, "targets_os.csv.zst") // TODO Fix this + Serialize first to bytestream, then send + IP -> Hash
+	fileName := "targets.csv.zst"
+	if targetsType == "os" {
+		fileName = "targets_os.csv.zst"
+	}
+	sourceTargetsPath := filepath.Join(targetsBasePath, fileName) // TODO Fix this + Serialize first to bytestream, then send + IP -> Hash
 	absSourceTargetsPath, absErr := filepath.Abs(sourceTargetsPath)
 	if absErr != nil {
 		panic(absErr)
@@ -1251,28 +1244,6 @@ func stopRecording() {
 		}
 	}
 	recordingProcesses = nil
-}
-
-// Tools
-func setRSTDrop(enable bool) bool {
-	checkCmd := exec.Command("sudo", "iptables", "-C", "OUTPUT", "-p", "tcp", "--tcp-flags", "RST", "RST", "-j", "DROP")
-	err := checkCmd.Run()
-	ruleExists := err == nil
-
-	if enable && !ruleExists {
-		cmd := exec.Command("sudo", "iptables", "-A", "OUTPUT", "-p", "tcp", "--tcp-flags", "RST", "RST", "-j", "DROP")
-		if err := cmd.Run(); err != nil {
-			panic(err)
-		}
-		return true
-	} else if !enable && ruleExists {
-		cmd := exec.Command("sudo", "iptables", "-D", "OUTPUT", "-p", "tcp", "--tcp-flags", "RST", "RST", "-j", "DROP")
-		if err := cmd.Run(); err != nil {
-			panic(err)
-		}
-		return true
-	}
-	return false
 }
 
 // Stats

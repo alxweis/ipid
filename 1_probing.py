@@ -9,7 +9,7 @@ filename = os.path.basename(__file__)
 
 def print_usage():
     print("Usage:")
-    print("\n".join([f"python {filename} {mode}" for mode in MODES]))
+    print("\n".join([f"python {filename} {mode} <ip|os>" for mode in MODES]))
     sys.exit(1)
 
 
@@ -18,8 +18,9 @@ def main():
         print_usage()
 
     mode = sys.argv[1]
+    targets_type = sys.argv[2]
     if mode in MODES:
-        process = subprocess.Popen(["go", "run", PROBING_FILE, mode])
+        process = subprocess.Popen(["go", "run", PROBING_FILE, mode, targets_type])
         try:
             process.wait()
         except KeyboardInterrupt:

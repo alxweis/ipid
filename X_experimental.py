@@ -19,7 +19,7 @@ def print_usage():
     print("  2 - Analyze Sequence Stable Lengths (Natural):")
     print(f"    python {filename} 2 <result_path>")
     print("  3 - Analyze Response Rate for IP-Scan or OS-Scan:")
-    print(f"    python {filename} 3 <targets_path> <ip|os>")
+    print(f"    python {filename} 3 <ip|os> <targets_path>")
     print("  4 - Analyze Intersections:")
     print(f"    python {filename} 4 <ip|os> <targets_path> <targets_path> ...")
     sys.exit(1)
@@ -57,12 +57,11 @@ def main():
         if len(sys.argv) != 4:
             print_usage()
             return
-        result_path = sys.argv[2]
-        ts_type = sys.argv[3]
-
+        ts_type = sys.argv[2]
         if ts_type not in {"ip", "os"}:
             print_usage()
             return
+        result_path = sys.argv[3]
 
         file_name = "targets.csv.zst" if ts_type == "ip" else "targets_os.csv.zst"
         targets_csv = os.path.join(result_path, file_name)

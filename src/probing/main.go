@@ -11,7 +11,11 @@ func main() {
 	if len(os.Args) != 2 {
 		fmt.Println("Error: Mode not specified")
 		return
+	} else if len(os.Args) != 3 {
+		fmt.Println("Error: targetsType not specified")
+		return
 	}
 	mode := os.Args[1]
-	base.Main(mode)
+	targetsType := os.Args[2]
+	base.Main(mode, targetsType)
 }
