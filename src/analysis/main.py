@@ -88,6 +88,7 @@ class ProcessingParams:
         self.eval_csv = eval_csv
         self.result_dir = result_dir
         self.analysis_dir = analysis_dir
+        self.pool = mp.Pool(processes=self.num_workers)
 
     def chunk_size(self) -> int:
         return self.batch_size * self.num_workers
@@ -126,6 +127,17 @@ class ProcessingParams:
             for key, value in params.items():
                 f.write(f"{key}: {value}\n")
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        print("Cleanup...")
+        self.pool.close()
+        self.pool.join()
+
+        for file in glob.glob(os.path.join(self.result_dir, "*.tmp")):
+            os.remove(file)
+
 
 def count_pattern(batch: pd.DataFrame) -> collections.Counter:
     return Counter(batch["IP_ID_PATTERN"])
@@ -134,27 +146,25 @@ def count_pattern(batch: pd.DataFrame) -> collections.Counter:
 def plot_pattern_distribution(params: ProcessingParams):
     print("Computing Pattern Distribution...")
     pattern_counter = Counter()
-    pool = mp.Pool(processes=params.num_workers)
     dctx = zstd.ZstdDecompressor()
 
     with open(params.eval_csv, "rb") as f:
-        reader = dctx.stream_reader(f)
-        text_reader = io.TextIOWrapper(reader, encoding="utf-8")
+        with dctx.stream_reader(f) as reader:
+            with io.TextIOWrapper(reader, encoding="utf-8") as text_reader:
+                progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        progress_bar = tqdm(total=params.total_rows, unit="rows")
+                try:
+                    for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(),
+                                                usecols=["IP", "IP_ID_PATTERN"]):
+                        batches = [chunk_df[i:i + params.batch_size] for i in
+                                   range(0, len(chunk_df), params.batch_size)]
 
-        for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(), usecols=["IP", "IP_ID_PATTERN"]):
-            batches = [chunk_df[i:i + params.batch_size] for i in range(0, len(chunk_df), params.batch_size)]
+                        for batch_pattern_counter in params.pool.map(count_pattern, batches):
+                            pattern_counter.update(batch_pattern_counter)
 
-            for batch_pattern_counter in pool.map(count_pattern, batches):
-                pattern_counter.update(batch_pattern_counter)
-
-            progress_bar.update(len(chunk_df))
-
-        progress_bar.close()
-
-    pool.close()
-    pool.join()
+                        progress_bar.update(len(chunk_df))
+                finally:
+                    progress_bar.close()
 
     total = sum(pattern_counter.values())
     df = pd.DataFrame(list(pattern_counter.items()), columns=['class', 'absolute'])
@@ -220,7 +230,6 @@ def plot_pattern_distribution_for_oses(params: ProcessingParams, oses: list[str]
     merged_csv = merge_csv(params.eval_csv, params.targets_os_csv(), on="IP")
 
     pattern_counter = Counter()
-    pool = mp.Pool(processes=params.num_workers)
     dctx = zstd.ZstdDecompressor()
 
     with open(merged_csv, "rb") as merge_f:
@@ -234,17 +243,15 @@ def plot_pattern_distribution_for_oses(params: ProcessingParams, oses: list[str]
                         chunk_length = len(chunk_df)
                         chunk_df = chunk_df[chunk_df["OS"].isin(oses)]
 
-                        batches = [chunk_df[i:i + params.batch_size] for i in range(0, len(chunk_df), params.batch_size)]
+                        batches = [chunk_df[i:i + params.batch_size] for i in
+                                   range(0, len(chunk_df), params.batch_size)]
 
-                        for batch_pattern_counter in pool.map(count_pattern, batches):
+                        for batch_pattern_counter in params.pool.map(count_pattern, batches):
                             pattern_counter.update(batch_pattern_counter)
 
                         progress_bar.update(chunk_length)
                 finally:
                     progress_bar.close()
-
-    pool.close()
-    pool.join()
 
     total = sum(pattern_counter.values())
     df = pd.DataFrame(list(pattern_counter.items()), columns=['class', 'absolute'])
@@ -295,40 +302,38 @@ def calc_time_between_requests(rows_batch: list[np.ndarray]) -> list[np.ndarray]
 def plot_time_between_requests(params: ProcessingParams):
     print("Computing Time Between Requests...")
     time_between_requests = []
-    pool = mp.Pool(processes=params.num_workers)
     dctx = zstd.ZstdDecompressor()
 
     def prepare_row_data(row) -> np.ndarray:
         return np.fromstring(row.SENT_TS_SEQUENCE, sep=",", dtype=np.int64)
 
     with open(params.probing_csv, "rb") as f:
-        reader = dctx.stream_reader(f)
-        text_reader = io.TextIOWrapper(reader, encoding="utf-8")
+        with dctx.stream_reader(f) as reader:
+            with io.TextIOWrapper(reader, encoding="utf-8") as text_reader:
+                progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        progress_bar = tqdm(total=params.total_rows, unit="rows")
-
-        for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(), usecols=["SENT_TS_SEQUENCE"]):
-            sample_df = chunk_df.sample(n=min(len(chunk_df), params.samples_per_chunk()))
-            all_rows = []
-
-            for row in sample_df.itertuples(index=False):
                 try:
-                    row_data = prepare_row_data(row)
-                    all_rows.append(row_data)
-                except Exception:
-                    continue
+                    for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(),
+                                                usecols=["SENT_TS_SEQUENCE"]):
+                        sample_df = chunk_df.sample(n=min(len(chunk_df), params.samples_per_chunk()))
+                        all_rows = []
 
-            batches = [all_rows[i:i + params.batch_size] for i in range(0, len(all_rows), params.batch_size)]
+                        for row in sample_df.itertuples(index=False):
+                            try:
+                                row_data = prepare_row_data(row)
+                                all_rows.append(row_data)
+                            except Exception:
+                                continue
 
-            for deltas in pool.map(calc_time_between_requests, batches):
-                time_between_requests.extend(deltas)
+                        batches = [all_rows[i:i + params.batch_size] for i in
+                                   range(0, len(all_rows), params.batch_size)]
 
-            progress_bar.update(len(chunk_df))
+                        for deltas in params.pool.map(calc_time_between_requests, batches):
+                            time_between_requests.extend(deltas)
 
-        progress_bar.close()
-
-    pool.close()
-    pool.join()
+                        progress_bar.update(len(chunk_df))
+                finally:
+                    progress_bar.close()
 
     # Plot
     print(f"Total datapoints: {len(time_between_requests)}")
@@ -378,31 +383,28 @@ def get_continent_rtts(batch: pd.DataFrame) -> dict[str, list[float]]:
 def plot_avg_rtt_per_continent(params: ProcessingParams):
     print("Computing Avg RTT Per Continent...")
     continent_to_rtts = {}
-    pool = mp.Pool(processes=params.num_workers)
     dctx = zstd.ZstdDecompressor()
     total_rtt_count = 0
 
     with open(params.eval_csv, "rb") as f:
-        reader = dctx.stream_reader(f)
-        text_reader = io.TextIOWrapper(reader, encoding="utf-8")
+        with dctx.stream_reader(f) as reader:
+            with io.TextIOWrapper(reader, encoding="utf-8") as text_reader:
+                progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        progress_bar = tqdm(total=params.total_rows, unit="rows")
+                try:
+                    for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(), usecols=["IP", "AVG_RTT"]):
+                        sample_df = chunk_df.sample(n=min(len(chunk_df), params.samples_per_chunk()))
+                        batches = [sample_df[i:i + params.batch_size] for i in
+                                   range(0, len(sample_df), params.batch_size)]
 
-        for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(), usecols=["IP", "AVG_RTT"]):
-            sample_df = chunk_df.sample(n=min(len(chunk_df), params.samples_per_chunk()))
-            batches = [sample_df[i:i + params.batch_size] for i in range(0, len(sample_df), params.batch_size)]
+                        for batch_continent_to_rtts in params.pool.map(get_continent_rtts, batches):
+                            for continent, rtts in batch_continent_to_rtts.items():
+                                total_rtt_count += len(rtts)
+                                continent_to_rtts.setdefault(continent, []).extend(rtts)
 
-            for batch_continent_to_rtts in pool.map(get_continent_rtts, batches):
-                for continent, rtts in batch_continent_to_rtts.items():
-                    total_rtt_count += len(rtts)
-                    continent_to_rtts.setdefault(continent, []).extend(rtts)
-
-            progress_bar.update(len(chunk_df))
-
-        progress_bar.close()
-
-    pool.close()
-    pool.join()
+                        progress_bar.update(len(chunk_df))
+                finally:
+                    progress_bar.close()
 
     # Plot
     continent_to_rtts_numpy = {}
@@ -468,7 +470,6 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
 def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
     print(f"Computing Increment Distribution for {pattern.value}...")
     increments = []
-    pool = mp.Pool(processes=params.num_workers)
     probing_dctx = zstd.ZstdDecompressor()
     eval_dctx = zstd.ZstdDecompressor()
     worker_func = partial(get_increments_for_pattern, pattern=pattern)
@@ -477,46 +478,46 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
         return np.fromstring(row.IP_ID_SEQUENCE, sep=",", dtype=np.int32)
 
     with open(params.probing_csv, "rb") as probing_f, open(params.eval_csv, "rb") as eval_f:
-        probing_reader = probing_dctx.stream_reader(probing_f)
-        eval_reader = eval_dctx.stream_reader(eval_f)
-        probing_text_reader = io.TextIOWrapper(probing_reader, encoding="utf-8")
-        eval_text_reader = io.TextIOWrapper(eval_reader, encoding="utf-8")
+        with probing_dctx.stream_reader(probing_f) as probing_reader, \
+                eval_dctx.stream_reader(eval_f) as eval_reader:
+            with io.TextIOWrapper(probing_reader, encoding="utf-8") as probing_text_reader, \
+                    io.TextIOWrapper(eval_reader, encoding="utf-8") as eval_text_reader:
+                progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        progress_bar = tqdm(total=params.total_rows, unit="rows")
-
-        probing_iter = pd.read_csv(probing_text_reader, chunksize=params.chunk_size(), usecols=["IP", "IP_ID_SEQUENCE"])
-        eval_iter = pd.read_csv(eval_text_reader, chunksize=params.chunk_size(), usecols=["IP", "IP_ID_PATTERN"])
-
-        for probing_chunk_df in probing_iter:
-            eval_chunk_df = next(eval_iter)
-
-            assert probing_chunk_df["IP"].equals(eval_chunk_df["IP"])
-            chunk_df = pd.concat([probing_chunk_df, eval_chunk_df.drop(columns="IP")], axis=1)
-            chunk_length = len(chunk_df)
-
-            chunk_df = chunk_df[chunk_df["IP_ID_PATTERN"] == pattern.value]
-            sample_df = chunk_df.sample(n=min(len(chunk_df), params.samples_per_chunk()))
-
-            all_rows = []
-            for row in sample_df.itertuples(index=False):
                 try:
-                    assert row.IP_ID_PATTERN == pattern.value
-                    row_data = prepare_row_data(row)
-                    all_rows.append(row_data)
-                except Exception:
-                    continue
+                    probing_iter = pd.read_csv(probing_text_reader, chunksize=params.chunk_size(),
+                                               usecols=["IP", "IP_ID_SEQUENCE"])
+                    eval_iter = pd.read_csv(eval_text_reader, chunksize=params.chunk_size(),
+                                            usecols=["IP", "IP_ID_PATTERN"])
 
-            batches = [all_rows[i:i + params.batch_size] for i in range(0, len(all_rows), params.batch_size)]
+                    for probing_chunk_df in probing_iter:
+                        eval_chunk_df = next(eval_iter)
 
-            for batch_increments_for_pattern in pool.map(worker_func, batches):
-                increments.extend(batch_increments_for_pattern)
+                        assert probing_chunk_df["IP"].equals(eval_chunk_df["IP"])
+                        chunk_df = pd.concat([probing_chunk_df, eval_chunk_df.drop(columns="IP")], axis=1)
+                        chunk_length = len(chunk_df)
 
-            progress_bar.update(chunk_length)
+                        chunk_df = chunk_df[chunk_df["IP_ID_PATTERN"] == pattern.value]
+                        sample_df = chunk_df.sample(n=min(len(chunk_df), params.samples_per_chunk()))
 
-        progress_bar.close()
+                        all_rows = []
+                        for row in sample_df.itertuples(index=False):
+                            try:
+                                assert row.IP_ID_PATTERN == pattern.value
+                                row_data = prepare_row_data(row)
+                                all_rows.append(row_data)
+                            except Exception:
+                                continue
 
-    pool.close()
-    pool.join()
+                        batches = [all_rows[i:i + params.batch_size] for i in
+                                   range(0, len(all_rows), params.batch_size)]
+
+                        for batch_increments_for_pattern in params.pool.map(worker_func, batches):
+                            increments.extend(batch_increments_for_pattern)
+
+                        progress_bar.update(chunk_length)
+                finally:
+                    progress_bar.close()
 
     # Plot
     print(f"Total datapoints: {len(increments)}")
@@ -580,27 +581,22 @@ def start(result_dir: str):
 
     assert total_rows_eval_csv == total_rows_probing_csv, "probing_csv and eval_csv should have same line count!"
 
-    params = ProcessingParams(num_workers=num_workers, batch_size=batch_size, total_rows=total_rows_probing_csv,
-                              total_samples=total_samples, targets_csv=targets_csv, is_os_scan=is_os_scan,
-                              probing_csv=probing_csv, eval_csv=eval_csv, result_dir=result_dir,
-                              analysis_dir=plot_output_dir)
+    with ProcessingParams(num_workers=num_workers, batch_size=batch_size, total_rows=total_rows_probing_csv,
+                          total_samples=total_samples, targets_csv=targets_csv, is_os_scan=is_os_scan,
+                          probing_csv=probing_csv, eval_csv=eval_csv, result_dir=result_dir,
+                          analysis_dir=plot_output_dir) as params:
+        params.save()
+        plot_pattern_distribution(params)
+        plot_time_between_requests(params)
+        plot_avg_rtt_per_continent(params)
+        plot_increment_distribution(params, Pattern.GLOBAL)
+        plot_increment_distribution(params, Pattern.LOCAL_GE1)
+        plot_increment_distribution(params, Pattern.RANDOM)
 
-    # params.save()
-    # plot_pattern_distribution(params)
-    # plot_time_between_requests(params)
-    # plot_avg_rtt_per_continent(params)
-    # plot_increment_distribution(params, Pattern.GLOBAL)
-    # plot_increment_distribution(params, Pattern.LOCAL_GE1)
-    # plot_increment_distribution(params, Pattern.RANDOM)
+        if params.is_os_scan:
+            plot_pattern_distribution_for_oses(params, linux_distros)
+            plot_pattern_distribution_for_oses(params, windows)
+            plot_pattern_distribution_for_oses(params, bsd)
+            plot_pattern_distribution_for_oses(params, apple)
 
-    if params.is_os_scan:
-        plot_pattern_distribution_for_oses(params, linux_distros)
-        plot_pattern_distribution_for_oses(params, windows)
-        plot_pattern_distribution_for_oses(params, bsd)
-        plot_pattern_distribution_for_oses(params, apple)
-
-    # Remove all .tmp files
-    for file in glob.glob(os.path.join(result_dir, "*.tmp")):
-        os.remove(file)
-
-    print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")
+        print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")
