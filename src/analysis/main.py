@@ -1,4 +1,5 @@
 import collections
+import glob
 import io
 import math
 import multiprocessing as mp
@@ -8,6 +9,7 @@ import time
 from collections import Counter
 from functools import partial
 
+import duckdb
 import geoip2.database
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,12 +22,12 @@ from tqdm import tqdm
 
 from core.classifier import IPIDSequence, Pattern
 from core.utils import config, runtime
-from hitlist.os_scan import linux_distros, bsd, apple, windows
+from hitlist.os_scan import linux_distros, windows, bsd, apple
 from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import count_lines_in_zst
 
 
-def plot_response_rate(targets_csv: str, ts_type: str): # TODO Fix this
+def plot_response_rate(targets_csv: str, ts_type: str):  # TODO Fix this
     ts_col_name = None
     if ts_type == "ip":
         ts_col_name = config.ts_ip_col_name
@@ -75,7 +77,7 @@ def plot_response_rate(targets_csv: str, ts_type: str): # TODO Fix this
 
 class ProcessingParams:
     def __init__(self, num_workers: int, batch_size: int, total_rows: int, total_samples: int, targets_csv: str,
-                 is_os_scan: bool, probing_csv: str, eval_csv: str, output_dir: str):
+                 is_os_scan: bool, probing_csv: str, eval_csv: str, result_dir: str, analysis_dir: str):
         self.num_workers = num_workers
         self.batch_size = batch_size
         self.total_rows = total_rows
@@ -84,7 +86,8 @@ class ProcessingParams:
         self.is_os_scan = is_os_scan
         self.probing_csv = probing_csv
         self.eval_csv = eval_csv
-        self.output_dir = output_dir
+        self.result_dir = result_dir
+        self.analysis_dir = analysis_dir
 
     def chunk_size(self) -> int:
         return self.batch_size * self.num_workers
@@ -106,7 +109,7 @@ class ProcessingParams:
         raise ValueError("This result is not based on OS scan")
 
     def save(self):
-        os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.analysis_dir, exist_ok=True)
         params = {
             "Number of Workers": self.num_workers,
             "Batch Size": self.batch_size,
@@ -116,9 +119,10 @@ class ProcessingParams:
             "Is OS Scan": self.is_os_scan,
             "Probing CSV": self.probing_csv,
             "Eval CSV": self.eval_csv,
-            "Output Dir": self.output_dir
+            "Result Dir": self.result_dir,
+            "Analysis Dir": self.analysis_dir
         }
-        with open(os.path.join(self.output_dir, "params.txt"), "w") as f:
+        with open(os.path.join(self.analysis_dir, "params.txt"), "w") as f:
             for key, value in params.items():
                 f.write(f"{key}: {value}\n")
 
@@ -178,7 +182,7 @@ def plot_pattern_distribution(params: ProcessingParams):
     plt.grid(True, axis="y", linestyle='--', alpha=0.6)
     plt.tight_layout()
 
-    output_dir = os.path.join(params.output_dir, "pattern_distribution")
+    output_dir = os.path.join(params.analysis_dir, "pattern_distribution")
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
         f.write(f"Total Absolute: {total}\n")
@@ -189,38 +193,55 @@ def plot_pattern_distribution(params: ProcessingParams):
     plt.close()
 
 
+def merge_csv(csv_a: str, csv_b: str, on: str) -> str:
+    output_path = f"{os.path.basename(csv_a).removesuffix(".csv.zst")}+{os.path.basename(csv_b).removesuffix(".csv.zst")}.csv.zst.tmp"
+
+    if os.path.exists(output_path):
+        return output_path
+
+    conn = duckdb.connect()
+
+    query = f"""
+        COPY (
+            SELECT a.*, b.*
+            FROM read_csv_auto('{csv_a}', compression='zstd') a
+            JOIN read_csv_auto('{csv_b}', compression='zstd') b
+            ON a.{on} = b.{on}
+        ) TO '{output_path}' (COMPRESSION 'zstd', FORMAT CSV, HEADER);
+        """
+
+    conn.execute(query)
+    conn.close()
+    return output_path
+
+
 def plot_pattern_distribution_for_oses(params: ProcessingParams, oses: list[str]):
     print(f"Computing Pattern Distribution for OSes {oses}...")
+    merged_csv = merge_csv(params.eval_csv, params.targets_os_csv(), on="IP")
+
     pattern_counter = Counter()
     pool = mp.Pool(processes=params.num_workers)
-    eval_dctx = zstd.ZstdDecompressor()
-    targets_dctx = zstd.ZstdDecompressor()
+    dctx = zstd.ZstdDecompressor()
 
-    with open(params.eval_csv, "rb") as eval_f, open(params.targets_os_csv(), "rb") as targets_f:
-        eval_reader = eval_dctx.stream_reader(eval_f)
-        eval_text_reader = io.TextIOWrapper(eval_reader, encoding="utf-8")
+    with open(merged_csv, "rb") as merge_f:
+        with dctx.stream_reader(merge_f) as reader:
+            with io.TextIOWrapper(reader, encoding="utf-8") as text_reader:
+                progress_bar = tqdm(total=params.total_rows, unit="rows")
 
-        targets_reader = targets_dctx.stream_reader(targets_f)
-        targets_text_reader = io.TextIOWrapper(targets_reader, encoding="utf-8")
+                try:
+                    for chunk_df in pd.read_csv(text_reader, chunksize=params.chunk_size(),
+                                                usecols=["IP", "IP_ID_PATTERN", "OS"]):
+                        chunk_length = len(chunk_df)
+                        chunk_df = chunk_df[chunk_df["OS"].isin(oses)]
 
-        progress_bar = tqdm(total=params.total_rows, unit="rows")
+                        batches = [chunk_df[i:i + params.batch_size] for i in range(0, len(chunk_df), params.batch_size)]
 
-        eval_iter = pd.read_csv(eval_text_reader, chunksize=params.chunk_size(), usecols=["IP", "IP_ID_PATTERN"])
-        targets_df = pd.read_csv(targets_text_reader, usecols=["IP", "OS"])
+                        for batch_pattern_counter in pool.map(count_pattern, batches):
+                            pattern_counter.update(batch_pattern_counter)
 
-        for eval_chunk_df in eval_iter:
-            chunk_df = pd.merge(eval_chunk_df, targets_df, on="IP", how="left")
-            chunk_df = chunk_df.dropna()
-            chunk_df = chunk_df[chunk_df["OS"].isin(oses)]
-
-            batches = [chunk_df[i:i + params.batch_size] for i in range(0, len(chunk_df), params.batch_size)]
-
-            for batch_pattern_counter in pool.map(count_pattern, batches):
-                pattern_counter.update(batch_pattern_counter)
-
-            progress_bar.update(len(eval_chunk_df))
-
-        progress_bar.close()
+                        progress_bar.update(chunk_length)
+                finally:
+                    progress_bar.close()
 
     pool.close()
     pool.join()
@@ -251,7 +272,7 @@ def plot_pattern_distribution_for_oses(params: ProcessingParams, oses: list[str]
     plt.grid(True, axis="y", linestyle='--', alpha=0.6)
     plt.tight_layout()
 
-    output_dir = os.path.join(params.output_dir, "pattern_distribution_for_oses", "+".join(oses))
+    output_dir = os.path.join(params.analysis_dir, "pattern_distribution_for_oses", "+".join(oses))
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
         f.write(f"Total Absolute: {total}\n")
@@ -327,7 +348,7 @@ def plot_time_between_requests(params: ProcessingParams):
     plt.grid(True, axis="both", linestyle='--', alpha=0.6)
     plt.tight_layout()
 
-    output_dir = os.path.join(params.output_dir, "time_between_requests")
+    output_dir = os.path.join(params.analysis_dir, "time_between_requests")
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
         f.write(f"Total Hist Values: {len(deltas_cut)}\n")
@@ -419,7 +440,7 @@ def plot_avg_rtt_per_continent(params: ProcessingParams):
     plt.grid(True, axis="y", linestyle='--', alpha=0.6)
     plt.tight_layout()
 
-    output_dir = os.path.join(params.output_dir, "rtt_per_continent")
+    output_dir = os.path.join(params.analysis_dir, "rtt_per_continent")
     os.makedirs(output_dir, exist_ok=True)
     df_counts = df.groupby("continent").size().reset_index(name="rtts_count")
     with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
@@ -515,7 +536,7 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
     plt.grid(True, axis="both", linestyle="--", alpha=0.6)
     plt.tight_layout()
 
-    output_dir = os.path.join(params.output_dir, "inc_distribution", pattern.value.lower().replace(" ", ""))
+    output_dir = os.path.join(params.analysis_dir, "inc_distribution", pattern.value.lower().replace(" ", ""))
     os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
         f.write(f"Total Hist Values: {len(increments_cut)}\n")
@@ -561,20 +582,25 @@ def start(result_dir: str):
 
     params = ProcessingParams(num_workers=num_workers, batch_size=batch_size, total_rows=total_rows_probing_csv,
                               total_samples=total_samples, targets_csv=targets_csv, is_os_scan=is_os_scan,
-                              probing_csv=probing_csv, eval_csv=eval_csv, output_dir=plot_output_dir)
+                              probing_csv=probing_csv, eval_csv=eval_csv, result_dir=result_dir,
+                              analysis_dir=plot_output_dir)
 
-    params.save()
-    plot_pattern_distribution(params)
-    plot_time_between_requests(params)
-    plot_avg_rtt_per_continent(params)
-    plot_increment_distribution(params, Pattern.GLOBAL)
-    plot_increment_distribution(params, Pattern.LOCAL_GE1)
-    plot_increment_distribution(params, Pattern.RANDOM)
+    # params.save()
+    # plot_pattern_distribution(params)
+    # plot_time_between_requests(params)
+    # plot_avg_rtt_per_continent(params)
+    # plot_increment_distribution(params, Pattern.GLOBAL)
+    # plot_increment_distribution(params, Pattern.LOCAL_GE1)
+    # plot_increment_distribution(params, Pattern.RANDOM)
 
     if params.is_os_scan:
         plot_pattern_distribution_for_oses(params, linux_distros)
         plot_pattern_distribution_for_oses(params, windows)
         plot_pattern_distribution_for_oses(params, bsd)
         plot_pattern_distribution_for_oses(params, apple)
+
+    # Remove all .tmp files
+    for file in glob.glob(os.path.join(result_dir, "*.tmp")):
+        os.remove(file)
 
     print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")
