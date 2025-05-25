@@ -2,6 +2,7 @@ package base
 
 import (
 	"bufio"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/breml/bpfutils"
@@ -109,7 +110,9 @@ type Protocol struct {
 	Id           string
 	Filter       string
 	IpLayer      layers.IPProtocol
-	CreateLayers func(ipLayers []layers.IPv4, workerId uint16, requestCount uint16) [][]byte
+	CreateLayer  func() []gopacket.SerializableLayer
+	SetFields    func(packet []byte, seq uint16, workerId uint16)
+	SetChecksum  func(packet []byte)
 	GetLayerData func(replyInfo *ReplyInfo) (uint16, uint16, bool)
 }
 
@@ -124,21 +127,27 @@ var (
 		Id:           "icmp",
 		Filter:       "icmp[icmptype] == icmp-echoreply",
 		IpLayer:      layers.IPProtocolICMPv4,
-		CreateLayers: createICMPLayers,
+		CreateLayer:  createICMPLayer,
+		SetFields:    setICMPFields,
+		SetChecksum:  setICMPChecksum,
 		GetLayerData: getDataICMPLayer,
 	}
 	TCP = &Protocol{
 		Id:           "tcp",
 		Filter:       "",
 		IpLayer:      layers.IPProtocolTCP,
-		CreateLayers: createTCPLayers,
+		CreateLayer:  createTCPLayer,
+		SetFields:    setTCPFields,
+		SetChecksum:  setTCPChecksum,
 		GetLayerData: getDataTCPLayer,
 	}
 	UDP = &Protocol{
 		Id:           "udp",
 		Filter:       "",
 		IpLayer:      layers.IPProtocolUDP,
-		CreateLayers: createUDPLayers,
+		CreateLayer:  createUDPLayer,
+		SetFields:    setUDPFields,
+		SetChecksum:  setUDPChecksum,
 		GetLayerData: getDataUDPLayer,
 	}
 )
@@ -159,7 +168,7 @@ var (
 	probeSaveChan        = make(chan *Probe, workers*2)
 	recvChans            [workers]chan *ReplyInfo
 	targetCh             = make(chan net.IP, workers*2)
-	opts                 = gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: true}
+	opts                 = gopacket.SerializeOptions{ComputeChecksums: false, FixLengths: true}
 	recordingProcesses   []*exec.Cmd
 	totalTargetCount     int64
 	totalValidProbeCount int64
@@ -167,7 +176,7 @@ var (
 	totalSentByteCount   int64
 	senderA              *Sender
 	senderB              *Sender
-	rawIPLayers          []layers.IPv4
+	prebuildPackets      [][]byte
 	proto                *Protocol
 	outputDir            string
 	stopSignal           = make(chan struct{})
@@ -201,7 +210,7 @@ func Main(mode string, targetsType string) {
 
 	// Load protocol and raw IP layers
 	loadProtocol(config.Protocol)
-	createRawIPLayers()
+	createPrebuildPackets()
 
 	// Setup senders
 	senderA = setupSender(config.IfaceA)
@@ -926,7 +935,7 @@ func loadTargets(targetsBasePath string, targetsType string, basePath string) st
 	if targetsType == "os" {
 		fileName = "targets_os.csv.zst"
 	}
-	sourceTargetsPath := filepath.Join(targetsBasePath, fileName) // TODO Fix this + Serialize first to bytestream, then send + IP -> Hash
+	sourceTargetsPath := filepath.Join(targetsBasePath, fileName)
 	absSourceTargetsPath, absErr := filepath.Abs(sourceTargetsPath)
 	if absErr != nil {
 		panic(absErr)
@@ -977,24 +986,70 @@ func loadProbingMode(mode string) {
 }
 
 // Build
-func buildPackets(dstIP net.IP, workerId uint16) [][]byte {
-	rawIpLayersCopy := make([]layers.IPv4, len(rawIPLayers))
+func createPrebuildPackets() {
+	packetList := make([][]byte, pm.probingVars().requestCount)
+	packetBuf := gopacket.NewSerializeBuffer()
 
-	for i, rawIPLayer := range rawIPLayers {
-		rawIpLayersCopy[i] = rawIPLayer
-		rawIpLayersCopy[i].DstIP = dstIP
+	for seq := uint16(0); seq < pm.probingVars().requestCount; seq++ {
+		_, srcIP := getSender(seq)
+
+		id := config.DefaultSendIpIds[int(seq)%len(config.DefaultSendIpIds)]
+		if config.DetectReflectedIpIds {
+			id = config.ReflectionSendIpIds[int(seq)%len(config.ReflectionSendIpIds)]
+		}
+
+		ipLayer := &layers.IPv4{
+			Version:  ipv4.Version,
+			TTL:      64,
+			Id:       id,
+			Flags:    0,
+			Protocol: proto.IpLayer,
+			SrcIP:    srcIP,
+		}
+
+		protoLayer := proto.CreateLayer()
+
+		err := packetBuf.Clear()
+		if err != nil {
+			panic(err)
+		}
+
+		packetLayers := append([]gopacket.SerializableLayer{ipLayer}, protoLayer...)
+		err = gopacket.SerializeLayers(packetBuf, opts, packetLayers...)
+		if err != nil {
+			panic(err)
+		}
+
+		packetList[seq] = append([]byte(nil), packetBuf.Bytes()...)
 	}
-
-	return proto.CreateLayers(rawIpLayersCopy, workerId, pm.probingVars().requestCount)
+	prebuildPackets = packetList
 }
 
-func buildLayers(payloadLayers ...gopacket.SerializableLayer) []byte {
-	pBuf := gopacket.NewSerializeBuffer()
-	err := gopacket.SerializeLayers(pBuf, opts, payloadLayers...)
-	if err != nil {
-		panic(err)
+func buildPackets(dstIP net.IP, workerId uint16) [][]byte {
+	packetList := make([][]byte, pm.probingVars().requestCount)
+
+	for seq := uint16(0); seq < pm.probingVars().requestCount; seq++ {
+		packet := make([]byte, len(prebuildPackets[seq]))
+		copy(packet, prebuildPackets[seq])
+
+		// Set IP Destination
+		copy(packet[16:20], dstIP.To4())
+
+		// Set Protocol Fields (e.g. Sequence Number, Source Port)
+		proto.SetFields(packet, seq, workerId)
+
+		// Calculate IP checksum
+		binary.BigEndian.PutUint16(packet[10:12], 0)
+		ipChecksum := calculateChecksum(packet[0:20])
+		binary.BigEndian.PutUint16(packet[10:12], ipChecksum)
+
+		// Calculate Protocol Checksum
+		proto.SetChecksum(packet)
+
+		packetList[seq] = packet
 	}
-	return pBuf.Bytes()
+
+	return packetList
 }
 
 // encode encodes the 4-bit number a and the 12-bit number b into a 16-bit number x.
@@ -1009,32 +1064,31 @@ func decode(x uint16) (uint16, uint16) {
 	return a, b
 }
 
-// IP
-func createRawIPLayers() {
-	ipLayers := make([]layers.IPv4, pm.probingVars().requestCount)
+// Standard Algorithm for computing Internet-Checksums referring RFC1071
+func calculateChecksum(data []byte) uint16 {
+	var sum uint32
 
-	for seq := uint16(0); seq < pm.probingVars().requestCount; seq++ {
-		_, srcIP := getSender(seq)
-
-		id := config.DefaultSendIpIds[int(seq)%len(config.DefaultSendIpIds)]
-		if config.DetectReflectedIpIds {
-			id = config.ReflectionSendIpIds[int(seq)%len(config.ReflectionSendIpIds)]
-		}
-
-		ipLayer := layers.IPv4{
-			Version:  ipv4.Version,
-			TTL:      64,
-			Id:       id,
-			Flags:    0,
-			Protocol: proto.IpLayer,
-			SrcIP:    srcIP,
-		}
-
-		ipLayers[seq] = ipLayer
+	// Add all 16-bit words
+	for i := 0; i < len(data)-1; i += 2 {
+		word := uint32(data[i])<<8 + uint32(data[i+1])
+		sum += word
 	}
-	rawIPLayers = ipLayers
+
+	// If odd number of bytes, add the last byte
+	if len(data)%2 == 1 {
+		sum += uint32(data[len(data)-1]) << 8
+	}
+
+	// Add carry bits
+	for sum>>16 != 0 {
+		sum = (sum & 0xFFFF) + (sum >> 16)
+	}
+
+	// One's complement
+	return uint16(^sum)
 }
 
+// IP
 func checkIPLayer(packet gopacket.Packet) (bool, net.IP, net.IP, uint16) {
 	ip, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 	if !ok {
@@ -1051,34 +1105,26 @@ func checkIPLayer(packet gopacket.Packet) (bool, net.IP, net.IP, uint16) {
 }
 
 // ICMP
-func createICMPLayers(ipLayers []layers.IPv4, workerId uint16, requestCount uint16) [][]byte {
-	pList := make([][]byte, requestCount)
-
-	for seq := uint16(0); seq < requestCount; seq++ {
-		ipLayer := ipLayers[seq]
-
-		pLayer := layers.ICMPv4{
-			TypeCode: layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoRequest, 0),
-			Seq:      encode(seq, workerId),
-		}
-
-		packet := buildLayers(&ipLayer, &pLayer)
-		pList[seq] = packet
+func createICMPLayer() []gopacket.SerializableLayer {
+	icmpLayer := &layers.ICMPv4{
+		TypeCode: layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoRequest, 0),
 	}
-	return pList
+
+	return []gopacket.SerializableLayer{icmpLayer}
 }
 
-//func checkICMPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
-//	if icmp, ok := packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); ok {
-//		if icmp.TypeCode == layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoReply, 0) {
-//			seq, _ := decode(icmp.Seq)
-//			if seq < requestCount {
-//				return true, seq
-//			}
-//		}
-//	}
-//	return false, 0
-//}
+func setICMPFields(packet []byte, seq uint16, workerId uint16) {
+	binary.BigEndian.PutUint16(packet[26:28], encode(seq, workerId))
+}
+
+func setICMPChecksum(packet []byte) {
+	// Set ICMP Checksum 0
+	binary.BigEndian.PutUint16(packet[22:24], 0)
+
+	icmpData := packet[20:]
+	icmpChecksum := calculateChecksum(icmpData)
+	binary.BigEndian.PutUint16(packet[22:24], icmpChecksum)
+}
 
 func getDataICMPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
 	if icmp, ok := replyInfo.Packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); ok {
@@ -1093,43 +1139,45 @@ func getDataICMPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
 }
 
 // TCP
-func createTCPLayers(ipLayers []layers.IPv4, workerId uint16, requestCount uint16) [][]byte {
-	pList := make([][]byte, requestCount)
-
-	for seq := uint16(0); seq < requestCount; seq++ {
-		ipLayer := ipLayers[seq]
-		pLayer := layers.TCP{
-			SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
-			DstPort: config.TcpDstPort,
-			Seq:     uint32(encode(seq, workerId)),
-			SYN:     strings.Contains(config.TcpReqFlags, "S"),
-			ACK:     strings.Contains(config.TcpReqFlags, "A"),
-			RST:     strings.Contains(config.TcpReqFlags, "R"),
-		}
-		err := pLayer.SetNetworkLayerForChecksum(&ipLayer)
-		if err != nil {
-			panic(err)
-		}
-
-		packet := buildLayers(&ipLayer, &pLayer)
-		pList[seq] = packet
+func createTCPLayer() []gopacket.SerializableLayer {
+	tcpLayer := &layers.TCP{
+		DstPort: config.TcpDstPort,
+		SYN:     strings.Contains(config.TcpReqFlags, "S"),
+		ACK:     strings.Contains(config.TcpReqFlags, "A"),
+		RST:     strings.Contains(config.TcpReqFlags, "R"),
 	}
-	return pList
+
+	return []gopacket.SerializableLayer{tcpLayer}
 }
 
-//func checkTCPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
-//	if tcp, ok := packet.Layer(layers.LayerTypeTCP).(*layers.TCP); ok {
-//		seq, _ := decode(uint16(tcp.Ack - 1))
-//		if seq < requestCount {
-//			return true, seq
-//		} else {
-//			log.Println("TCP Ack is invalid")
-//		}
-//	} else {
-//		log.Println("TCP layer not found")
-//	}
-//	return false, 0
-//}
+func setTCPFields(packet []byte, seq uint16, workerId uint16) {
+	// Set TCP Source Port
+	binary.BigEndian.PutUint16(packet[20:22], seq+config.TcpSrcPortOffset)
+	// Set TCP Sequence Number
+	binary.BigEndian.PutUint16(packet[24:28], encode(seq, workerId))
+}
+
+func setTCPChecksum(packet []byte) {
+	// Set TCP Checksum 0
+	binary.BigEndian.PutUint16(packet[36:38], 0)
+
+	ipSrc := packet[12:16] // Source IP
+	ipDst := packet[16:20] // Dest IP
+	tcpData := packet[20:] // TCP Header + Data
+
+	// Create Pseudo-Header
+	pseudoHeader := make([]byte, 12)
+	copy(pseudoHeader[0:4], ipSrc)
+	copy(pseudoHeader[4:8], ipDst)
+	pseudoHeader[8] = 0 // Zero
+	pseudoHeader[9] = 6 // TCP Protocol
+	binary.BigEndian.PutUint16(pseudoHeader[10:12], uint16(len(tcpData)))
+
+	// Combine Pseudo-Header + TCP Data
+	checksumData := append(pseudoHeader, tcpData...)
+	checksum := calculateChecksum(checksumData)
+	binary.BigEndian.PutUint16(packet[36:38], checksum)
+}
 
 func getDataTCPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
 	if tcp, ok := replyInfo.Packet.Layer(layers.LayerTypeTCP).(*layers.TCP); ok {
@@ -1142,67 +1190,55 @@ func getDataTCPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
 }
 
 // UDP
-func createUDPLayers(ipLayers []layers.IPv4, workerId uint16, requestCount uint16) [][]byte {
-	pList := make([][]byte, requestCount)
-
-	for seq := uint16(0); seq < requestCount; seq++ {
-		ipLayer := ipLayers[seq]
-
-		pLayer := layers.UDP{
-			SrcPort: layers.UDPPort(seq + config.UdpSrcPortOffset),
-			DstPort: config.UdpDstPort,
-		}
-
-		err := pLayer.SetNetworkLayerForChecksum(&ipLayer)
-		if err != nil {
-			panic(err)
-		}
-
-		dnsLayer := layers.DNS{
-			ID:      encode(seq, workerId),
-			OpCode:  layers.DNSOpCodeQuery,
-			RD:      false,
-			QDCount: 1,
-			Questions: []layers.DNSQuestion{
-				{
-					Name:  []byte("example.com"),
-					Type:  layers.DNSTypeA,
-					Class: layers.DNSClassIN,
-				},
-			},
-		}
-
-		packet := buildLayers(&ipLayer, &pLayer, &dnsLayer)
-		pList[seq] = packet
+func createUDPLayer() []gopacket.SerializableLayer {
+	udpLayer := &layers.UDP{
+		DstPort: config.UdpDstPort,
 	}
-	return pList
+
+	dnsLayer := &layers.DNS{
+		OpCode:  layers.DNSOpCodeQuery,
+		RD:      false,
+		QDCount: 1,
+		Questions: []layers.DNSQuestion{
+			{
+				Name:  []byte("example.com"),
+				Type:  layers.DNSTypeA,
+				Class: layers.DNSClassIN,
+			},
+		},
+	}
+
+	return []gopacket.SerializableLayer{udpLayer, dnsLayer}
 }
 
-//func checkUDPLayer(packet gopacket.Packet, requestCount uint16) (bool, uint16) {
-//	if _, udpOk := packet.Layer(layers.LayerTypeUDP).(*layers.UDP); udpOk {
-//		if dns, dnsOk := packet.Layer(layers.LayerTypeDNS).(*layers.DNS); dnsOk {
-//			if _, icmpOk := packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); !icmpOk {
-//				if dns.QR {
-//					seq, _ := decode(dns.ID)
-//					if seq < requestCount {
-//						return true, seq
-//					} else {
-//						log.Println("DNS ID is invalid")
-//					}
-//				} else {
-//					log.Println("DNS QR is invalid")
-//				}
-//			} else {
-//				log.Println("ICMP Layer found")
-//			}
-//		} else {
-//			log.Println("DNS Layer not found")
-//		}
-//	} else {
-//		log.Println("UDP Layer not found")
-//	}
-//	return false, 0
-//}
+func setUDPFields(packet []byte, seq uint16, workerId uint16) {
+	// Set UDP Source Port
+	binary.BigEndian.PutUint16(packet[20:22], seq+config.UdpSrcPortOffset)
+	// Set DNS Identification
+	binary.BigEndian.PutUint16(packet[28:30], encode(seq, workerId))
+}
+
+func setUDPChecksum(packet []byte) {
+	// Set UDP Checksum 0
+	binary.BigEndian.PutUint16(packet[26:28], 0)
+
+	// Create Pseudo-Header
+	ipSrc := packet[12:16]
+	ipDst := packet[16:20]
+	udpData := packet[20:]
+
+	pseudoHeader := make([]byte, 12)
+	copy(pseudoHeader[0:4], ipSrc)
+	copy(pseudoHeader[4:8], ipDst)
+	pseudoHeader[8] = 0  // Zero
+	pseudoHeader[9] = 17 // UDP Protocol
+	binary.BigEndian.PutUint16(pseudoHeader[10:12], uint16(len(udpData)))
+
+	// Combine Pseudo-Header + UDP Data
+	checksumData := append(pseudoHeader, udpData...)
+	checksum := calculateChecksum(checksumData)
+	binary.BigEndian.PutUint16(packet[26:28], checksum)
+}
 
 func getDataUDPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
 	if _, udpOk := replyInfo.Packet.Layer(layers.LayerTypeUDP).(*layers.UDP); udpOk {
