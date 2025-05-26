@@ -355,7 +355,10 @@ def plot_pattern_distribution(params: ProcessingParams):
 
 
 def merge_csv(csv_a: str, csv_b: str, on: str) -> str:
-    output_path = f"{os.path.dirname(csv_a).removesuffix(".csv.zst")}+{os.path.dirname(csv_b).removesuffix(".csv.zst")}.csv.zst.tmp"
+    output_dir = os.path.dirname(csv_a)
+    csv_a_id = os.path.basename(csv_a).removesuffix(".csv.zst")
+    csv_b_id = os.path.basename(csv_b).removesuffix(".csv.zst")
+    output_path = os.path.join(output_dir, f"{csv_a_id}+{csv_b_id}.csv.zst.tmp")
 
     if os.path.exists(output_path):
         return output_path

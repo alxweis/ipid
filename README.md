@@ -75,8 +75,8 @@ Other parameters in `config.yaml` can be optionally adjusted as needed.
 Available commands for probing:
 
 ```
-python3 1_probing.py b2b   // Refers to Back-To-Back Probing (B2B)
-python3 1_probing.py seq   // Refers to Sequential Probing (SEQ)
+python3 1_probing.py b2b <ip|os>   // Refers to Back-To-Back Probing (B2B)
+python3 1_probing.py seq <ip|os>   // Refers to Sequential Probing (SEQ)
 ```
 See `config.yaml` for optional probing parameters.
 
