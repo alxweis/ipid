@@ -20,6 +20,7 @@ import zstandard as zstd
 from geoip2.errors import AddressNotFoundError
 from tqdm import tqdm
 
+from core import EXP_INTERSECTIONS
 from core.classifier import IPIDSequence, Pattern
 from core.utils import config, runtime
 from hitlist.os_scan import linux_distros, windows, bsd, apple
@@ -101,21 +102,27 @@ def calc_intersections(target_csvs: list[str], on: str):
 
     conn = duckdb.connect()
 
-    print("=" * 80)
-    print(f"🔍 INTERSECTION ANALYSIS - Column: {on}")
-    print("=" * 80)
+    # List to store all output lines
+    output_lines = []
+
+    def log_output(text):
+        print(text)
+        output_lines.append(text)
+
+    log_output("=" * 80)
+    log_output(f"🔍 INTERSECTION ANALYSIS - Column: {on}")
+    log_output("=" * 80)
 
     # 1. Individual file statistics
     file_stats = {}
     temp_tables = []
 
     for i, file_path in enumerate(target_csvs):
-        file_name = Path(file_path).name
         table_name = f"file_{i}"
         temp_tables.append(table_name)
 
-        print(f"\n📁 File: {file_name}")
-        print("-" * 50)
+        log_output(f"\n📁 File: {file_path}")
+        log_output("-" * 50)
 
         try:
             # Create temporary table
@@ -130,18 +137,18 @@ def calc_intersections(target_csvs: list[str], on: str):
             total_values = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
             sample_values = conn.execute(f"SELECT {on} FROM {table_name} LIMIT 5").fetchall()
 
-            file_stats[file_name] = total_values
+            file_stats[file_path] = total_values
 
-            print(f"   Unique values: {total_values:,}")
-            print(f"   Sample values: {', '.join([str(val[0]) for val in sample_values[:3]])}")
+            log_output(f"   Unique values: {total_values:,}")
+            log_output(f"   Sample values: {', '.join([str(val[0]) for val in sample_values[:3]])}")
 
         except Exception as e:
-            print(f"   ❌ Error reading file: {e}")
+            log_output(f"   ❌ Error reading file: {e}")
             return
 
     # 2. Pairwise intersections
-    print(f"\n🔗 PAIRWISE INTERSECTIONS")
-    print("-" * 50)
+    log_output(f"\n🔗 PAIRWISE INTERSECTIONS")
+    log_output("-" * 50)
 
     for i in range(len(temp_tables)):
         for j in range(i + 1, len(temp_tables)):
@@ -159,14 +166,14 @@ def calc_intersections(target_csvs: list[str], on: str):
             percentage1 = (intersection_count / file_stats[file1]) * 100 if file_stats[file1] > 0 else 0
             percentage2 = (intersection_count / file_stats[file2]) * 100 if file_stats[file2] > 0 else 0
 
-            print(f"   {file1} ∩ {file2}:")
-            print(f"     Common values: {intersection_count:,}")
-            print(f"     Percentage of {file1}: {percentage1:.1f}%")
-            print(f"     Percentage of {file2}: {percentage2:.1f}%")
+            log_output(f"   {file1} ∩ {file2}:")
+            log_output(f"     Common values: {intersection_count:,}")
+            log_output(f"     Percentage of {file1}: {percentage1:.1f}%")
+            log_output(f"     Percentage of {file2}: {percentage2:.1f}%")
 
     # 3. Complete intersection of all files
-    print(f"\n🎯 COMPLETE INTERSECTION (all {len(target_csvs)} files)")
-    print("-" * 60)
+    log_output(f"\n🎯 COMPLETE INTERSECTION (all {len(target_csvs)} files)")
+    log_output("-" * 60)
 
     # Dynamic intersection across all tables
     intersect_query = f"SELECT {on} FROM {temp_tables[0]}"
@@ -183,28 +190,28 @@ def calc_intersections(target_csvs: list[str], on: str):
     total_intersection = intersection_result[0]
     intersection_values = intersection_result[1] if intersection_result[1] else []
 
-    print(f"   Common values in ALL files: {total_intersection:,}")
+    log_output(f"   Common values in ALL files: {total_intersection:,}")
 
     if total_intersection > 0:
-        print(f"   Sample common values:")
+        log_output(f"   Sample common values:")
         for value in intersection_values[:10]:  # Show first 10 values
-            print(f"     • {value}")
+            log_output(f"     • {value}")
 
         if total_intersection > 10:
-            print(f"     ... and {total_intersection - 10} more")
+            log_output(f"     ... and {total_intersection - 10} more")
 
     # 4. Percentage overlap per file
-    print(f"\n📊 OVERLAP PERCENTAGE PER FILE")
-    print("-" * 40)
+    log_output(f"\n📊 OVERLAP PERCENTAGE PER FILE")
+    log_output("-" * 40)
 
     for i, file_path in enumerate(target_csvs):
         file_name = Path(file_path).name
         total_in_file = file_stats[file_name]
         percentage = (total_intersection / total_in_file) * 100 if total_in_file > 0 else 0
 
-        print(f"   {file_name}:")
-        print(f"     {total_intersection:,} of {total_in_file:,} values ({percentage:.1f}%)")
-        print(f"     {'█' * int(percentage/5)}{' ' * (20-int(percentage/5))} {percentage:.1f}%")
+        log_output(f"   {file_name}:")
+        log_output(f"     {total_intersection:,} of {total_in_file:,} values ({percentage:.1f}%)")
+        log_output(f"     {'█' * int(percentage / 5)}{' ' * (20 - int(percentage / 5))} {percentage:.1f}%")
 
     # 5. Union (all unique values)
     union_query = f"SELECT {on} FROM {temp_tables[0]}"
@@ -216,14 +223,40 @@ def calc_intersections(target_csvs: list[str], on: str):
         SELECT COUNT(*) FROM all_values
     """).fetchone()[0]
 
-    print(f"\n🌐 OVERALL STATISTICS")
-    print("-" * 30)
-    print(f"   Total unique values: {total_unique:,}")
-    print(f"   Common values: {total_intersection:,}")
-    print(f"   Overlap percentage: {(total_intersection/total_unique)*100:.1f}%")
+    log_output(f"\n🌐 OVERALL STATISTICS")
+    log_output("-" * 30)
+    log_output(f"   Total unique values: {total_unique:,}")
+    log_output(f"   Common values: {total_intersection:,}")
+    log_output(f"   Overlap percentage: {(total_intersection / total_unique) * 100:.1f}%")
+
+    # 6. Summary table
+    log_output(f"\n📋 SUMMARY TABLE")
+    log_output("-" * 50)
+    log_output(f"{'File':<30} {'Unique Values':<15} {'Common %':<10}")
+    log_output("-" * 55)
+
+    for file_path in target_csvs:
+        file_name = Path(file_path).name
+        total_in_file = file_stats[file_name]
+        percentage = (total_intersection / total_in_file) * 100 if total_in_file > 0 else 0
+
+        log_output(f"{file_name:<30} {total_in_file:<15,} {percentage:<10.1f}%")
 
     conn.close()
-    print("\n" + "=" * 80)
+    log_output("\n" + "=" * 80)
+
+    # Write results to file
+    output_dir = os.path.join(EXP_INTERSECTIONS, "+".join([p.split("/")[-3] for p in target_csvs]))
+    output_file = os.path.join(output_dir, "info.txt")
+
+    try:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(output_lines))
+
+        log_output(f"\n✅ Results saved to: {output_file}")
+
+    except Exception as e:
+        print(f"\n❌ Error writing to file {output_file}: {e}")
 
 
 class ProcessingParams:

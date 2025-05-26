@@ -103,4 +103,58 @@ python3 3_analysis.py <result_path>
 ```
 
 **Output:**
-* Plots are saved as .pdf-files at: `results/<protocol>/<port>/<timestamp>/analysis/`
+* Plots and additional data is saved at: `results/<protocol>/<port>/<timestamp>/analysis/`
+
+## Experimental
+
+Run `X_experimental.py` to perform additional investigations that are not directly part of the core IP-ID measurement analysis.
+
+The following commands are available:
+
+### Analyze Synthetic Sequence Stable Lengths
+
+Analyze how many IP-IDs are needed in synthetically generated sequences before the classification result becomes stable.
+
+```
+python X_experimental.py 1 <sequence_count_per_pattern> <sequence_length>
+```
+
+**Output:**
+
+* Plot is saved at: `results/experimental/sequence_stable_classification_len/<sequence_count>_<sequence_length>/`
+
+### Analyze Natural Sequence Stable Lengths
+
+Analyze how many IP-IDs are needed in real measured sequences before the classification result becomes stable.
+
+```
+python X_experimental.py 2 <result_path>
+```
+
+**Output:**
+
+* Plot and additional data are saved at: `<result_path>/analysis/sequence_stable_classification_len/`
+
+### Analyze Response Rate for IP-Scan or OS-Scan
+
+Analyze how many targets are successfully identified per second in an IP or OS scan.
+
+```
+python X_experimental.py 3 <targets_full_path>
+```
+
+**Output:**
+
+* Plot and additional data are saved at: `<targets_full_path>/analysis/response_rate_<ip|os>_scan/`
+
+### Analyze Intersections
+
+Analyze how much overlap exists between the targets collected by two or more scans.
+
+```
+python X_experimental.py 4 <targets_full_path> <targets_full_path> ...
+```
+
+**Output:**
+
+* Results are saved at: `results/experimental/intersections/<targets_full_path_ts>+<targets_full_path_ts>+.../`

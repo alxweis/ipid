@@ -9,7 +9,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from core import EXP_SEQUENCE_STABLE_LEN_ANALYSIS
+from core import EXP_SEQUENCE_STABLE_CLASSIFICATION_LEN
 from core.classifier import IPIDSequence, Pattern, get_pattern, pattern_generation_map
 
 
@@ -95,9 +95,9 @@ def analyze_sequence_stable_lens_synthetic(sequence_count_per_pattern: int, sequ
                 pattern_to_min_stable_lens.setdefault(last_classified_pattern, []).append(min_stable_len)
 
     plot_pattern_to_min_stable_lens(pattern_to_min_stable_lens, sequence_length,
-                                    os.path.join(EXP_SEQUENCE_STABLE_LEN_ANALYSIS,
+                                    os.path.join(EXP_SEQUENCE_STABLE_CLASSIFICATION_LEN,
                                                  f"{sequence_count_per_pattern * len(pattern_generation_map)}_{sequence_length}"),
-                                    "result.pdf")
+                                    "plot.pdf")
 
 
 def analyze_sequence_stable_lens_natural(probing_csv: str):
@@ -168,7 +168,7 @@ def analyze_sequence_stable_lens_natural(probing_csv: str):
     plt.ylabel("Sequence Length", fontsize=18)
     plt.yticks(rotation=0, fontsize=16)
     plt.tight_layout()
-    output_dir = os.path.join(os.path.dirname(probing_csv), "analysis")
+    output_dir = os.path.join(os.path.dirname(probing_csv), "analysis", EXP_SEQUENCE_STABLE_CLASSIFICATION_LEN)
     os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, "min_sequence_stable_lens.pdf"), bbox_inches='tight')
+    plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches='tight')
     plt.close()

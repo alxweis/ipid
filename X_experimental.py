@@ -14,14 +14,14 @@ def print_usage():
     print("Usage:")
     print(f"  python {filename} <mode> [additional arguments]")
     print("\nModes:")
-    print("  1 - Analyze Sequence Stable Lengths (Synthetic):")
+    print("  1 - Analyze Synthetic Sequence Lengths for Stable Classification:")
     print(f"    python {filename} 1 <sequence_count_per_pattern> <sequence_length>")
-    print("  2 - Analyze Sequence Stable Lengths (Natural):")
+    print("  2 - Analyze Natural Sequence Lengths for Stable Classification:")
     print(f"    python {filename} 2 <result_path>")
     print("  3 - Analyze Response Rate for IP-Scan or OS-Scan:")
-    print(f"    python {filename} 3 <ip|os> <targets_path>")
+    print(f"    python {filename} 3 <targets_full_path>")
     print("  4 - Analyze Intersections:")
-    print(f"    python {filename} 4 <ip|os> <targets_path> <targets_path> ...")
+    print(f"    python {filename} 4 <targets_full_path> <targets_full_path> ...")
     sys.exit(1)
 
 
@@ -54,31 +54,25 @@ def main():
         probing_csv = os.path.join(result_path, "probing.csv.zst")
         analyze_sequence_stable_lens_natural(probing_csv=probing_csv)
     elif mode == 3:
-        if len(sys.argv) != 4:
+        if len(sys.argv) != 3:
             print_usage()
             return
-        ts_type = sys.argv[2]
-        if ts_type not in {"ip", "os"}:
-            print_usage()
-            return
-        result_path = sys.argv[3]
+        targets_full_path = sys.argv[2]
 
-        file_name = "targets.csv.zst" if ts_type == "ip" else "targets_os.csv.zst"
-        targets_csv = os.path.join(result_path, file_name)
-        plot_response_rate(targets_csv=targets_csv, ts_type=ts_type)
+        file_name = os.path.basename(targets_full_path)
+        ts_type = None
+        if file_name == "targets.csv.zst":
+            ts_type = "ip"
+        elif file_name == "targets_os.csv.zst":
+            ts_type = "os"
+        plot_response_rate(targets_csv=targets_full_path, ts_type=ts_type)
     elif mode == 4:
-        if len(sys.argv) < 4:
+        if len(sys.argv) < 3:
             print_usage()
             return
 
-        ts_type = sys.argv[2]
-        if ts_type not in {"ip", "os"}:
-            print_usage()
-            return
-
-        file_name = "targets.csv.zst" if ts_type == "ip" else "targets_os.csv.zst"
-        targets_paths = [os.path.join(tps, file_name) for tps in sys.argv[3:]]
-        calc_intersections(targets_paths, on="IP")
+        targets_full_paths = sys.argv[3:]
+        calc_intersections(targets_full_paths, on="IP")
     else:
         print_usage()
 
