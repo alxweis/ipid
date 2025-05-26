@@ -60,11 +60,12 @@ def main():
         targets_full_path = sys.argv[2]
 
         file_name = os.path.basename(targets_full_path)
-        ts_type = None
         if file_name == "targets.csv.zst":
             ts_type = "ip"
         elif file_name == "targets_os.csv.zst":
             ts_type = "os"
+        else:
+            raise ValueError(f"{targets_full_path} is an invalid targets full path!")
         plot_response_rate(targets_csv=targets_full_path, ts_type=ts_type)
     elif mode == 4:
         if len(sys.argv) < 3:

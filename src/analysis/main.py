@@ -89,9 +89,9 @@ def plot_response_rate(targets_csv: str, ts_type: str):
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
 
-    output_dir = os.path.join(os.path.dirname(targets_csv), "analysis")
+    output_dir = os.path.join(os.path.dirname(targets_csv), "analysis", f"response_rate_{ts_type}_scan")
     os.makedirs(output_dir, exist_ok=True)
-    plt.savefig(os.path.join(output_dir, f"response_rate_{ts_type}_scan.pdf"), bbox_inches="tight")
+    plt.savefig(os.path.join(output_dir, f"plot.pdf"), bbox_inches="tight")
     plt.close()
 
 
