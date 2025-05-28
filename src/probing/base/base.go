@@ -13,6 +13,7 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/ipv4"
+	"hash/fnv"
 	"log"
 	"math/rand"
 	"net"
@@ -35,7 +36,7 @@ import _ "net/http/pprof"
 
 type ProbingMode interface {
 	probingVars() *ProbingVars
-	probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP)
+	probeTarget(recvCh chan *ReplyInfo, target net.IP)
 }
 
 type ProbingVars struct {
@@ -103,17 +104,16 @@ type Probe struct {
 type ReplyInfo struct {
 	Packet gopacket.Packet
 	Time   int64
-	Seq    uint16
 }
 
 type Protocol struct {
-	Id           string
-	Filter       string
-	IpLayer      layers.IPProtocol
-	CreateLayer  func() []gopacket.SerializableLayer
-	SetFields    func(packet []byte, seq uint16, workerId uint16)
-	SetChecksum  func(packet []byte)
-	GetLayerData func(replyInfo *ReplyInfo) (uint16, uint16, bool)
+	Id          string
+	Filter      string
+	IpLayer     layers.IPProtocol
+	CreateLayer func(seq uint16) []gopacket.SerializableLayer
+	SetSeq      func(packet []byte, seq uint16)
+	SetChecksum func(packet []byte)
+	GetSeq      func(replyInfo *ReplyInfo) (uint16, bool)
 }
 
 type Sender struct {
@@ -122,38 +122,44 @@ type Sender struct {
 	Addr      syscall.SockaddrLinklayer
 }
 
+type Worker struct {
+	targetCh chan net.IP
+	recvCh   chan *ReplyInfo
+}
+
 var (
 	ICMP = &Protocol{
-		Id:           "icmp",
-		Filter:       "icmp[icmptype] == icmp-echoreply",
-		IpLayer:      layers.IPProtocolICMPv4,
-		CreateLayer:  createICMPLayer,
-		SetFields:    setICMPFields,
-		SetChecksum:  setICMPChecksum,
-		GetLayerData: getDataICMPLayer,
+		Id:          "icmp",
+		Filter:      "icmp[icmptype] == icmp-echoreply",
+		IpLayer:     layers.IPProtocolICMPv4,
+		CreateLayer: createICMPLayer,
+		SetSeq:      setICMPFields,
+		SetChecksum: setICMPChecksum,
+		GetSeq:      getICMPSeq,
 	}
 	TCP = &Protocol{
-		Id:           "tcp",
-		Filter:       "",
-		IpLayer:      layers.IPProtocolTCP,
-		CreateLayer:  createTCPLayer,
-		SetFields:    setTCPFields,
-		SetChecksum:  setTCPChecksum,
-		GetLayerData: getDataTCPLayer,
+		Id:          "tcp",
+		Filter:      "",
+		IpLayer:     layers.IPProtocolTCP,
+		CreateLayer: createTCPLayer,
+		SetSeq:      setTCPFields,
+		SetChecksum: setTCPChecksum,
+		GetSeq:      getTCPSeq,
 	}
 	UDP = &Protocol{
-		Id:           "udp",
-		Filter:       "",
-		IpLayer:      layers.IPProtocolUDP,
-		CreateLayer:  createUDPLayer,
-		SetFields:    setUDPFields,
-		SetChecksum:  setUDPChecksum,
-		GetLayerData: getDataUDPLayer,
+		Id:          "udp",
+		Filter:      "",
+		IpLayer:     layers.IPProtocolUDP,
+		CreateLayer: createUDPLayer,
+		SetSeq:      setUDPFields,
+		SetChecksum: setUDPChecksum,
+		GetSeq:      getUDPSeq,
 	}
 )
 
 const (
-	workers = 4096
+	workerCount            = 4096
+	workerTargetChCapacity = 10
 )
 
 var (
@@ -165,9 +171,8 @@ var (
 	recvWg               sync.WaitGroup
 	saveWg               sync.WaitGroup
 	stopReceiving        = make(chan struct{})
-	probeSaveChan        = make(chan *Probe, workers*2)
-	recvChans            [workers]chan *ReplyInfo
-	targetCh             = make(chan net.IP, workers*2)
+	probeSaveChan        = make(chan *Probe, workerCount*2)
+	workers              [workerCount]*Worker
 	opts                 = gopacket.SerializeOptions{ComputeChecksums: false, FixLengths: true}
 	recordingProcesses   []*exec.Cmd
 	totalTargetCount     int64
@@ -190,7 +195,7 @@ func Main(mode string, targetsType string) {
 	go func() {
 		err := http.ListenAndServe("localhost:6060", nil)
 		if err != nil {
-			return
+			panic(err)
 		}
 	}()
 
@@ -265,11 +270,14 @@ func Main(mode string, targetsType string) {
 		}
 	}
 
-	// Start initial workers
-	for i := uint16(0); i < workers; i++ {
+	// Start workers
+	for i := uint16(0); i < workerCount; i++ {
 		workerWg.Add(1)
-		recvChans[i] = make(chan *ReplyInfo, pm.probingVars().requestCount)
-		go worker(i)
+		workers[i] = &Worker{
+			targetCh: make(chan net.IP, workerTargetChCapacity),
+			recvCh:   make(chan *ReplyInfo, pm.probingVars().requestCount),
+		}
+		go startWorker(workers[i])
 	}
 
 	// Start statistics goroutine
@@ -293,8 +301,10 @@ func Main(mode string, targetsType string) {
 			continue
 		}
 
+		workerId := hashIPAddrToWorkerId(target)
+
 		select {
-		case targetCh <- target: // Send target to channel
+		case workers[workerId].targetCh <- target: // Send target to channel
 		case <-stopSignal:
 			stopReadingTargetsFile = true
 		}
@@ -309,6 +319,15 @@ func Main(mode string, targetsType string) {
 	}
 
 	cleanup()
+}
+
+func hashIPAddrToWorkerId(ipAddr net.IP) int {
+	hasher := fnv.New32a()
+	_, err := hasher.Write(ipAddr)
+	if err != nil {
+		panic(err)
+	}
+	return int(hasher.Sum32() % workerCount)
 }
 
 func countTotalTargets(targetsFile string) {
@@ -347,9 +366,18 @@ func countTotalTargets(targetsFile string) {
 }
 
 func cleanup() {
-	log.Println("Cleaning up workers...")
-	close(targetCh)
+	log.Println("Closing all worker target channels...")
+	for _, w := range workers {
+		close(w.targetCh)
+	}
+
+	log.Println("Waiting for workers to finish...")
 	workerWg.Wait()
+
+	log.Println("Closing all worker receiver channels...")
+	for _, w := range workers {
+		close(w.recvCh)
+	}
 
 	log.Println("Cleaning up probe save channel...")
 	close(probeSaveChan)
@@ -385,28 +413,27 @@ func createProbe(target net.IP) *Probe {
 	}
 }
 
-// Worker
-func worker(ident uint16) {
+// Start Worker
+func startWorker(w *Worker) {
 	defer workerWg.Done()
 
 	// Random delay before starting
-	delay := time.Duration(rand.Intn(workers*2)) * time.Millisecond
+	delay := time.Duration(rand.Intn(workerCount*2)) * time.Millisecond
 	time.Sleep(delay)
 
-	recvCh := recvChans[ident]
-	for target := range targetCh {
+	for target := range w.targetCh {
 		select {
 		case <-stopSignal:
 			return
 		default:
-			pm.probeTarget(ident, recvCh, target)
+			pm.probeTarget(w.recvCh, target)
 		}
 	}
 }
 
 // Probing
-func (pm *SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP) {
-	packets := buildPackets(target, workerId)
+func (pm *SEQ) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
+	packets := buildPackets(target)
 
 	probe := createProbe(target)
 	recvCounter := uint16(0)
@@ -448,8 +475,8 @@ func (pm *SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.I
 	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
 
-func (pm *B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.IP) {
-	packets := buildPackets(target, workerId)
+func (pm *B2B) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
+	packets := buildPackets(target)
 
 	probe := createProbe(target)
 	//recvCounter := uint16(0)
@@ -676,17 +703,16 @@ func (pm *B2B) receivePackets(recvCh chan *ReplyInfo, expSrc net.IP, probe *Prob
 
 // Receive Channel
 func addToRecvChan(replyInfo *ReplyInfo) {
-	seq, workerId, ok := proto.GetLayerData(replyInfo)
-
-	if ok && seq < pm.probingVars().requestCount && workerId < workers {
-		replyInfo.Seq = seq
-		recvChans[workerId] <- replyInfo
+	if ipLayer := replyInfo.Packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+		ip, _ := ipLayer.(*layers.IPv4)
+		workerId := hashIPAddrToWorkerId(ip.SrcIP)
+		workers[workerId].recvCh <- replyInfo
 	}
 }
 
 // Process
 func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) int {
-	ok, src, dst, ipId := checkIPLayer(replyInfo.Packet)
+	src, dst, ipId, ok := checkIPLayer(replyInfo)
 	if !ok {
 		log.Println("IPv4 layer invalid")
 		return 0
@@ -703,20 +729,29 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 		return 0
 	}
 
-	if replyInfo.Seq != expSeq {
-		// Commented because this happens too often due to double replies
-		log.Printf("[%s] Seq is not expected (seq=[%d] exp_seq=[%d])", src, replyInfo.Seq, expSeq)
+	seq, ok := proto.GetSeq(replyInfo)
+	if !ok {
+		log.Printf("[%s] Protocol layer invalid", src)
+		return 0
+	} else if !(seq < pm.probingVars().requestCount) {
+		log.Printf("[%s] Seq is out of range (%d < %d failed)", src, seq, pm.probingVars().requestCount)
 		return 0
 	}
 
-	pp, ok := probe.Data[replyInfo.Seq]
+	if seq != expSeq {
+		// Commented because this happens too often due to double replies
+		log.Printf("[%s] Seq is not expected (seq=[%d] exp_seq=[%d])", src, seq, expSeq)
+		return 0
+	}
+
+	pp, ok := probe.Data[seq]
 	if !ok {
 		log.Printf("[%s] No entry for probe", src)
 		return 0
 	}
 
 	if pp.Check {
-		log.Printf("[%s] Already received reply for request %d", src, replyInfo.Seq)
+		log.Printf("[%s] Already received reply for request %d", src, seq)
 		return 0
 	}
 
@@ -734,7 +769,7 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 }
 
 func (pm *B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, replyInfo *ReplyInfo, expSrc net.IP, probe *Probe) {
-	ok, src, _, ipId := checkIPLayer(replyInfo.Packet)
+	src, _, ipId, ok := checkIPLayer(replyInfo)
 	if !ok {
 		log.Println("IPv4 layer invalid")
 		return
@@ -745,7 +780,16 @@ func (pm *B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, re
 		return
 	}
 
-	pp, ok := probe.Data[replyInfo.Seq]
+	seq, ok := proto.GetSeq(replyInfo)
+	if !ok {
+		log.Printf("[%s] Protocol layer invalid", src)
+		return
+	} else if !(seq < pm.probingVars().requestCount) {
+		log.Printf("[%s] Seq is out of range (seq=%d < %d failed)", src, seq, pm.probingVars().requestCount)
+		return
+	}
+
+	pp, ok := probe.Data[seq]
 	if !ok {
 		log.Printf("[%s] No entry for probe", src)
 		return
@@ -1014,7 +1058,7 @@ func createPrebuildPackets() {
 			DstIP:    net.IPv4(0, 0, 0, 0),
 		}
 
-		protoLayer := proto.CreateLayer()
+		protoLayer := proto.CreateLayer(seq)
 
 		err := packetBuf.Clear()
 		if err != nil {
@@ -1032,7 +1076,7 @@ func createPrebuildPackets() {
 	prebuildPackets = packetList
 }
 
-func buildPackets(dstIP net.IP, workerId uint16) [][]byte {
+func buildPackets(dstIP net.IP) [][]byte {
 	packetList := make([][]byte, pm.probingVars().requestCount)
 
 	for seq := uint16(0); seq < pm.probingVars().requestCount; seq++ {
@@ -1042,8 +1086,8 @@ func buildPackets(dstIP net.IP, workerId uint16) [][]byte {
 		// Set IP Destination
 		copy(packet[16:20], dstIP.To4())
 
-		// Set Protocol Fields (e.g. Sequence Number, Source Port)
-		proto.SetFields(packet, seq, workerId)
+		// Set Sequence Number
+		proto.SetSeq(packet, seq)
 
 		// Calculate IP checksum
 		binary.BigEndian.PutUint16(packet[10:12], 0)
@@ -1057,18 +1101,6 @@ func buildPackets(dstIP net.IP, workerId uint16) [][]byte {
 	}
 
 	return packetList
-}
-
-// encode encodes the 4-bit number a and the 12-bit number b into a 16-bit number x.
-func encode(a, b uint16) uint16 {
-	return (a << 12) | (b & 0xFFF) // Shift a to the upper 4 bits, and set b to the lower 12 bits
-}
-
-// decode decodes the 16-bit number x back into the 4-bit number a and the 12-bit number b.
-func decode(x uint16) (uint16, uint16) {
-	a := x >> 12   // Extract the upper 4 bits of x for a
-	b := x & 0xFFF // Extract the lower 12 bits of x for b
-	return a, b
 }
 
 // Standard Algorithm for computing Internet-Checksums referring RFC1071
@@ -1096,23 +1128,23 @@ func calculateChecksum(data []byte) uint16 {
 }
 
 // IP
-func checkIPLayer(packet gopacket.Packet) (bool, net.IP, net.IP, uint16) {
-	ip, ok := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+func checkIPLayer(replyInfo *ReplyInfo) (net.IP, net.IP, uint16, bool) {
+	ip, ok := replyInfo.Packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 	if !ok {
 		log.Println("IPv4 layer invalid")
-		return false, nil, nil, 0
+		return nil, nil, 0, false
 	}
 
 	if !ip.DstIP.Equal(srcAIp) && !ip.DstIP.Equal(srcBIp) {
 		log.Println("DstIP not match")
-		return false, nil, nil, 0
+		return nil, nil, 0, false
 	}
 
-	return true, ip.SrcIP, ip.DstIP, ip.Id
+	return ip.SrcIP, ip.DstIP, ip.Id, true
 }
 
 // ICMP
-func createICMPLayer() []gopacket.SerializableLayer {
+func createICMPLayer(seq uint16) []gopacket.SerializableLayer {
 	icmpLayer := &layers.ICMPv4{
 		TypeCode: layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoRequest, 0),
 	}
@@ -1120,8 +1152,8 @@ func createICMPLayer() []gopacket.SerializableLayer {
 	return []gopacket.SerializableLayer{icmpLayer}
 }
 
-func setICMPFields(packet []byte, seq uint16, workerId uint16) {
-	binary.BigEndian.PutUint16(packet[26:28], encode(seq, workerId))
+func setICMPFields(packet []byte, seq uint16) {
+	binary.BigEndian.PutUint16(packet[26:28], seq)
 }
 
 func setICMPChecksum(packet []byte) {
@@ -1133,21 +1165,21 @@ func setICMPChecksum(packet []byte) {
 	binary.BigEndian.PutUint16(packet[22:24], icmpChecksum)
 }
 
-func getDataICMPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
+func getICMPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 	if icmp, ok := replyInfo.Packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); ok {
 		if icmp.TypeCode == layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoReply, 0) {
-			seq, workerId := decode(icmp.Seq)
-			return seq, workerId, true
+			return icmp.Seq, true
 		}
 	} else {
 		log.Println("ICMP layer not found")
 	}
-	return 0, 0, false
+	return 0, false
 }
 
 // TCP
-func createTCPLayer() []gopacket.SerializableLayer {
+func createTCPLayer(seq uint16) []gopacket.SerializableLayer {
 	tcpLayer := &layers.TCP{
+		SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
 		DstPort: config.TcpDstPort,
 		SYN:     strings.Contains(config.TcpReqFlags, "S"),
 		ACK:     strings.Contains(config.TcpReqFlags, "A"),
@@ -1157,11 +1189,9 @@ func createTCPLayer() []gopacket.SerializableLayer {
 	return []gopacket.SerializableLayer{tcpLayer}
 }
 
-func setTCPFields(packet []byte, seq uint16, workerId uint16) {
-	// Set TCP Source Port
-	binary.BigEndian.PutUint16(packet[20:22], seq+config.TcpSrcPortOffset)
+func setTCPFields(packet []byte, seq uint16) {
 	// Set TCP Sequence Number
-	binary.BigEndian.PutUint16(packet[24:28], encode(seq, workerId))
+	binary.BigEndian.PutUint16(packet[24:28], seq)
 }
 
 func setTCPChecksum(packet []byte) {
@@ -1186,19 +1216,19 @@ func setTCPChecksum(packet []byte) {
 	binary.BigEndian.PutUint16(packet[36:38], checksum)
 }
 
-func getDataTCPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
+func getTCPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 	if tcp, ok := replyInfo.Packet.Layer(layers.LayerTypeTCP).(*layers.TCP); ok {
-		seq, workerId := decode(uint16(tcp.Ack - 1))
-		return seq, workerId, true
+		return uint16(tcp.Ack - 1), true
 	} else {
 		log.Println("TCP layer not found")
 	}
-	return 0, 0, false
+	return 0, false
 }
 
 // UDP
-func createUDPLayer() []gopacket.SerializableLayer {
+func createUDPLayer(seq uint16) []gopacket.SerializableLayer {
 	udpLayer := &layers.UDP{
+		SrcPort: layers.UDPPort(seq + config.UdpSrcPortOffset),
 		DstPort: config.UdpDstPort,
 	}
 
@@ -1218,11 +1248,9 @@ func createUDPLayer() []gopacket.SerializableLayer {
 	return []gopacket.SerializableLayer{udpLayer, dnsLayer}
 }
 
-func setUDPFields(packet []byte, seq uint16, workerId uint16) {
-	// Set UDP Source Port
-	binary.BigEndian.PutUint16(packet[20:22], seq+config.UdpSrcPortOffset)
+func setUDPFields(packet []byte, seq uint16) {
 	// Set DNS Identification
-	binary.BigEndian.PutUint16(packet[28:30], encode(seq, workerId))
+	binary.BigEndian.PutUint16(packet[28:30], seq)
 }
 
 func setUDPChecksum(packet []byte) {
@@ -1247,13 +1275,12 @@ func setUDPChecksum(packet []byte) {
 	binary.BigEndian.PutUint16(packet[26:28], checksum)
 }
 
-func getDataUDPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
+func getUDPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 	if _, udpOk := replyInfo.Packet.Layer(layers.LayerTypeUDP).(*layers.UDP); udpOk {
 		if dns, dnsOk := replyInfo.Packet.Layer(layers.LayerTypeDNS).(*layers.DNS); dnsOk {
 			if _, icmpOk := replyInfo.Packet.Layer(layers.LayerTypeICMPv4).(*layers.ICMPv4); !icmpOk {
 				if dns.QR {
-					seq, workerId := decode(dns.ID)
-					return seq, workerId, true
+					return dns.ID, true
 				} else {
 					log.Println("DNS QR is invalid")
 				}
@@ -1266,7 +1293,7 @@ func getDataUDPLayer(replyInfo *ReplyInfo) (uint16, uint16, bool) {
 	} else {
 		log.Println("UDP Layer not found")
 	}
-	return 0, 0, false
+	return 0, false
 }
 
 // Record Traffic
@@ -1348,8 +1375,8 @@ func logStatistics() {
 			}
 		}
 
-		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] sent_pps=[%.0f] workers=[%d]\n",
-			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, sentPps, workers)
+		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] sent_pps=[%.0f] worker_count=[%d]\n",
+			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, sentPps, workerCount)
 
 		lastTotalProbeCount = totalProbeCount
 		lastTotalValidProbeCount = totalValidProbeCount
