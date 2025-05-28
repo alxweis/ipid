@@ -743,7 +743,7 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 		//log.Printf("[%s] Protocol layer invalid", src)
 		return 0
 	} else if !(seq < pm.probingVars().requestCount) {
-		log.Printf("[%s] Seq is out of range (%d < %d failed)", src, seq, pm.probingVars().requestCount)
+		log.Printf("[%s] Seq is out of range (check seq=%d < %d failed)", src, seq, pm.probingVars().requestCount)
 		return 0
 	}
 
@@ -794,7 +794,7 @@ func (pm *B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, re
 		//log.Printf("[%s] Protocol layer invalid", src)
 		return
 	} else if !(seq < pm.probingVars().requestCount) {
-		log.Printf("[%s] Seq is out of range (seq=%d < %d failed)", src, seq, pm.probingVars().requestCount)
+		log.Printf("[%s] Seq is out of range (check seq=%d < %d failed)", src, seq, pm.probingVars().requestCount)
 		return
 	}
 
