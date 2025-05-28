@@ -387,11 +387,6 @@ func cleanup() {
 	close(stopReceiving)
 	recvWg.Wait()
 
-	log.Println("Closing all worker receiver channels...")
-	for _, w := range workers {
-		close(w.recvCh)
-	}
-
 	if config.RecTraffic {
 		log.Println("Stopping record...")
 		stopRecording()
