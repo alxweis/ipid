@@ -112,7 +112,6 @@ type Protocol struct {
 	Filter      string
 	IpLayer     layers.IPProtocol
 	CreateLayer func(seq uint16) []gopacket.SerializableLayer
-	SetSeq      func(packet []byte, seq uint16)
 	SetChecksum func(packet []byte)
 	GetSeq      func(replyInfo *ReplyInfo) (uint16, bool)
 }
@@ -134,7 +133,6 @@ var (
 		Filter:      "icmp[icmptype] == icmp-echoreply",
 		IpLayer:     layers.IPProtocolICMPv4,
 		CreateLayer: createICMPLayer,
-		SetSeq:      setICMPFields,
 		SetChecksum: setICMPChecksum,
 		GetSeq:      getICMPSeq,
 	}
@@ -143,7 +141,6 @@ var (
 		Filter:      "",
 		IpLayer:     layers.IPProtocolTCP,
 		CreateLayer: createTCPLayer,
-		SetSeq:      setTCPFields,
 		SetChecksum: setTCPChecksum,
 		GetSeq:      getTCPSeq,
 	}
@@ -152,7 +149,6 @@ var (
 		Filter:      "",
 		IpLayer:     layers.IPProtocolUDP,
 		CreateLayer: createUDPLayer,
-		SetSeq:      setUDPFields,
 		SetChecksum: setUDPChecksum,
 		GetSeq:      getUDPSeq,
 	}
@@ -1088,10 +1084,7 @@ func buildPackets(dstIP net.IP) [][]byte {
 		copy(packet, prebuildPackets[seq])
 
 		// Set IP Destination
-		copy(packet[16:20], dstIP.To4())
-
-		// Set Sequence Number
-		proto.SetSeq(packet, seq)
+		copy(packet[16:20], dstIP)
 
 		// Calculate IP checksum
 		binary.BigEndian.PutUint16(packet[10:12], 0)
@@ -1151,13 +1144,10 @@ func checkIPLayer(replyInfo *ReplyInfo) (net.IP, net.IP, uint16, bool) {
 func createICMPLayer(seq uint16) []gopacket.SerializableLayer {
 	icmpLayer := &layers.ICMPv4{
 		TypeCode: layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoRequest, 0),
+		Seq:      seq,
 	}
 
 	return []gopacket.SerializableLayer{icmpLayer}
-}
-
-func setICMPFields(packet []byte, seq uint16) {
-	binary.BigEndian.PutUint16(packet[26:28], seq)
 }
 
 func setICMPChecksum(packet []byte) {
@@ -1185,17 +1175,13 @@ func createTCPLayer(seq uint16) []gopacket.SerializableLayer {
 	tcpLayer := &layers.TCP{
 		SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
 		DstPort: config.TcpDstPort,
+		Seq:     uint32(seq),
 		SYN:     strings.Contains(config.TcpReqFlags, "S"),
 		ACK:     strings.Contains(config.TcpReqFlags, "A"),
 		RST:     strings.Contains(config.TcpReqFlags, "R"),
 	}
 
 	return []gopacket.SerializableLayer{tcpLayer}
-}
-
-func setTCPFields(packet []byte, seq uint16) {
-	// Set TCP Sequence Number
-	binary.BigEndian.PutUint16(packet[24:28], seq)
 }
 
 func setTCPChecksum(packet []byte) {
@@ -1237,6 +1223,7 @@ func createUDPLayer(seq uint16) []gopacket.SerializableLayer {
 	}
 
 	dnsLayer := &layers.DNS{
+		ID:      seq,
 		OpCode:  layers.DNSOpCodeQuery,
 		RD:      false,
 		QDCount: 1,
@@ -1250,11 +1237,6 @@ func createUDPLayer(seq uint16) []gopacket.SerializableLayer {
 	}
 
 	return []gopacket.SerializableLayer{udpLayer, dnsLayer}
-}
-
-func setUDPFields(packet []byte, seq uint16) {
-	// Set DNS Identification
-	binary.BigEndian.PutUint16(packet[28:30], seq)
 }
 
 func setUDPChecksum(packet []byte) {
