@@ -159,8 +159,8 @@ var (
 )
 
 const (
-	workerCount        = 4096
-	workerTargetChSize = 10
+	workerCount        = 1 << 13
+	workerTargetChSize = 1 << 4
 )
 
 var (
@@ -379,11 +379,6 @@ func cleanup() {
 	log.Println("Waiting for workers to finish...")
 	workerWg.Wait()
 
-	log.Println("Closing all worker receiver channels...")
-	for _, w := range workers {
-		close(w.recvCh)
-	}
-
 	log.Println("Cleaning up probe save channel...")
 	close(probeSaveChan)
 	saveWg.Wait()
@@ -391,6 +386,11 @@ func cleanup() {
 	log.Println("Cleaning up receivers...")
 	close(stopReceiving)
 	recvWg.Wait()
+
+	log.Println("Closing all worker receiver channels...")
+	for _, w := range workers {
+		close(w.recvCh)
+	}
 
 	if config.RecTraffic {
 		log.Println("Stopping record...")
