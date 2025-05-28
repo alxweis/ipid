@@ -1,6 +1,6 @@
 # General
-targets: "targets/udp/53/2025-05-27_11-28-43" # Use e.g. "targets/tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
-protocol: "udp" # TODO Use a list like ["icmp", "tcp"] to enable inter-protocol measurements
+targets: "targets/tcp/80/2025-05-25_23-07-07" # Use e.g. "targets/tcp/80/<timestamp>" or just "latest" to automatically get your most recent target file for your config
+protocol: "tcp" # TODO Use a list like ["icmp", "tcp"] to enable inter-protocol measurements
 record_traffic: false
 
 # TCP
