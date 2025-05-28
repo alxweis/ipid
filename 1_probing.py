@@ -14,7 +14,7 @@ def print_usage():
 
 
 def main():
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 3:
         print_usage()
 
     mode = sys.argv[1]
