@@ -1348,7 +1348,7 @@ func logStatistics() {
 			}
 		}
 
-		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] sent_pps=[%.2f] workers=[%d]\n",
+		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] sent_pps=[%.0f] workers=[%d]\n",
 			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, sentPps, workers)
 
 		lastTotalProbeCount = totalProbeCount
