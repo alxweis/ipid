@@ -174,6 +174,7 @@ var (
 	totalValidProbeCount int64
 	totalProbeCount      int64
 	totalSentByteCount   int64
+	totalSentPacketCount int64
 	senderA              *Sender
 	senderB              *Sender
 	prebuildPackets      [][]byte
@@ -411,13 +412,14 @@ func (pm *SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.I
 	recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
 	sentByteCount := 0
+	sentPacketCount := 0
 	//startTime := time.Now()
 
 	for {
 		// Probe Target
 		for seq := uint16(0); seq < pm.requestCount; seq++ {
 			sender, senderIP := getSender(seq)
-			sendPacket(sender, packets[seq], seq, probe, &sentByteCount)
+			sendPacket(sender, packets[seq], seq, probe, &sentByteCount, &sentPacketCount)
 			if pm.receivePacket(recvCh, target, senderIP, seq, probe) {
 				recvCounter++
 			} else {
@@ -441,6 +443,7 @@ func (pm *SEQ) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.I
 	}
 
 	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
+	atomic.AddInt64(&totalSentPacketCount, int64(sentPacketCount))
 
 	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
@@ -452,11 +455,12 @@ func (pm *B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.I
 	//recvCounter := uint16(0)
 	retriesLeft := pm.retryCount
 	sentByteCount := 0
+	sentPacketCount := 0
 	//startTime := time.Now()
 
 	for {
 		// Probe Target
-		pm.sendPackets(packets, probe, &sentByteCount)
+		pm.sendPackets(packets, probe, &sentByteCount, &sentPacketCount)
 		foundAllReplies, _ := pm.receivePackets(recvCh, target, probe)
 		//recvCounter = rc
 
@@ -474,6 +478,7 @@ func (pm *B2B) probeTarget(workerId uint16, recvCh chan *ReplyInfo, target net.I
 	}
 
 	atomic.AddInt64(&totalSentByteCount, int64(sentByteCount))
+	atomic.AddInt64(&totalSentPacketCount, int64(sentPacketCount))
 
 	//log.Printf("Finished probing target=[%s] received=[%d/%d] used_retries=[%d] sent_bytes=[%d] probing_duration=[%v]", target, recvCounter, pm.requestCount, pm.retryCount-retriesLeft, sentByteCount, time.Since(startTime))
 }
@@ -573,20 +578,21 @@ func getSender(seq uint16) (*Sender, net.IP) {
 	}
 }
 
-func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByteCount *int) {
+func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByteCount *int, sentPacketCount *int) {
 	sender.Send(packet)
 	createProbePoint(probe, seq, time.Now().UnixMicro())
 	*sentByteCount += len(packet)
+	*sentPacketCount += 1
 	//log.Printf("Request: dst=[%s] seq=[%d]\n", probe.Target, seq)
 }
 
-func (pm *B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount *int) {
+func (pm *B2B) sendPackets(packets [][]byte, probe *Probe, sentByteCount *int, sentPacketCount *int) {
 	for seq := uint16(0); seq < pm.requestCount; seq++ {
 		if seq > 0 {
 			time.Sleep(pm.requestInterval)
 		}
 		sender, _ := getSender(seq)
-		sendPacket(sender, packets[seq], seq, probe, sentByteCount)
+		sendPacket(sender, packets[seq], seq, probe, sentByteCount, sentPacketCount)
 	}
 }
 
@@ -1293,12 +1299,14 @@ func logStatistics() {
 		lastTotalProbeCount      int64
 		lastTotalValidProbeCount int64
 		lastTotalSentByteCount   int64
+		lastTotalSentPacketCount int64
 	)
 
 	for range ticker.C {
 		deltaTotalProbeCount := totalProbeCount - lastTotalProbeCount
 		deltaTotalValidProbeCount := totalValidProbeCount - lastTotalValidProbeCount
 		deltaTotalSentByteCount := totalSentByteCount - lastTotalSentByteCount
+		deltaTotalSentPacketCount := totalSentPacketCount - lastTotalSentPacketCount
 
 		// Percentages
 		probeCountPercentage := float64(totalProbeCount) / float64(totalTargetCount) * 100
@@ -1310,6 +1318,9 @@ func logStatistics() {
 		// Sent bandwidth
 		sentBit := deltaTotalSentByteCount * 8
 		sentMbps := float64(sentBit) / (1_000_000.0 * duration.Seconds())
+
+		// Sent packet rate
+		sentPps := float64(deltaTotalSentPacketCount) / duration.Seconds()
 
 		// Estimated remaining time
 		timeLeft := "Warming up..."
@@ -1337,11 +1348,12 @@ func logStatistics() {
 			}
 		}
 
-		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] workers=[%d]\n",
-			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, workers)
+		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] sent_pps=[%.2f] workers=[%d]\n",
+			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, sentPps, workers)
 
 		lastTotalProbeCount = totalProbeCount
 		lastTotalValidProbeCount = totalValidProbeCount
 		lastTotalSentByteCount = totalSentByteCount
+		lastTotalSentPacketCount = totalSentPacketCount
 	}
 }
