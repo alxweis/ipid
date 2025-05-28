@@ -1005,6 +1005,7 @@ func createPrebuildPackets() {
 			Flags:    0,
 			Protocol: proto.IpLayer,
 			SrcIP:    srcIP,
+			DstIP:    net.IPv4(0, 0, 0, 0),
 		}
 
 		protoLayer := proto.CreateLayer()
