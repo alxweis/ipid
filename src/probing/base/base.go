@@ -711,8 +711,11 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 	if ipLayer := replyInfo.Packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
 		ip, _ := ipLayer.(*layers.IPv4)
 		workerId := hashIPAddrToWorkerId(ip.SrcIP)
-		log.Println(workerId)
-		workers[workerId].recvCh <- replyInfo
+		if workers[workerId] != nil {
+			workers[workerId].recvCh <- replyInfo
+		} else {
+			log.Printf("Worker %d not initialized!", workerId)
+		}
 	}
 }
 
