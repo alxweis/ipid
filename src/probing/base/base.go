@@ -13,6 +13,7 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 	"github.com/klauspost/compress/zstd"
 	"golang.org/x/net/ipv4"
+	"hash"
 	"hash/fnv"
 	"log"
 	"math/rand"
@@ -321,13 +322,17 @@ func Main(mode string, targetsType string) {
 	cleanup()
 }
 
+var hasherPool = sync.Pool{
+	New: func() any { return fnv.New32a() },
+}
+
 func hashIPAddrToWorkerId(ipAddr net.IP) int {
-	hasher := fnv.New32a()
-	_, err := hasher.Write(ipAddr)
-	if err != nil {
-		panic(err)
-	}
-	return int(hasher.Sum32() % workerCount)
+	hasher := hasherPool.Get().(hash.Hash32)
+	hasher.Reset()
+	_, _ = hasher.Write(ipAddr)
+	sum := hasher.Sum32()
+	hasherPool.Put(hasher)
+	return int(sum % workerCount)
 }
 
 func countTotalTargets(targetsFile string) {
@@ -706,6 +711,7 @@ func addToRecvChan(replyInfo *ReplyInfo) {
 	if ipLayer := replyInfo.Packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
 		ip, _ := ipLayer.(*layers.IPv4)
 		workerId := hashIPAddrToWorkerId(ip.SrcIP)
+		log.Println(workerId)
 		workers[workerId].recvCh <- replyInfo
 	}
 }
