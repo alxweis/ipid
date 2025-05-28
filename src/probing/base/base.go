@@ -158,8 +158,8 @@ var (
 )
 
 const (
-	workerCount            = 4096
-	workerTargetChCapacity = 10
+	workerCount        = 4096
+	workerTargetChSize = 10
 )
 
 var (
@@ -274,7 +274,7 @@ func Main(mode string, targetsType string) {
 	for i := uint16(0); i < workerCount; i++ {
 		workerWg.Add(1)
 		workers[i] = &Worker{
-			targetCh: make(chan net.IP, workerTargetChCapacity),
+			targetCh: make(chan net.IP, workerTargetChSize),
 			recvCh:   make(chan *ReplyInfo, pm.probingVars().requestCount),
 		}
 		go startWorker(workers[i])
