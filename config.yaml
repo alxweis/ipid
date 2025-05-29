@@ -13,12 +13,12 @@ udp_dst_port: 53
 udp_src_port_offset: 32570
 
 # B2B Probing
-b2b_request_count: 10 # <= 16
+b2b_request_count: 10
 b2b_request_interval: "10ms"
 b2b_retry_count: 0
 
 # SEQ Probing
-seq_request_count: 10 # <= 16
+seq_request_count: 10
 seq_retry_count: 0
 
 # Probing
