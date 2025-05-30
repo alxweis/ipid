@@ -1,0 +1,10 @@
+Number of Workers: 31
+Batch Size: 5000
+Total Rows: 290661037
+Total Samples: 300000
+Targets CSV: results/seq/icmp/2025-05-15_23-14-45\targets.csv.zst
+Is OS Scan: False
+Probing CSV: results/seq/icmp/2025-05-15_23-14-45\probing.csv.zst
+Eval CSV: results/seq/icmp/2025-05-15_23-14-45\eval.csv.zst
+Result Dir: results/seq/icmp/2025-05-15_23-14-45
+Analysis Dir: results/seq/icmp/2025-05-15_23-14-45\analysis
