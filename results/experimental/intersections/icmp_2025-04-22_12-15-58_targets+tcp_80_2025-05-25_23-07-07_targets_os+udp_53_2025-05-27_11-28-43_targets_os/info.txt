@@ -1,0 +1,77 @@
+================================================================================
+🔍 INTERSECTION ANALYSIS - Column: IP
+================================================================================
+
+📁 File: targets/icmp/2025-04-22_12-15-58/targets.csv.zst
+--------------------------------------------------
+   Unique values: 370,998,218
+   Sample values: 109.205.241.177, 104.16.2.28, 81.33.147.173
+
+📁 File: targets/tcp/80/2025-05-25_23-07-07/targets_os.csv.zst
+--------------------------------------------------
+   Unique values: 5,458,265
+   Sample values: 68.182.103.228, 34.228.1.196, 34.120.210.208
+
+📁 File: targets/udp/53/2025-05-27_11-28-43/targets_os.csv.zst
+--------------------------------------------------
+   Unique values: 1,550,555
+   Sample values: 64.227.156.82, 80.211.216.87, 151.248.1.54
+
+🔗 PAIRWISE INTERSECTIONS
+--------------------------------------------------
+   targets/icmp/2025-04-22_12-15-58/targets.csv.zst ∩ targets/tcp/80/2025-05-25_23-07-07/targets_os.csv.zst:
+     Common values: 3,371,196
+     Percentage of targets/icmp/2025-04-22_12-15-58/targets.csv.zst: 0.9%
+     Percentage of targets/tcp/80/2025-05-25_23-07-07/targets_os.csv.zst: 61.8%
+   targets/icmp/2025-04-22_12-15-58/targets.csv.zst ∩ targets/udp/53/2025-05-27_11-28-43/targets_os.csv.zst:
+     Common values: 1,263,003
+     Percentage of targets/icmp/2025-04-22_12-15-58/targets.csv.zst: 0.3%
+     Percentage of targets/udp/53/2025-05-27_11-28-43/targets_os.csv.zst: 81.5%
+   targets/tcp/80/2025-05-25_23-07-07/targets_os.csv.zst ∩ targets/udp/53/2025-05-27_11-28-43/targets_os.csv.zst:
+     Common values: 106,019
+     Percentage of targets/tcp/80/2025-05-25_23-07-07/targets_os.csv.zst: 1.9%
+     Percentage of targets/udp/53/2025-05-27_11-28-43/targets_os.csv.zst: 6.8%
+
+🎯 COMPLETE INTERSECTION (all 3 files)
+------------------------------------------------------------
+   Common values in ALL files: 94,982
+   Sample common values:
+     • 173.239.231.107
+     • 57.128.60.229
+     • 79.133.111.9
+     • 192.165.48.102
+     • 104.236.64.166
+     • 157.90.112.145
+     • 217.25.248.126
+     • 144.126.129.165
+     • 185.92.74.168
+     • 146.59.42.11
+     ... and 94972 more
+
+📊 OVERLAP PERCENTAGE PER FILE
+----------------------------------------
+   targets/icmp/2025-04-22_12-15-58/targets.csv.zst:
+     94,982 of 370,998,218 values (0.0%)
+                          0.0%
+   targets/tcp/80/2025-05-25_23-07-07/targets_os.csv.zst:
+     94,982 of 5,458,265 values (1.7%)
+                          1.7%
+   targets/udp/53/2025-05-27_11-28-43/targets_os.csv.zst:
+     94,982 of 1,550,555 values (6.1%)
+     █                    6.1%
+
+🌐 OVERALL STATISTICS
+------------------------------
+   Total unique values: 373,361,802
+   Common values: 94,982
+   Overlap percentage: 0.0%
+
+📋 SUMMARY TABLE
+--------------------------------------------------
+File                           Unique Values   Common %  
+-------------------------------------------------------
+targets/icmp/2025-04-22_12-15-58/targets.csv.zst 370,998,218     0.0       %
+targets/tcp/80/2025-05-25_23-07-07/targets_os.csv.zst 5,458,265       1.7       %
+targets/udp/53/2025-05-27_11-28-43/targets_os.csv.zst 1,550,555       6.1       %
+
+================================================================================
