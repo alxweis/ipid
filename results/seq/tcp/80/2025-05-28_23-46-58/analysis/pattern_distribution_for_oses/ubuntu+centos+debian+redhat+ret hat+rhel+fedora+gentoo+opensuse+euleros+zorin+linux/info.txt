@@ -3,7 +3,7 @@ Class Distribution:
      class  absolute  relative
   Constant   3465754 99.386348
     Global      8095  0.232138
-    Random      8074  0.231536
+    Random      4860  0.139369
 Local (=1)      1714  0.049152
 Local (≥1)      2455  0.070401
-  Fallback      1061  0.030426
+  Fallback      4275  0.122593
