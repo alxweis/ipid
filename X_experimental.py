@@ -72,7 +72,7 @@ def main():
             print_usage()
             return
 
-        targets_full_paths = sys.argv[3:]
+        targets_full_paths = sys.argv[2:]
         calc_intersections(targets_full_paths, on="IP")
     else:
         print_usage()

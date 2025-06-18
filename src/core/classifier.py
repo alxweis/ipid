@@ -52,11 +52,10 @@ def nrm_entropy(values: np.ndarray) -> float:
 
 
 def p_value(values: np.ndarray) -> float:
-    intervals = int(math.ceil(math.sqrt(len(values))))
-    interval_edges = np.linspace(0, MAX_IP_ID, intervals + 1)
+    intervals = len(values)
+    interval_edges = np.linspace(0, MAX_IP_ID + 1, intervals + 1)
     observed_frequencies, _ = np.histogram(values, bins=interval_edges)
-    total_numbers = len(values)
-    expected_frequencies = np.full(intervals, total_numbers / intervals)
+    expected_frequencies = np.full(intervals, len(values) / intervals)
 
     chi2_stat, p = chisquare(f_obs=observed_frequencies, f_exp=expected_frequencies)
     return p
@@ -92,9 +91,12 @@ def is_global(seq: IPIDSequence) -> bool:
 
 def is_random(seq: IPIDSequence) -> bool:
     alpha = 0.01
-    return is_uniform(seq.full.increments, alpha) and is_uniform(seq.even.increments, alpha) and is_uniform(
-        seq.odd.increments,
-        alpha)
+    return (is_uniform(seq.full.sequence, alpha) and
+            is_uniform(seq.even.sequence, alpha) and
+            is_uniform(seq.odd.sequence, alpha) and
+            is_uniform(seq.full.increments, alpha) and
+            is_uniform(seq.even.increments, alpha) and
+            is_uniform(seq.odd.increments, alpha))
 
 
 def is_anomalous(seq: IPIDSequence) -> bool:

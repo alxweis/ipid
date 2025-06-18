@@ -21,7 +21,7 @@ from geoip2.errors import AddressNotFoundError
 from tqdm import tqdm
 
 from core import EXP_INTERSECTIONS
-from core.classifier import IPIDSequence, Pattern
+from core.classifier import IPIDSequence, Pattern, p_value
 from core.utils import config, runtime
 from hitlist.os_scan import linux_distros, windows, bsd, apple
 from postproc import GEOLITE_COUNTRY_DB
@@ -152,8 +152,8 @@ def calc_intersections(target_csvs: list[str], on: str):
 
     for i in range(len(temp_tables)):
         for j in range(i + 1, len(temp_tables)):
-            file1 = Path(target_csvs[i]).name
-            file2 = Path(target_csvs[j]).name
+            file1 = target_csvs[i]
+            file2 = target_csvs[j]
 
             intersection_count = conn.execute(f"""
                 SELECT COUNT(*) FROM (
@@ -205,11 +205,10 @@ def calc_intersections(target_csvs: list[str], on: str):
     log_output("-" * 40)
 
     for i, file_path in enumerate(target_csvs):
-        file_name = Path(file_path).name
-        total_in_file = file_stats[file_name]
+        total_in_file = file_stats[file_path]
         percentage = (total_intersection / total_in_file) * 100 if total_in_file > 0 else 0
 
-        log_output(f"   {file_name}:")
+        log_output(f"   {file_path}:")
         log_output(f"     {total_intersection:,} of {total_in_file:,} values ({percentage:.1f}%)")
         log_output(f"     {'█' * int(percentage / 5)}{' ' * (20 - int(percentage / 5))} {percentage:.1f}%")
 
@@ -236,17 +235,24 @@ def calc_intersections(target_csvs: list[str], on: str):
     log_output("-" * 55)
 
     for file_path in target_csvs:
-        file_name = Path(file_path).name
-        total_in_file = file_stats[file_name]
+        total_in_file = file_stats[file_path]
         percentage = (total_intersection / total_in_file) * 100 if total_in_file > 0 else 0
 
-        log_output(f"{file_name:<30} {total_in_file:<15,} {percentage:<10.1f}%")
+        log_output(f"{file_path:<30} {total_in_file:<15,} {percentage:<10.1f}%")
 
     conn.close()
     log_output("\n" + "=" * 80)
 
+    def transform_path(path):
+        parts = path.split('/')
+        parts = parts[1:]
+        filename = parts[-1].replace('.csv.zst', '')
+        rest = parts[:-1]
+        return '_'.join(rest + [filename])
+
     # Write results to file
-    output_dir = os.path.join(EXP_INTERSECTIONS, "+".join([p.split("/")[-3] for p in target_csvs]))
+    output_dir = os.path.join(EXP_INTERSECTIONS, "+".join([transform_path(p) for p in target_csvs]))
+    os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "info.txt")
 
     try:
@@ -649,6 +655,8 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
         if pattern in {Pattern.LOCAL_EQ1, Pattern.LOCAL_GE1}:
             results.append(np.concatenate([ip_id_sequence.even.increments, ip_id_sequence.odd.increments]))
         else:
+            # if np.any(ip_id_sequence.full.increments < 700):
+            #     print(f"seq={ip_id_sequence.full.sequence} incs={ip_id_sequence.full.increments} ==> p_value={p_value(ip_id_sequence.full.increments)} > 0.01 ==> is_random is True")
             results.append(ip_id_sequence.full.increments)
 
     return results

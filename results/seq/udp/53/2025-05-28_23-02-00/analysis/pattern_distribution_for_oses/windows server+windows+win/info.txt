@@ -1,9 +1,9 @@
 Total Absolute: 235
 Class Distribution:
      class  absolute  relative
-    Random        59 25.106383
+  Fallback        37 15.744681
 Local (≥1)       108 45.957447
     Global        22  9.361702
 Local (=1)        37 15.744681
+    Random        25 10.638298
   Constant         6  2.553191
-  Fallback         3  1.276596
