@@ -1,4 +1,6 @@
 import math
+import os
+import pickle
 import random
 from collections import defaultdict
 from enum import Enum
@@ -263,19 +265,96 @@ pattern_generation_map = {
 # endregion
 
 
-def test_classifier():
-    sequence_length = 10
-    sequence_count_per_pattern = 100_000
+# region Classifier Evaluation
+class Dataset(Enum):
+    IDEAL = "Ideal"
+    LOSSY = "Lossy"
+    REORDER = "Reorder"
+
+
+def create_dataset(dataset: Dataset, sequence_length: int, sequence_count_per_pattern: int):
+    if dataset == Dataset.IDEAL:
+        create_ideal_dataset(sequence_length, sequence_count_per_pattern)
+    elif dataset == Dataset.LOSSY:
+        create_lossy_dataset(sequence_length, sequence_count_per_pattern)
+    elif dataset == Dataset.REORDER:
+        create_reorder_dataset(sequence_length, sequence_count_per_pattern)
+
+
+def create_ideal_dataset(sequence_length: int, sequence_count_per_pattern: int):
+    data = defaultdict(list)
+
+    for true_pattern, generator in pattern_generation_map.items():
+        for _ in range(sequence_count_per_pattern):
+            seq = generator(sequence_length)
+            data[true_pattern].append(seq)
+
+    with open("ideal.pkl", "wb") as f:
+        pickle.dump(data, f)
+
+
+def create_lossy_dataset(sequence_length: int, sequence_count_per_pattern: int):
+    data = defaultdict(list)
+
+    for true_pattern, generator in pattern_generation_map.items():
+        for _ in range(sequence_count_per_pattern):
+            seq = generator(sequence_length).full.sequence.tolist()
+
+            # Remove 20% of sequence
+            k = int(len(seq) * 0.2)
+            indices_to_remove = set(random.sample(range(len(seq)), k))
+            lossy_seq = [x for i, x in enumerate(seq) if i not in indices_to_remove]
+
+            data[true_pattern].append(IPIDSequence(lossy_seq))
+
+    with open("lossy.pkl", "wb") as f:
+        pickle.dump(data, f)
+
+
+def create_reorder_dataset(sequence_length: int, sequence_count_per_pattern: int):
+    data = defaultdict(list)
+
+    for true_pattern, generator in pattern_generation_map.items():
+        for _ in range(sequence_count_per_pattern):
+            seq = generator(sequence_length).full.sequence.tolist()
+
+            # Reorder 20% of sequence
+            reorder_seq = seq.copy()
+            k = int(len(reorder_seq) * 0.2)
+            reorder_indices = random.sample(range(len(reorder_seq)), k)
+
+            values = [reorder_seq[i] for i in reorder_indices]
+            random.shuffle(values)
+
+            for i, idx in enumerate(reorder_indices):
+                reorder_seq[idx] = values[i]
+
+            data[true_pattern].append(IPIDSequence(reorder_seq))
+
+    with open("reorder.pkl", "wb") as f:
+        pickle.dump(data, f)
+
+
+def test_classifier(dataset: Dataset, sequence_length: int = 10, sequence_count_per_pattern: int = 100_000):
+    dataset_fp = f"{dataset.value.lower()}.pkl"
+    if not os.path.exists(dataset_fp):
+        create_dataset(dataset, sequence_length, sequence_count_per_pattern)
+
+    with open(dataset_fp, "rb") as f:
+        data = pickle.load(f)
+
+    print(f"### {dataset.value.upper()} DATASET ###\n")
+
     overall_correct = 0
     overall_total = 0
     confusion_matrix = defaultdict(lambda: defaultdict(int))
 
-    for true_pattern, generator in pattern_generation_map.items():
+    for true_pattern, ip_id_sequences in data.items():
         correct_classifications = 0
+        sequence_count_per_pattern = len(ip_id_sequences)
         misclassified_counts = defaultdict(int)
 
-        for _ in range(sequence_count_per_pattern):
-            seq = generator(sequence_length)
+        for seq in ip_id_sequences:
             predicted_pattern = get_pattern(seq)
 
             if true_pattern.value == predicted_pattern.value:
@@ -312,3 +391,13 @@ def test_classifier():
         recall = tp / (tp + fn) if tp + fn else 0
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
         print(f"{label}: precision={precision:.4f}, recall={recall:.4f}, f1={f1:.4f}")
+
+    print()
+
+
+if __name__ == "__main__":
+    test_classifier(Dataset.IDEAL)
+    test_classifier(Dataset.LOSSY)
+    test_classifier(Dataset.REORDER)
+
+# endregion
