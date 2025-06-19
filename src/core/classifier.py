@@ -60,7 +60,7 @@ def get_clusters(values: np.ndarray):
 
     for i in range(1, len(sorted_values)):
         # Check the difference to the previous number
-        diff = sorted_values[i] - sorted_values[i-1]
+        diff = sorted_values[i] - sorted_values[i - 1]
 
         if diff < 100:
             # Numbers belong to the same cluster
@@ -214,7 +214,7 @@ def local_ge1_ip_id_sequence(length: int) -> IPIDSequence:
 def global_ip_id_sequence(length: int, max_inc: int = MAX_INC) -> IPIDSequence:
     seq = []
     s = random_ip_id()
-    avg_inc = random.randint(1, MAX_INC)  # correlated with avg pps of device
+    avg_inc = random.randint(1, max_inc)  # correlated with avg pps of device
     dev = max(int(0.5 * avg_inc), 1)  # correlated with deviation of pps of device
 
     for i in range(length):
@@ -225,14 +225,14 @@ def global_ip_id_sequence(length: int, max_inc: int = MAX_INC) -> IPIDSequence:
 
 def multi_global_ip_id_sequence(length: int) -> IPIDSequence:
     seq = []
-    cluster_count = random.randint(2, 4)
+    cluster_count = random.randint(2, length // 2)
 
     sizes = [length // cluster_count] * cluster_count
     for i in range(length % cluster_count):
         sizes[i] += 1
 
     cluster_seqs = {
-        i: global_ip_id_sequence(length=sizes[i], max_inc=10).full.sequence.astype(int).tolist()
+        i: global_ip_id_sequence(length=sizes[i], max_inc=100).full.sequence.astype(int).tolist()
         for i in range(cluster_count)
     }
 
@@ -259,30 +259,56 @@ pattern_generation_map = {
     Pattern.RANDOM: random_ip_id_sequence
 }
 
-# endregion
-
-
-# region Classifier Testing
-sequence_length = 20
-sequence_count_per_pattern = 10000
-for real_pattern, generator in pattern_generation_map.items():
-
-    true_classified = 0
-    false_classified_data = defaultdict(int)
-
-    for i in range(sequence_count_per_pattern):
-        seq: IPIDSequence = generator(sequence_length)
-        classified_pattern: Pattern = get_pattern(seq)
-
-        if real_pattern.value == classified_pattern.value:
-            true_classified += 1
-        else:
-            false_classified_data[classified_pattern.value] += 1
-
-    false_classified = sequence_count_per_pattern - true_classified
-    print(
-        f"{real_pattern.value}: total={sequence_count_per_pattern} true_classified={true_classified} false_classified={false_classified} recall={true_classified / (true_classified + false_classified)}"
-    )
-    print(f"False classified breakdown: {dict(false_classified_data)}")
 
 # endregion
+
+
+def test_classifier():
+    sequence_length = 10
+    sequence_count_per_pattern = 100_000
+    overall_correct = 0
+    overall_total = 0
+    confusion_matrix = defaultdict(lambda: defaultdict(int))
+
+    for true_pattern, generator in pattern_generation_map.items():
+        correct_classifications = 0
+        misclassified_counts = defaultdict(int)
+
+        for _ in range(sequence_count_per_pattern):
+            seq = generator(sequence_length)
+            predicted_pattern = get_pattern(seq)
+
+            if true_pattern.value == predicted_pattern.value:
+                correct_classifications += 1
+            else:
+                misclassified_counts[predicted_pattern.value] += 1
+
+        incorrect_classifications = sequence_count_per_pattern - correct_classifications
+        print(
+            f"{true_pattern.value}: total={sequence_count_per_pattern} "
+            f"correct={correct_classifications} incorrect={incorrect_classifications} "
+            f"recall={correct_classifications / sequence_count_per_pattern:.4f}"
+        )
+        print(f"Misclassification breakdown: {dict(misclassified_counts)}")
+
+        overall_correct += correct_classifications
+        overall_total += sequence_count_per_pattern
+
+        # Update confusion matrix
+        confusion_matrix[true_pattern.value][true_pattern.value] += correct_classifications
+        for predicted, count in misclassified_counts.items():
+            confusion_matrix[true_pattern.value][predicted] += count
+
+    # Final evaluation
+    accuracy = overall_correct / overall_total
+    print(f"\n=== Overall Evaluation ===")
+    print(f"Accuracy: {accuracy:.4%}")
+
+    for label in confusion_matrix:
+        tp = confusion_matrix[label][label]
+        fn = sum(confusion_matrix[label].values()) - tp
+        fp = sum(confusion_matrix[other][label] for other in confusion_matrix if other != label)
+        precision = tp / (tp + fp) if tp + fp else 0
+        recall = tp / (tp + fn) if tp + fn else 0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
+        print(f"{label}: precision={precision:.4f}, recall={recall:.4f}, f1={f1:.4f}")
