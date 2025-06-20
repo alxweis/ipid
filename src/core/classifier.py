@@ -9,6 +9,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.stats import chisquare
 
+from core.utils import config
+
 MAX_IP_ID = 65535
 MIN_STEPS_BEFORE_WRAPAROUND = 3
 MAX_INC = math.ceil((MAX_IP_ID + 1) / MIN_STEPS_BEFORE_WRAPAROUND) - 1
@@ -93,6 +95,11 @@ def is_uniform(values: np.ndarray, alpha: float) -> bool:
     return p_value(values) > alpha
 
 
+def is_reflection(seq: IPIDSequence) -> bool:
+    return all(ip_id == config.reflection_send_ip_ids[i % len(config.reflection_send_ip_ids)]
+               for i, ip_id in enumerate(seq.full.sequence.tolist()))
+
+
 def is_constant(seq: IPIDSequence) -> bool:
     return np.all(seq.full.increments == 0)
 
@@ -119,6 +126,7 @@ def is_global(seq: IPIDSequence) -> bool:
 
 def is_multi_global(seq: IPIDSequence) -> bool:
     clusters = get_clusters(seq.full.sequence)
+    # TODO Filter decreasing sequences
     return np.all(seq.full.increments >= 1) and len(clusters) <= len(seq.full.sequence) - 2
 
 
@@ -144,6 +152,8 @@ def has_pattern(seq: IPIDSequence) -> bool:
 
 def get_pattern(seq: IPIDSequence, get_all=False) -> list[Pattern] | Pattern:
     result = []
+    if config.detect_reflected_ip_ids and is_reflection(seq):
+        result.append(Pattern.REFLECTION)
     if is_constant(seq):
         result.append(Pattern.CONSTANT)
     if is_global(seq):
