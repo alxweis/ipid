@@ -162,4 +162,4 @@ python X_experimental.py 4 targets/tcp/80/2006-01-02_15-04-05/targets.csv.zst ta
 
 **Output:**
 
-* Results are saved at: `results/experimental/intersections/<targets_full_id>+<targets_full_path_id>+.../`
+* Results are saved at: `results/experimental/intersections/<targets_full_id>+<targets_full_id>+.../`
