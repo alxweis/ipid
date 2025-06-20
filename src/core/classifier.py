@@ -290,7 +290,7 @@ def create_ideal_dataset(sequence_length: int, sequence_count_per_pattern: int):
             seq = generator(sequence_length)
             data[true_pattern].append(seq)
 
-    with open("ideal.pkl", "wb") as f:
+    with open(f"ideal_{sequence_length}_{sequence_count_per_pattern}.pkl", "wb") as f:
         pickle.dump(data, f)
 
 
@@ -308,7 +308,7 @@ def create_lossy_dataset(sequence_length: int, sequence_count_per_pattern: int):
 
             data[true_pattern].append(IPIDSequence(lossy_seq))
 
-    with open("lossy.pkl", "wb") as f:
+    with open(f"lossy.pkl__{sequence_length}_{sequence_count_per_pattern}", "wb") as f:
         pickle.dump(data, f)
 
 
@@ -332,12 +332,12 @@ def create_reorder_dataset(sequence_length: int, sequence_count_per_pattern: int
 
             data[true_pattern].append(IPIDSequence(reorder_seq))
 
-    with open("reorder.pkl", "wb") as f:
+    with open(f"reorder_{sequence_length}_{sequence_count_per_pattern}.pkl", "wb") as f:
         pickle.dump(data, f)
 
 
-def test_classifier(dataset: Dataset, sequence_length: int = 10, sequence_count_per_pattern: int = 100_000):
-    dataset_fp = f"{dataset.value.lower()}.pkl"
+def test_classifier(dataset: Dataset, sequence_length: int, sequence_count_per_pattern: int):
+    dataset_fp = f"{dataset.value.lower()}_{sequence_length}_{sequence_count_per_pattern}.pkl"
     if not os.path.exists(dataset_fp):
         create_dataset(dataset, sequence_length, sequence_count_per_pattern)
 
