@@ -308,7 +308,7 @@ def create_lossy_dataset(sequence_length: int, sequence_count_per_pattern: int):
 
             data[true_pattern].append(IPIDSequence(lossy_seq))
 
-    with open(f"lossy.pkl__{sequence_length}_{sequence_count_per_pattern}", "wb") as f:
+    with open(f"lossy_{sequence_length}_{sequence_count_per_pattern}.pkl", "wb") as f:
         pickle.dump(data, f)
 
 
@@ -420,7 +420,7 @@ def test_classifier(dataset: Dataset, sequence_length: int, sequence_count_per_p
                     color="white" if val > 50 else "black")
 
     plt.tight_layout()
-    plt.savefig(f"{dataset.value.lower()}_cm.png", dpi=300)
+    plt.savefig(f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}.png", dpi=300)
 
 
 def test():
