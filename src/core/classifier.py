@@ -6,6 +6,7 @@ from collections import defaultdict
 from enum import Enum
 
 import numpy as np
+from matplotlib import pyplot as plt
 from scipy.stats import chisquare
 
 MAX_IP_ID = 65535
@@ -393,6 +394,33 @@ def test_classifier(dataset: Dataset, sequence_length: int = 10, sequence_count_
         print(f"{label}: precision={precision:.4f}, recall={recall:.4f}, f1={f1:.4f}")
 
     print()
+
+    # Save confusion matrix
+    labels = sorted(confusion_matrix.keys())
+    cm = np.array([[confusion_matrix[t][p] for p in labels] for t in labels])
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+
+    ax.set_xticks(range(len(labels)), labels=labels, rotation=45, ha="right")
+    ax.set_yticks(range(len(labels)), labels=labels)
+    ax.set_xlabel("Predicted Label")
+    ax.set_ylabel("True Label")
+
+    row_sums = cm.sum(axis=1, keepdims=True)
+    cm_rel = cm / row_sums
+
+    im = ax.imshow(cm_rel * 100, cmap="Blues", vmin=0, vmax=100)
+    cbar = ax.figure.colorbar(im, ax=ax)
+    cbar.ax.set_ylabel("Percentage (%)", rotation=-90, va="bottom")
+
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            val = cm_rel[i, j] * 100
+            ax.text(j, i, f"{val:.1f}", ha="center", va="center",
+                    color="white" if val > 50 else "black")
+
+    plt.tight_layout()
+    plt.savefig(f"{dataset.value.lower()}_cm.png", dpi=300)
 
 
 if __name__ == "__main__":
