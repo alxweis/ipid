@@ -423,9 +423,16 @@ def test_classifier(dataset: Dataset, sequence_length: int = 10, sequence_count_
     plt.savefig(f"{dataset.value.lower()}_cm.png", dpi=300)
 
 
+def test():
+    sequence_length = 10
+    sequence_count_per_pattern = 100_000
+
+    test_classifier(Dataset.IDEAL, sequence_length, sequence_count_per_pattern)
+    test_classifier(Dataset.LOSSY, sequence_length, sequence_count_per_pattern)
+    test_classifier(Dataset.REORDER, sequence_length, sequence_count_per_pattern)
+
+
 if __name__ == "__main__":
-    test_classifier(Dataset.IDEAL)
-    test_classifier(Dataset.LOSSY)
-    test_classifier(Dataset.REORDER)
+    test()
 
 # endregion
