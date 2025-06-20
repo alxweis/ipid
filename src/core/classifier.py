@@ -126,7 +126,6 @@ def is_global(seq: IPIDSequence) -> bool:
 
 def is_multi_global(seq: IPIDSequence) -> bool:
     clusters = get_clusters(seq.full.sequence)
-    # TODO Filter decreasing sequences
     return np.all(seq.full.increments >= 1) and len(clusters) <= len(seq.full.sequence) - 2
 
 

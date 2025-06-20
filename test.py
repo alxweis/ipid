@@ -19,7 +19,7 @@ def get_reflection_ip_id_sequence_patterns() -> dict[str, list[Pattern]]:
 
 
 class TestAddFunction(unittest.TestCase):
-    def test_reflection_ip_id_sequence_patterns(self):
+    def test_reflection_ip_id_sequence(self):
         if config.detect_reflected_ip_ids:
             self.assertEqual(get_reflection_ip_id_sequence_patterns(), {"B2B": [Pattern.REFLECTION, Pattern.FALLBACK],
                                                                         "SEQ": [Pattern.REFLECTION, Pattern.FALLBACK]})
