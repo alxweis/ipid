@@ -155,6 +155,11 @@ Analyze how much overlap exists between the targets collected by two or more sca
 python X_experimental.py 4 <targets_full_path> <targets_full_path> ...
 ```
 
+**Example Prompt:**
+```
+python X_experimental.py 4 targets/tcp/80/2006-01-02_15-04-05/targets.csv.zst targets/tcp/80/2006-01-03_16-05-06/targets_os.csv.zst
+```
+
 **Output:**
 
-* Results are saved at: `results/experimental/intersections/<targets_full_path_ts>+<targets_full_path_ts>+.../`
+* Results are saved at: `results/experimental/intersections/<targets_full_id>+<targets_full_path_id>+.../`
