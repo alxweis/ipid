@@ -157,7 +157,7 @@ python X_experimental.py 4 <targets_full_path> <targets_full_path> ...
 
 **Example Prompt:**
 ```
-python X_experimental.py 4 targets/tcp/80/2006-01-02_15-04-05/targets.csv.zst targets/tcp/80/2006-01-03_16-05-06/targets_os.csv.zst
+python X_experimental.py 4 targets/tcp/80/2006-01-02_15-04-05/targets.csv.zst targets/udp/53/2006-01-03_16-05-06/targets_os.csv.zst
 ```
 
 **Output:**
