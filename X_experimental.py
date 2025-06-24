@@ -1,7 +1,14 @@
+import bz2
+import csv
+import io
+import ipaddress
 import os
 import sys
 
+import zstandard as zstd
+
 from analysis.main import plot_response_rate, calc_intersections
+from core.utils import config
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
     analyze_sequence_stable_lens_natural
@@ -22,6 +29,8 @@ def print_usage():
     print(f"    python {filename} 3 <targets_full_path>")
     print("  4 - Analyze Intersections:")
     print(f"    python {filename} 4 <targets_full_path> <targets_full_path> ...")
+    print("  5 - Create routers.csv.zst:")
+    print(f"    python {filename} 5 <router_nodes_path>")
     sys.exit(1)
 
 
@@ -74,6 +83,36 @@ def main():
 
         targets_full_paths = sys.argv[2:]
         calc_intersections(targets_full_paths, on="IP")
+    elif mode == 5:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+
+        router_nodes_path = sys.argv[2]
+        output_path = os.path.join(os.path.dirname(router_nodes_path), "routers.csv.zst")
+
+        with bz2.open(router_nodes_path, 'rt') as infile, open(output_path, 'wb') as out_f:
+            zstd_writer = zstd.ZstdCompressor().stream_writer(out_f)
+            text_writer = io.TextIOWrapper(zstd_writer, encoding='utf-8', newline='')
+            csv_writer = csv.writer(text_writer)
+
+            csv_writer.writerow([config.ip_col_name])
+
+            for line in infile:
+                if line.startswith('node'):
+                    parts = line.strip().split()
+                    # node_id = parts[1][:-1]
+                    ips = parts[2:]
+                    first_valid_ip = next(
+                        (ip for ip in ips if ipaddress.IPv4Address(ip) not in ipaddress.IPv4Network('224.0.0.0/3')),
+                        None
+                    )
+                    if first_valid_ip:
+                        csv_writer.writerow([str(first_valid_ip)])
+
+            zstd_writer.flush()
+            text_writer.detach()
+            zstd_writer.close()
     else:
         print_usage()
 
