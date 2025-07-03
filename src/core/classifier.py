@@ -1,12 +1,8 @@
 import math
-import os
-import pickle
 import random
-from collections import defaultdict
 from enum import Enum
 
 import numpy as np
-from matplotlib import pyplot as plt
 from scipy.stats import chisquare
 
 from core.utils import config
@@ -212,7 +208,7 @@ def local_ge1_ip_id_sequence(length: int) -> IPIDSequence:
     seq = []
     a = random_ip_id()
     b = random_ip_id()
-    max_inc = 2000  # 1 tick = 1ms => Max RTT of 2000ms = 2000 ticks
+    max_inc = 500  # 1 tick = 1ms => Max RTT of 2000ms = 2000 ticks
     for i in range(length):
         if i % 2 == 0:
             a = increment_ip_id(a, random.randint(1, max_inc))
@@ -223,11 +219,11 @@ def local_ge1_ip_id_sequence(length: int) -> IPIDSequence:
     return IPIDSequence(seq)
 
 
-def global_ip_id_sequence(length: int, max_inc: int = MAX_INC) -> IPIDSequence:
+def global_ip_id_sequence(length: int, max_inc: int = 2500) -> IPIDSequence:
     seq = []
     s = random_ip_id()
     avg_inc = random.randint(1, max_inc)  # correlated with avg pps of device
-    dev = max(int(0.5 * avg_inc), 1)  # correlated with deviation of pps of device
+    dev = max(int(0.2 * avg_inc), 1)  # correlated with deviation of pps of device
 
     for i in range(length):
         s = increment_ip_id(s, clamp(avg_inc + random.randint(-dev, dev), 1, max_inc))
@@ -237,14 +233,14 @@ def global_ip_id_sequence(length: int, max_inc: int = MAX_INC) -> IPIDSequence:
 
 def multi_global_ip_id_sequence(length: int) -> IPIDSequence:
     seq = []
-    cluster_count = random.randint(2, length // 2)
+    cluster_count = random.randint(2, 4)
 
     sizes = [length // cluster_count] * cluster_count
     for i in range(length % cluster_count):
         sizes[i] += 1
 
     cluster_seqs = {
-        i: global_ip_id_sequence(length=sizes[i], max_inc=100).full.sequence.astype(int).tolist()
+        i: global_ip_id_sequence(length=sizes[i], max_inc=50).full.sequence.astype(int).tolist()
         for i in range(cluster_count)
     }
 
@@ -270,178 +266,5 @@ pattern_generation_map = {
     Pattern.MULTI_GLOBAL: multi_global_ip_id_sequence,
     Pattern.RANDOM: random_ip_id_sequence
 }
-
-
-# endregion
-
-
-# region Classifier Evaluation
-class Dataset(Enum):
-    IDEAL = "Ideal"
-    LOSSY = "Lossy"
-    REORDER = "Reorder"
-
-
-def create_dataset(dataset: Dataset, sequence_length: int, sequence_count_per_pattern: int):
-    if dataset == Dataset.IDEAL:
-        create_ideal_dataset(sequence_length, sequence_count_per_pattern)
-    elif dataset == Dataset.LOSSY:
-        create_lossy_dataset(sequence_length, sequence_count_per_pattern)
-    elif dataset == Dataset.REORDER:
-        create_reorder_dataset(sequence_length, sequence_count_per_pattern)
-
-
-def create_ideal_dataset(sequence_length: int, sequence_count_per_pattern: int):
-    data = defaultdict(list)
-
-    for true_pattern, generator in pattern_generation_map.items():
-        for _ in range(sequence_count_per_pattern):
-            seq = generator(sequence_length)
-            data[true_pattern].append(seq)
-
-    with open(f"ideal_{sequence_length}_{sequence_count_per_pattern}.pkl", "wb") as f:
-        pickle.dump(data, f)
-
-
-def create_lossy_dataset(sequence_length: int, sequence_count_per_pattern: int):
-    data = defaultdict(list)
-
-    for true_pattern, generator in pattern_generation_map.items():
-        for _ in range(sequence_count_per_pattern):
-            seq = generator(sequence_length).full.sequence.tolist()
-
-            # Remove 20% of sequence
-            k = int(len(seq) * 0.2)
-            indices_to_remove = set(random.sample(range(len(seq)), k))
-            lossy_seq = [x for i, x in enumerate(seq) if i not in indices_to_remove]
-
-            data[true_pattern].append(IPIDSequence(lossy_seq))
-
-    with open(f"lossy_{sequence_length}_{sequence_count_per_pattern}.pkl", "wb") as f:
-        pickle.dump(data, f)
-
-
-def create_reorder_dataset(sequence_length: int, sequence_count_per_pattern: int):
-    data = defaultdict(list)
-
-    for true_pattern, generator in pattern_generation_map.items():
-        for _ in range(sequence_count_per_pattern):
-            seq = generator(sequence_length).full.sequence.tolist()
-
-            # Reorder 20% of sequence
-            reorder_seq = seq.copy()
-            k = int(len(reorder_seq) * 0.2)
-            reorder_indices = random.sample(range(len(reorder_seq)), k)
-
-            values = [reorder_seq[i] for i in reorder_indices]
-            random.shuffle(values)
-
-            for i, idx in enumerate(reorder_indices):
-                reorder_seq[idx] = values[i]
-
-            data[true_pattern].append(IPIDSequence(reorder_seq))
-
-    with open(f"reorder_{sequence_length}_{sequence_count_per_pattern}.pkl", "wb") as f:
-        pickle.dump(data, f)
-
-
-def test_classifier(dataset: Dataset, sequence_length: int, sequence_count_per_pattern: int):
-    dataset_fp = f"{dataset.value.lower()}_{sequence_length}_{sequence_count_per_pattern}.pkl"
-    if not os.path.exists(dataset_fp):
-        create_dataset(dataset, sequence_length, sequence_count_per_pattern)
-
-    with open(dataset_fp, "rb") as f:
-        data = pickle.load(f)
-
-    print(f"### {dataset.value.upper()} DATASET ###\n")
-
-    overall_correct = 0
-    overall_total = 0
-    confusion_matrix = defaultdict(lambda: defaultdict(int))
-
-    for true_pattern, ip_id_sequences in data.items():
-        correct_classifications = 0
-        sequence_count_per_pattern = len(ip_id_sequences)
-        misclassified_counts = defaultdict(int)
-
-        for seq in ip_id_sequences:
-            predicted_pattern = get_pattern(seq)
-
-            if true_pattern.value == predicted_pattern.value:
-                correct_classifications += 1
-            else:
-                misclassified_counts[predicted_pattern.value] += 1
-
-        incorrect_classifications = sequence_count_per_pattern - correct_classifications
-        print(
-            f"{true_pattern.value}: total={sequence_count_per_pattern} "
-            f"correct={correct_classifications} incorrect={incorrect_classifications} "
-            f"recall={correct_classifications / sequence_count_per_pattern:.4f}"
-        )
-        print(f"Misclassification breakdown: {dict(misclassified_counts)}")
-
-        overall_correct += correct_classifications
-        overall_total += sequence_count_per_pattern
-
-        # Update confusion matrix
-        confusion_matrix[true_pattern.value][true_pattern.value] += correct_classifications
-        for predicted, count in misclassified_counts.items():
-            confusion_matrix[true_pattern.value][predicted] += count
-
-    # Final evaluation
-    accuracy = overall_correct / overall_total
-    print(f"\n=== Overall Evaluation ===")
-    print(f"Accuracy: {accuracy:.4%}")
-
-    for label in confusion_matrix:
-        tp = confusion_matrix[label][label]
-        fn = sum(confusion_matrix[label].values()) - tp
-        fp = sum(confusion_matrix[other][label] for other in confusion_matrix if other != label)
-        precision = tp / (tp + fp) if tp + fp else 0
-        recall = tp / (tp + fn) if tp + fn else 0
-        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
-        print(f"{label}: precision={precision:.4f}, recall={recall:.4f}, f1={f1:.4f}")
-
-    print()
-
-    # Save confusion matrix
-    labels = sorted(confusion_matrix.keys())
-    cm = np.array([[confusion_matrix[t][p] for p in labels] for t in labels])
-
-    fig, ax = plt.subplots(figsize=(6, 5))
-
-    ax.set_xticks(range(len(labels)), labels=labels, rotation=45, ha="right")
-    ax.set_yticks(range(len(labels)), labels=labels)
-    ax.set_xlabel("Predicted Label")
-    ax.set_ylabel("True Label")
-
-    row_sums = cm.sum(axis=1, keepdims=True)
-    cm_rel = cm / row_sums
-
-    im = ax.imshow(cm_rel * 100, cmap="Blues", vmin=0, vmax=100)
-    cbar = ax.figure.colorbar(im, ax=ax)
-    cbar.ax.set_ylabel("Percentage (%)", rotation=-90, va="bottom")
-
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            val = cm_rel[i, j] * 100
-            ax.text(j, i, f"{val:.1f}", ha="center", va="center",
-                    color="white" if val > 50 else "black")
-
-    plt.tight_layout()
-    plt.savefig(f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}.png", dpi=300)
-
-
-def test():
-    sequence_length = 10
-    sequence_count_per_pattern = 100_000
-
-    test_classifier(Dataset.IDEAL, sequence_length, sequence_count_per_pattern)
-    test_classifier(Dataset.LOSSY, sequence_length, sequence_count_per_pattern)
-    test_classifier(Dataset.REORDER, sequence_length, sequence_count_per_pattern)
-
-
-if __name__ == "__main__":
-    test()
 
 # endregion
