@@ -990,7 +990,7 @@ func loadTargets(targetsBasePath string, targetsType string, basePath string) st
 	if absErr != nil {
 		panic(absErr)
 	}
-	linkTargetsPath := filepath.Join(outputDir, "targets_os.csv.zst")
+	linkTargetsPath := filepath.Join(outputDir, fileName)
 	linkErr := os.Symlink(absSourceTargetsPath, linkTargetsPath)
 	if linkErr != nil {
 		panic(linkErr)
