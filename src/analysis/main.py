@@ -8,7 +8,6 @@ import os.path
 import time
 from collections import Counter
 from functools import partial
-from pathlib import Path
 
 import duckdb
 import geoip2.database
@@ -21,9 +20,8 @@ from geoip2.errors import AddressNotFoundError
 from tqdm import tqdm
 
 from core import EXP_INTERSECTIONS
-from core.classifier import IPIDSequence, Pattern, p_value
+from core.classifier import IPIDSequence, Pattern, p_value, get_clusters
 from core.utils import config, runtime
-from hitlist.os_scan import linux_distros, windows, bsd, apple
 from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import count_lines_in_zst
 
@@ -654,9 +652,16 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
         ip_id_sequence = IPIDSequence(row_data)
         if pattern in {Pattern.LOCAL_EQ1, Pattern.LOCAL_GE1}:
             results.append(np.concatenate([ip_id_sequence.even.increments, ip_id_sequence.odd.increments]))
+        elif pattern == Pattern.MULTI_GLOBAL:
+            clusters = get_clusters(ip_id_sequence.full.sequence)
+            increments = np.array([], dtype=np.int32)
+            for cluster in clusters:
+                increments = np.concatenate([increments, np.diff(cluster)])
+            results.append(increments)
         else:
             # if np.any(ip_id_sequence.full.increments < 700):
-            #     print(f"seq={ip_id_sequence.full.sequence} incs={ip_id_sequence.full.increments} ==> p_value={p_value(ip_id_sequence.full.increments)} > 0.01 ==> is_random is True")
+            #     print(
+            #         f"seq={ip_id_sequence.full.sequence} incs={ip_id_sequence.full.increments} ==> p_value={p_value(ip_id_sequence.full.increments)} > 0.01 ==> is_random is True")
             results.append(ip_id_sequence.full.increments)
 
     return results
@@ -780,18 +785,20 @@ def start(result_dir: str):
                           total_samples=total_samples, targets_csv=targets_csv, is_os_scan=is_os_scan,
                           probing_csv=probing_csv, eval_csv=eval_csv, result_dir=result_dir,
                           analysis_dir=plot_output_dir) as params:
-        params.save()
-        plot_pattern_distribution(params)
-        plot_time_between_requests(params)
-        plot_avg_rtt_per_continent(params)
-        plot_increment_distribution(params, Pattern.GLOBAL)
-        plot_increment_distribution(params, Pattern.LOCAL_GE1)
+        # params.save()
+        # plot_pattern_distribution(params)
+        # plot_time_between_requests(params)
+        # plot_avg_rtt_per_continent(params)
+        # plot_increment_distribution(params, Pattern.GLOBAL)
+        # plot_increment_distribution(params, Pattern.LOCAL_GE1)
         plot_increment_distribution(params, Pattern.RANDOM)
+        # plot_increment_distribution(params, Pattern.MULTI_GLOBAL)
+        # plot_increment_distribution(params, Pattern.REFLECTION)
 
-        if params.is_os_scan:
-            plot_pattern_distribution_for_oses(params, linux_distros)
-            plot_pattern_distribution_for_oses(params, windows)
-            plot_pattern_distribution_for_oses(params, bsd)
-            plot_pattern_distribution_for_oses(params, apple)
+        # if params.is_os_scan:
+        #     plot_pattern_distribution_for_oses(params, linux_distros)
+        #     plot_pattern_distribution_for_oses(params, windows)
+        #     plot_pattern_distribution_for_oses(params, bsd)
+        #     plot_pattern_distribution_for_oses(params, apple)
 
         print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")

@@ -53,7 +53,8 @@ def nrm_entropy(values: np.ndarray) -> float:
     return entropy / max_entropy
 
 
-def get_clusters(values: np.ndarray):
+def get_clusters(values: np.ndarray) -> list[list[np.int32]]:
+    values = values.astype(np.int32)
     sorted_values = sorted(values)
 
     clusters = []

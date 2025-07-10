@@ -1,0 +1,10 @@
+Number of Workers: 31
+Batch Size: 5000
+Total Rows: 3172804
+Total Samples: 300000
+Targets CSV: results/seq/udp/53/2025-07-09_01-17-06\targets.csv.zst
+Is OS Scan: False
+Probing CSV: results/seq/udp/53/2025-07-09_01-17-06\probing.csv.zst
+Eval CSV: results/seq/udp/53/2025-07-09_01-17-06\eval.csv.zst
+Result Dir: results/seq/udp/53/2025-07-09_01-17-06
+Analysis Dir: results/seq/udp/53/2025-07-09_01-17-06\analysis
