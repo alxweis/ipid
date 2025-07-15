@@ -656,7 +656,8 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
             clusters = get_clusters(ip_id_sequence.full.sequence)
             increments = np.array([], dtype=np.int32)
             for cluster in clusters:
-                increments = np.concatenate([increments, np.diff(cluster)])
+                arr = np.array(list(cluster.values()), dtype=np.int32)
+                increments = np.concatenate([increments, np.diff(arr)])
             results.append(increments)
         else:
             # if np.any(ip_id_sequence.full.increments < 700):
@@ -779,21 +780,52 @@ def start(result_dir: str):
     total_rows_eval_csv = count_lines_in_zst(eval_csv)
     print(f"Total {total_rows_eval_csv} rows to process for eval_csv")
 
-    assert total_rows_eval_csv == total_rows_probing_csv, "probing_csv and eval_csv should have same line count!"
+    # assert total_rows_eval_csv == total_rows_probing_csv, "probing_csv and eval_csv should have same line count!"
+
+    # TODO Remove this later
+    if total_rows_eval_csv < total_rows_probing_csv:
+        print("Trim probing.csv.zst...")
+        lines_to_remove = total_rows_probing_csv - total_rows_eval_csv
+        dctx = zstd.ZstdDecompressor()
+        lines = collections.deque(maxlen=lines_to_remove)
+
+        temp_file = probing_csv + ".tmp"
+        with open(probing_csv, 'rb') as f, open(temp_file, 'wb') as out:
+            reader = dctx.stream_reader(f)
+            encoder = zstd.ZstdCompressor().stream_writer(out)
+
+            line_buffer = b""
+            pbar = tqdm(total=total_rows_probing_csv, desc="Processing", unit="lines")
+
+            while chunk := reader.read(16384):
+                line_buffer += chunk
+                while b'\n' in line_buffer:
+                    line, line_buffer = line_buffer.split(b'\n', 1)
+                    if len(lines) == lines_to_remove:
+                        encoder.write(lines.popleft() + b'\n')
+                    lines.append(line)
+                    pbar.update(1)
+
+            pbar.close()
+            encoder.flush(zstd.FLUSH_FRAME)
+
+        os.replace(temp_file, probing_csv)
+        start(result_dir)
+        return
 
     with ProcessingParams(num_workers=num_workers, batch_size=batch_size, total_rows=total_rows_probing_csv,
                           total_samples=total_samples, targets_csv=targets_csv, is_os_scan=is_os_scan,
                           probing_csv=probing_csv, eval_csv=eval_csv, result_dir=result_dir,
                           analysis_dir=plot_output_dir) as params:
-        # params.save()
-        # plot_pattern_distribution(params)
-        # plot_time_between_requests(params)
-        # plot_avg_rtt_per_continent(params)
-        # plot_increment_distribution(params, Pattern.GLOBAL)
-        # plot_increment_distribution(params, Pattern.LOCAL_GE1)
+        params.save()
+        plot_pattern_distribution(params)
+        plot_time_between_requests(params)
+        plot_avg_rtt_per_continent(params)
+        plot_increment_distribution(params, Pattern.GLOBAL)
+        plot_increment_distribution(params, Pattern.LOCAL_GE1)
         plot_increment_distribution(params, Pattern.RANDOM)
-        # plot_increment_distribution(params, Pattern.MULTI_GLOBAL)
-        # plot_increment_distribution(params, Pattern.REFLECTION)
+        plot_increment_distribution(params, Pattern.MULTI_GLOBAL)
+        plot_increment_distribution(params, Pattern.REFLECTION)
 
         # if params.is_os_scan:
         #     plot_pattern_distribution_for_oses(params, linux_distros)

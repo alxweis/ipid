@@ -9,8 +9,10 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from core import TEST_RESULTS
-from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
+from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map, get_clusters
 from core.utils import config
+
+FORCE_CREATE_DATASET = False
 
 
 def classify_reflection_ip_id_sequence() -> dict[str, list[Pattern]]:
@@ -20,8 +22,7 @@ def classify_reflection_ip_id_sequence() -> dict[str, list[Pattern]]:
         ip_id_sequence = IPIDSequence(seq)
 
         patterns: list[Pattern] = get_pattern(ip_id_sequence, get_all=True)
-        print(
-            f"{method}: {ip_id_sequence.full.sequence} => predicted [{", ".join([p.value for p in patterns])}]")
+        print(f"{method}: {ip_id_sequence.full.sequence} => predicted [{", ".join([p.value for p in patterns])}]")
         predicted_patterns[method] = patterns
 
     return predicted_patterns
@@ -51,7 +52,7 @@ def create_ideal_dataset(sequence_length: int, sequence_count_per_pattern: int):
             data[true_pattern].append(seq)
 
     os.makedirs(TEST_RESULTS, exist_ok=True)
-    with open(os.path.join(TEST_RESULTS, f"ideal_{sequence_length}_{sequence_count_per_pattern}.pkl"), "wb") as f:
+    with open(os.path.join(TEST_RESULTS, f"ideal_cm_{sequence_length}_{sequence_count_per_pattern}.pkl"), "wb") as f:
         pickle.dump(data, f)
 
 
@@ -70,7 +71,7 @@ def create_lossy_dataset(sequence_length: int, sequence_count_per_pattern: int):
             data[true_pattern].append(IPIDSequence(lossy_seq))
 
     os.makedirs(TEST_RESULTS, exist_ok=True)
-    with open(os.path.join(TEST_RESULTS, f"lossy_{sequence_length}_{sequence_count_per_pattern}.pkl"), "wb") as f:
+    with open(os.path.join(TEST_RESULTS, f"lossy_cm_{sequence_length}_{sequence_count_per_pattern}.pkl"), "wb") as f:
         pickle.dump(data, f)
 
 
@@ -95,14 +96,15 @@ def create_reorder_dataset(sequence_length: int, sequence_count_per_pattern: int
             data[true_pattern].append(IPIDSequence(reorder_seq))
 
     os.makedirs(TEST_RESULTS, exist_ok=True)
-    with open(os.path.join(TEST_RESULTS, f"reorder_{sequence_length}_{sequence_count_per_pattern}.pkl"), "wb") as f:
+    with open(os.path.join(TEST_RESULTS, f"reorder_cm_{sequence_length}_{sequence_count_per_pattern}.pkl"), "wb") as f:
         pickle.dump(data, f)
 
 
 def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_count_per_pattern: int) -> bool:
     dataset_fp = os.path.join(TEST_RESULTS,
-                              f"{dataset.value.lower()}_{sequence_length}_{sequence_count_per_pattern}.pkl")
-    if not os.path.exists(dataset_fp):
+                              f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}.pkl")
+    if not os.path.exists(dataset_fp) or FORCE_CREATE_DATASET:
+        print("Creating dataset...")
         create_dataset(dataset, sequence_length, sequence_count_per_pattern)
 
     with open(dataset_fp, "rb") as f:
@@ -127,8 +129,9 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
             else:
                 misclassified_counts[predicted_pattern.value] += 1
 
-            if true_pattern == Pattern.MULTI_GLOBAL and predicted_pattern != Pattern.MULTI_GLOBAL:
-                print(f"{seq.full.sequence} should be {true_pattern.value} but is {predicted_pattern.value}")
+            if true_pattern == Pattern.MULTI_GLOBAL and predicted_pattern == Pattern.RANDOM:
+                print(
+                    f"{seq.full.sequence} should be {true_pattern.value} but is {predicted_pattern.value}; clusters={len(get_clusters(seq.full.sequence))}")
 
         incorrect_classifications = sequence_count_per_pattern - correct_classifications
         print(
@@ -188,23 +191,28 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
 
     plt.tight_layout()
     plt.savefig(
-        os.path.join(TEST_RESULTS, f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}.png"),
+        os.path.join(TEST_RESULTS, f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}.pdf"),
         dpi=300)
     return True
 
 
 class ClassifierTests(unittest.TestCase):
     def test_classifier(self):
-        seq = [23334, 30695, 30795, 3165, 31451, 11146, 31517, 3187, 23338, 11202]
-        ip_id_seq = IPIDSequence(seq)
+        # seq_raw = "[49834 49837 49841 49843 49847 51216 51257 51309 51343 51390]"
+        # seq_array = np.fromstring(seq_raw.strip("[]"), sep=" ")
+        # seq = IPIDSequence(seq_array)
+        # print(seq.full.sequence)
+        # print(seq.even.is_uniformly_increasing(lower_inc_bound=1, upper_inc_bound=2000))
+        # print(seq.odd.is_uniformly_increasing(lower_inc_bound=1, upper_inc_bound=2000))
+        # print(seq.even.has_uniform_increments())
+        # print(seq.odd.has_uniform_increments())
 
+        sequence_length = 10
+        sequence_count_per_pattern = 10_000
 
-        # sequence_length = 10
-        # sequence_count_per_pattern = 100_000
-        #
-        # self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
-        # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
-        # self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
 
 
 class ConfigTests(unittest.TestCase):

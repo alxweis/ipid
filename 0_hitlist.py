@@ -3,6 +3,7 @@ import re
 import sys
 from datetime import datetime
 
+import hitlist
 from hitlist.ip_scan import icmp, tcp, udp
 from hitlist.os_scan import http, dns
 
@@ -115,12 +116,15 @@ def os_scan(targets_path: str, protocol: str, port: str):
     print(f"Protocol: {protocol.upper()}")
     print(f"Port: {port}")
 
-    if port == "80":
-        http.start(targets_path)
-    elif port == "53":
-        dns.start(targets_path)
-    else:
-        print(f"OS scan is not supported for port {port}!")
+    # TODO Port-independent OS scanning
+    hitlist.os_scan.start(targets_path)
+
+    # if port == "80":
+    #     http.start(targets_path)
+    # elif port == "53":
+    #     dns.start(targets_path)
+    # else:
+    #     print(f"OS scan is not supported for port {port}!")
 
 
 def main():

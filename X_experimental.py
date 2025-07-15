@@ -4,7 +4,9 @@ import io
 import ipaddress
 import os
 import sys
+from datetime import datetime
 
+import matplotlib.pyplot as plt
 import zstandard as zstd
 
 from analysis.main import plot_response_rate, calc_intersections
@@ -31,6 +33,8 @@ def print_usage():
     print(f"    python {filename} 4 <targets_full_path> <targets_full_path> ...")
     print("  5 - Create routers.csv.zst:")
     print(f"    python {filename} 5 <router_nodes_path>")
+    print("  6 - Quick Plot IP-ID Sequence:")
+    print(f"    python {filename} 6 <ip_id_sequence>")
     sys.exit(1)
 
 
@@ -113,6 +117,23 @@ def main():
             zstd_writer.flush()
             text_writer.detach()
             zstd_writer.close()
+    elif mode == 6:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+
+        l = sys.argv[2].strip("[]")
+        y_values = list(map(int, l.split()))
+        x_values = list(range(1, len(y_values) + 1))
+        plt.plot(x_values, y_values, marker='o')
+        plt.xlabel("Index")
+        plt.ylabel("Value")
+        plt.title("Plot of values")
+        plt.grid(True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        fn = f"plot_{timestamp}.png"
+        plt.savefig(fn)
+        print(f"Plot saved as {fn}")
     else:
         print_usage()
 

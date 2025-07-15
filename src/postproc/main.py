@@ -109,7 +109,7 @@ def start(result_dir: str):
 
         progress_bar = tqdm(total=total_rows, unit="rows")
 
-        for chunk_df in pd.read_csv(text_reader, chunksize=chunk_size):
+        for chunk_df in pd.read_csv(text_reader, chunksize=chunk_size, on_bad_lines="skip"):
             all_rows = []
 
             for row in chunk_df.itertuples(index=False):
