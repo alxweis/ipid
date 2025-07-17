@@ -11,15 +11,16 @@ from core.utils import config
 MAX_IP_ID = 65535
 MIN_STEPS_BEFORE_WRAPAROUND = 3
 MAX_INC = math.ceil((MAX_IP_ID + 1) / MIN_STEPS_BEFORE_WRAPAROUND) - 1
-MAX_UNIFORM_INC_TOLERANCE = 0.5
 
 GLOBAL_MAX_INC = MAX_INC
-MAX_INC_TOLERANCE = 0.3
-MULTI_GLOBAL_MAX_INC = 100
-MULTI_GLOBAL_MAX_CLUSTERS = 4
+GLOBAL_MAX_INC_TOLERANCE = 0.5
+
 LOCAL_GE1_MAX_INC = int(timeparse(config.max_rtt) * 1000)
-UNIFORM_INC_ALPHA = 0.03
-RANDOM_ALPHA = 0.05
+
+MULTI_GLOBAL_CLUSTER_MAX_INC = 100
+MULTI_GLOBAL_MAX_CLUSTERS = 4
+
+RANDOM_CLUSTER_MAX_INC = 1000
 
 
 class IPIDSubsequence:
@@ -30,25 +31,13 @@ class IPIDSubsequence:
     def is_increasing(self) -> bool:
         return np.all((1 <= self.increments) & (self.increments <= MAX_INC))
 
-    def is_uniformly_increasing(self, lower_inc_bound: int = None, upper_inc_bound: int = None) -> bool:
+    def is_bounded_increasing(self, lower_inc_bound: int, upper_inc_bound: int) -> bool:
         if not self.is_increasing():
             return False
-
-        avg_inc = None
-        if not lower_inc_bound or not upper_inc_bound:
-            avg_inc = np.mean(self.increments)
-
-        if not lower_inc_bound:
-            lower_inc_bound = avg_inc * (1 - MAX_UNIFORM_INC_TOLERANCE)
-
-        if not upper_inc_bound:
-            upper_inc_bound = avg_inc * (1 + MAX_UNIFORM_INC_TOLERANCE)
-
         return np.all((self.increments >= lower_inc_bound) & (self.increments <= upper_inc_bound))
 
-    def has_uniform_increments(self) -> bool:
-        return is_uniform(values=self.increments, start_point=0, stop_point=LOCAL_GE1_MAX_INC + 1,
-                          alpha=UNIFORM_INC_ALPHA)
+    # def has_uniform_increments(self, min_inc: int, max_inc: int, alpha: float) -> bool:
+    #     return is_uniform(values=self.increments, start_point=min_inc, stop_point=max_inc, alpha=alpha)
 
 
 class IPIDSequence:
@@ -83,7 +72,7 @@ def nrm_entropy(values: np.ndarray) -> float:
     return entropy / max_entropy
 
 
-def get_clusters(values: np.ndarray) -> list[dict[int, np.int32]]:
+def get_clusters(values: np.ndarray, max_diff: int) -> list[dict[int, np.int32]]:
     if not values.size:
         return []
 
@@ -99,7 +88,7 @@ def get_clusters(values: np.ndarray) -> list[dict[int, np.int32]]:
 
         diff = (next_val - current_val + (MAX_IP_ID + 1)) % (MAX_IP_ID + 1)
 
-        if diff > MULTI_GLOBAL_MAX_INC:
+        if diff > max_diff:
             breaks.append((i + 1) % val_count)
 
     if not breaks:
@@ -120,12 +109,6 @@ def get_clusters(values: np.ndarray) -> list[dict[int, np.int32]]:
             final_clusters.append(cluster)
 
         start_idx = break_idx
-
-    for cluster in final_clusters:
-        arr = np.array(list(cluster.values()), dtype=np.int32)
-        cluster_seq = IPIDSequence(arr)
-        if not cluster_seq.full.is_increasing():
-            return []
 
     return final_clusters
 
@@ -154,33 +137,36 @@ def is_constant(seq: IPIDSequence) -> bool:
 
 
 def is_local_eq1(seq: IPIDSequence) -> bool:
-    return (seq.even.is_uniformly_increasing(lower_inc_bound=1, upper_inc_bound=1) and
-            seq.odd.is_uniformly_increasing(lower_inc_bound=1, upper_inc_bound=1) and
-            np.all(seq.even.increments == 1) and
-            np.all(seq.odd.increments == 1))
+    return (seq.even.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=1) and
+            seq.odd.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=1))
 
 
 def is_local_ge1(seq: IPIDSequence) -> bool:
-    return (seq.even.is_uniformly_increasing(lower_inc_bound=1, upper_inc_bound=LOCAL_GE1_MAX_INC) and
-            seq.odd.is_uniformly_increasing(lower_inc_bound=1, upper_inc_bound=LOCAL_GE1_MAX_INC) and
-            seq.even.has_uniform_increments() and
-            seq.odd.has_uniform_increments() and
-            np.all(seq.even.increments >= 1) and
-            np.all(seq.odd.increments >= 1))
+    return (seq.even.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC) and
+            seq.odd.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC))
 
 
 def is_global(seq: IPIDSequence) -> bool:
-    return seq.full.is_uniformly_increasing()
+    return seq.full.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC)
 
 
 def is_multi_global(seq: IPIDSequence) -> bool:
-    clusters = get_clusters(seq.full.sequence)
-    return np.all(seq.full.increments >= 1) and 1 < len(clusters) <= MULTI_GLOBAL_MAX_CLUSTERS
+    clusters = get_clusters(seq.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
+
+    for cluster in clusters:
+        arr = np.array(list(cluster.values()), dtype=np.int32)
+        cluster_seq = IPIDSequence(arr)
+        if not cluster_seq.full.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC):
+            return False
+
+    return (np.all(seq.full.increments >= 1) and
+            1 < len(clusters) <= MULTI_GLOBAL_MAX_CLUSTERS)
 
 
 def is_random(seq: IPIDSequence) -> bool:
-    return np.all(seq.full.increments >= 1) and is_uniform(values=seq.full.increments, start_point=0,
-                                                           stop_point=MAX_IP_ID + 1, alpha=RANDOM_ALPHA)
+    clusters = get_clusters(seq.full.sequence, max_diff=RANDOM_CLUSTER_MAX_INC)
+    return (np.all(seq.full.increments >= 1) and
+            1 < len(clusters))
 
 
 def is_anomalous(seq: IPIDSequence) -> bool:
@@ -235,6 +221,13 @@ def increment_ip_id(ip_id: int, inc: int) -> int:
     return (ip_id + inc) % (MAX_IP_ID + 1)
 
 
+def reflection_ip_id_sequence(length: int) -> IPIDSequence:
+    seq = []
+    for i in range(length):
+        seq.append(config.reflection_send_ip_ids[i % len(config.reflection_send_ip_ids)])
+    return IPIDSequence(seq)
+
+
 def constant_ip_id_sequence(length: int) -> IPIDSequence:
     seq = []
     s = random_ip_id()
@@ -274,8 +267,9 @@ def local_ge1_ip_id_sequence(length: int) -> IPIDSequence:
 def global_ip_id_sequence(length: int, max_inc: int = GLOBAL_MAX_INC) -> IPIDSequence:
     seq = []
     s = random_ip_id()
-    avg_inc = random.randint(1, int((1 - MAX_INC_TOLERANCE) * max_inc))  # correlated with avg pps of device
-    dev_inc = max(int(MAX_INC_TOLERANCE * avg_inc), 1)  # correlated with deviation of pps of device
+    tolerance = GLOBAL_MAX_INC_TOLERANCE - 0.1
+    avg_inc = random.randint(1, int((1 - tolerance) * max_inc))  # correlated with avg pps of device
+    dev_inc = max(int(tolerance * avg_inc), 1)  # correlated with deviation of pps of device
 
     for i in range(length):
         s = increment_ip_id(s, clamp(avg_inc + random.randint(-dev_inc, dev_inc), 1, max_inc))
@@ -292,7 +286,8 @@ def multi_global_ip_id_sequence(length: int) -> IPIDSequence:
         sizes[i] += 1
 
     cluster_seqs = {
-        i: global_ip_id_sequence(length=sizes[i], max_inc=MULTI_GLOBAL_MAX_INC).full.sequence.astype(int).tolist()
+        i: global_ip_id_sequence(length=sizes[i], max_inc=MULTI_GLOBAL_CLUSTER_MAX_INC).full.sequence.astype(
+            int).tolist()
         for i in range(cluster_count)
     }
 
@@ -311,12 +306,14 @@ def random_ip_id_sequence(length: int) -> IPIDSequence:
 
 
 pattern_generation_map = {
+    Pattern.REFLECTION: reflection_ip_id_sequence,
     Pattern.CONSTANT: constant_ip_id_sequence,
     Pattern.GLOBAL: global_ip_id_sequence,
     Pattern.LOCAL_EQ1: local_eq1_ip_id_sequence,
     Pattern.LOCAL_GE1: local_ge1_ip_id_sequence,
     Pattern.MULTI_GLOBAL: multi_global_ip_id_sequence,
-    Pattern.RANDOM: random_ip_id_sequence
+    Pattern.RANDOM: random_ip_id_sequence,
+    Pattern.FALLBACK: None,
 }
 
 # endregion

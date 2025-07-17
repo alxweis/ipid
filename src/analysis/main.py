@@ -20,7 +20,7 @@ from geoip2.errors import AddressNotFoundError
 from tqdm import tqdm
 
 from core import EXP_INTERSECTIONS
-from core.classifier import IPIDSequence, Pattern, p_value, get_clusters
+from core.classifier import IPIDSequence, Pattern, p_value, get_clusters, MAX_IP_ID, MULTI_GLOBAL_CLUSTER_MAX_INC
 from core.utils import config, runtime
 from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import count_lines_in_zst
@@ -261,6 +261,11 @@ def calc_intersections(target_csvs: list[str], on: str):
 
     except Exception as e:
         print(f"\n❌ Error writing to file {output_file}: {e}")
+
+
+def intersect_classifications(eval_csv_1: str, eval_csv_2: str):
+    # TODO Do classification intersection
+    pass
 
 
 class ProcessingParams:
@@ -653,7 +658,7 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
         if pattern in {Pattern.LOCAL_EQ1, Pattern.LOCAL_GE1}:
             results.append(np.concatenate([ip_id_sequence.even.increments, ip_id_sequence.odd.increments]))
         elif pattern == Pattern.MULTI_GLOBAL:
-            clusters = get_clusters(ip_id_sequence.full.sequence)
+            clusters = get_clusters(ip_id_sequence.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
             increments = np.array([], dtype=np.int32)
             for cluster in clusters:
                 arr = np.array(list(cluster.values()), dtype=np.int32)
@@ -662,7 +667,7 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
         else:
             # if np.any(ip_id_sequence.full.increments < 700):
             #     print(
-            #         f"seq={ip_id_sequence.full.sequence} incs={ip_id_sequence.full.increments} ==> p_value={p_value(ip_id_sequence.full.increments)} > 0.01 ==> is_random is True")
+            #         f"seq={ip_id_sequence.full.sequence} incs={ip_id_sequence.full.increments} ==> p_value={p_value(ip_id_sequence.full.increments, start_point=0, stop_point=MAX_IP_ID + 1)} > 0.01 ==> is_random is True")
             results.append(ip_id_sequence.full.increments)
 
     return results
@@ -670,7 +675,7 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
 
 def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
     print(f"Computing Increment Distribution for {pattern.value}...")
-    increments = []
+    increments: list[int] = []
     probing_dctx = zstd.ZstdDecompressor()
     eval_dctx = zstd.ZstdDecompressor()
     worker_func = partial(get_increments_for_pattern, pattern=pattern)
@@ -714,7 +719,8 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
                                    range(0, len(all_rows), params.batch_size)]
 
                         for batch_increments_for_pattern in params.pool.map(worker_func, batches):
-                            increments.extend(batch_increments_for_pattern)
+                            for arr in batch_increments_for_pattern:
+                                increments.extend(arr.tolist())
 
                         progress_bar.update(chunk_length)
                 finally:
@@ -780,8 +786,6 @@ def start(result_dir: str):
     total_rows_eval_csv = count_lines_in_zst(eval_csv)
     print(f"Total {total_rows_eval_csv} rows to process for eval_csv")
 
-    # assert total_rows_eval_csv == total_rows_probing_csv, "probing_csv and eval_csv should have same line count!"
-
     # TODO Remove this later
     if total_rows_eval_csv < total_rows_probing_csv:
         print("Trim probing.csv.zst...")
@@ -806,12 +810,19 @@ def start(result_dir: str):
                     lines.append(line)
                     pbar.update(1)
 
+            if line_buffer:
+                if len(lines) == lines_to_remove:
+                    encoder.write(lines.popleft() + b'\n')
+                lines.append(line_buffer)
+
             pbar.close()
             encoder.flush(zstd.FLUSH_FRAME)
 
         os.replace(temp_file, probing_csv)
         start(result_dir)
         return
+
+    assert total_rows_eval_csv == total_rows_probing_csv, "probing_csv and eval_csv should have same line count!"
 
     with ProcessingParams(num_workers=num_workers, batch_size=batch_size, total_rows=total_rows_probing_csv,
                           total_samples=total_samples, targets_csv=targets_csv, is_os_scan=is_os_scan,
@@ -825,7 +836,6 @@ def start(result_dir: str):
         plot_increment_distribution(params, Pattern.LOCAL_GE1)
         plot_increment_distribution(params, Pattern.RANDOM)
         plot_increment_distribution(params, Pattern.MULTI_GLOBAL)
-        plot_increment_distribution(params, Pattern.REFLECTION)
 
         # if params.is_os_scan:
         #     plot_pattern_distribution_for_oses(params, linux_distros)

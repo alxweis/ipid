@@ -9,7 +9,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import zstandard as zstd
 
-from analysis.main import plot_response_rate, calc_intersections
+from analysis.main import plot_response_rate, calc_intersections, intersect_classifications
 from core.utils import config
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
@@ -35,6 +35,8 @@ def print_usage():
     print(f"    python {filename} 5 <router_nodes_path>")
     print("  6 - Quick Plot IP-ID Sequence:")
     print(f"    python {filename} 6 <ip_id_sequence>")
+    print("  7 - Classification Intersection:")
+    print(f"    python {filename} 7 <result_path_1> <result_path_2>")
     sys.exit(1)
 
 
@@ -134,6 +136,15 @@ def main():
         fn = f"plot_{timestamp}.png"
         plt.savefig(fn)
         print(f"Plot saved as {fn}")
+    elif mode == 7:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        result_path_1 = sys.argv[2]
+        result_path_2 = sys.argv[3]
+
+        intersect_classifications(result_path_1, result_path_2)
     else:
         print_usage()
 

@@ -9,10 +9,10 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from core import TEST_RESULTS
-from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map, get_clusters
+from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
 from core.utils import config
 
-FORCE_CREATE_DATASET = False
+FORCE_CREATE_DATASET = True
 
 
 def classify_reflection_ip_id_sequence() -> dict[str, list[Pattern]]:
@@ -47,6 +47,9 @@ def create_ideal_dataset(sequence_length: int, sequence_count_per_pattern: int):
     data = defaultdict(list)
 
     for true_pattern, generator in pattern_generation_map.items():
+        if generator is None:
+            continue
+
         for _ in range(sequence_count_per_pattern):
             seq = generator(sequence_length)
             data[true_pattern].append(seq)
@@ -60,6 +63,9 @@ def create_lossy_dataset(sequence_length: int, sequence_count_per_pattern: int):
     data = defaultdict(list)
 
     for true_pattern, generator in pattern_generation_map.items():
+        if generator is None:
+            continue
+
         for _ in range(sequence_count_per_pattern):
             seq = generator(sequence_length).full.sequence.tolist()
 
@@ -79,6 +85,9 @@ def create_reorder_dataset(sequence_length: int, sequence_count_per_pattern: int
     data = defaultdict(list)
 
     for true_pattern, generator in pattern_generation_map.items():
+        if generator is None:
+            continue
+
         for _ in range(sequence_count_per_pattern):
             seq = generator(sequence_length).full.sequence.tolist()
 
@@ -129,9 +138,9 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
             else:
                 misclassified_counts[predicted_pattern.value] += 1
 
-            if true_pattern == Pattern.MULTI_GLOBAL and predicted_pattern == Pattern.RANDOM:
-                print(
-                    f"{seq.full.sequence} should be {true_pattern.value} but is {predicted_pattern.value}; clusters={len(get_clusters(seq.full.sequence))}")
+            # if true_pattern == Pattern.RANDOM and predicted_pattern == Pattern.FALLBACK:
+            #     print(
+            #         f"{seq.full.sequence} should be {true_pattern.value} but is {predicted_pattern.value}")
 
         incorrect_classifications = sequence_count_per_pattern - correct_classifications
         print(
@@ -149,32 +158,57 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         for predicted, count in misclassified_counts.items():
             confusion_matrix[true_pattern.value][predicted] += count
 
-    # Final evaluation
-    accuracy = overall_correct / overall_total
-    print(f"\n=== Overall Evaluation ===")
-    print(f"Accuracy: {accuracy:.4%}")
+    # Confusion matrix and evaluation
+    true_labels = []
+    predicted_labels = []
 
-    for label in confusion_matrix:
-        tp = confusion_matrix[label][label]
-        fn = sum(confusion_matrix[label].values()) - tp
-        fp = sum(confusion_matrix[other][label] for other in confusion_matrix if other != label)
+    precisions = []
+    recalls = []
+    f1s = []
+
+    print(f"\n=== Overall Evaluation ===")
+
+    for true_label, inner_dict in confusion_matrix.items():
+        true_labels.append(true_label)
+
+        tp = confusion_matrix[true_label][true_label]
+        fn = sum(confusion_matrix[true_label].values()) - tp
+        fp = sum(confusion_matrix[other][true_label] for other in confusion_matrix if other != true_label)
         precision = tp / (tp + fp) if tp + fp else 0
+        precisions.append(precision)
         recall = tp / (tp + fn) if tp + fn else 0
+        recalls.append(recall)
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
-        print(f"{label}: precision={precision:.4f}, recall={recall:.4f}, f1={f1:.4f}")
+        f1s.append(f1)
+        print(f"{true_label}: Precision={precision:.4f}, Recall={recall:.4f}, F1={f1:.4f}")
+
+        for predicted_label, value in inner_dict.items():
+            predicted_labels.append(predicted_label)
 
     print()
 
-    # Save confusion matrix
-    labels = sorted(confusion_matrix.keys())
-    cm = np.array([[confusion_matrix[t][p] for p in labels] for t in labels])
+    accuracy = overall_correct / overall_total
+    print(f"Accuracy: {accuracy:.4%}")
+    macro_precision = sum(precisions) / len(precisions)
+    print(f"Macro Precision: {macro_precision:.4%}")
+    macro_recall = sum(recalls) / len(recalls)
+    print(f"Macro Recall: {macro_recall:.4%}")
+    macro_f1 = sum(f1s) / len(f1s)
+    print(f"Macro F1: {macro_f1:.4%}")
 
-    fig, ax = plt.subplots(figsize=(6, 5))
+    print()
 
-    ax.set_xticks(range(len(labels)), labels=labels, rotation=45, ha="right")
-    ax.set_yticks(range(len(labels)), labels=labels)
-    ax.set_xlabel("Predicted Label")
-    ax.set_ylabel("True Label")
+    true_labels = sorted(set(true_labels), key=lambda x: list(Pattern).index(Pattern(x)))
+    predicted_labels = sorted(set(predicted_labels), key=lambda x: list(Pattern).index(Pattern(x)))
+
+    cm = np.array([[confusion_matrix[t][p] for p in predicted_labels] for t in true_labels])
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    ax.set_xticks(range(len(predicted_labels)), labels=predicted_labels, rotation=45, ha="right")
+    ax.set_yticks(range(len(true_labels)), labels=true_labels)
+    ax.set_xlabel("Predicted Class")
+    ax.set_ylabel("True Class")
 
     row_sums = cm.sum(axis=1, keepdims=True)
     cm_rel = cm / row_sums
@@ -198,12 +232,18 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
 
 class ClassifierTests(unittest.TestCase):
     def test_classifier(self):
-        # seq_raw = "[49834 49837 49841 49843 49847 51216 51257 51309 51343 51390]"
+        # seq_raw = "[  233 26180  6417 56642 48544 46343 33530 24928 24847 20023]"
         # seq_array = np.fromstring(seq_raw.strip("[]"), sep=" ")
         # seq = IPIDSequence(seq_array)
         # print(seq.full.sequence)
-        # print(seq.even.is_uniformly_increasing(lower_inc_bound=1, upper_inc_bound=2000))
-        # print(seq.odd.is_uniformly_increasing(lower_inc_bound=1, upper_inc_bound=2000))
+        # print(seq.full.increments)
+        # print(p_value(values=seq.full.sequence, start_point=1, stop_point=MAX_IP_ID))
+        # print(f"Increments: {seq.full.increments}")
+        # print(f"Clusters: {len(get_clusters(seq.full.sequence))}")
+        # print(seq.full.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC))
+        # print(seq.even.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC))
+        # print(seq.odd.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC))
+        # print(seq.full.has_uniform_increments())
         # print(seq.even.has_uniform_increments())
         # print(seq.odd.has_uniform_increments())
 
