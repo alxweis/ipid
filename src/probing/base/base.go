@@ -255,6 +255,7 @@ func Main(mode string, targetsType string) {
 		if err != nil {
 			panic(err)
 		}
+		log.Println("RST drop enabled")
 	}
 
 	// Setup senders
@@ -328,6 +329,7 @@ func Main(mode string, targetsType string) {
 		if err != nil {
 			panic(err)
 		}
+		log.Println("RST drop disabled")
 	}
 
 	cleanup()
