@@ -249,6 +249,14 @@ func Main(mode string, targetsType string) {
 		}
 	}
 
+	rstDropEnabled := false
+	if proto.Id == "tcp" {
+		rstDropEnabled, err = setRSTDrop(true)
+		if err != nil {
+			panic(err)
+		}
+	}
+
 	// Setup senders
 	senderA = setupSender(config.IfaceA)
 	senderB = setupSender(config.IfaceB)
@@ -313,6 +321,13 @@ func Main(mode string, targetsType string) {
 
 	if err = scanner.Err(); err != nil {
 		log.Fatal(err)
+	}
+
+	if proto.Id == "tcp" && rstDropEnabled {
+		_, err = setRSTDrop(false)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	cleanup()
@@ -1213,6 +1228,27 @@ func getTCPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 		log.Println("TCP layer not found")
 	}
 	return 0, false
+}
+
+func setRSTDrop(enable bool) (changed bool, err error) {
+	cmdCheck := exec.Command("iptables", "-C", "OUTPUT", "-p", "tcp", "--tcp-flags", "RST", "RST", "-j", "DROP")
+	errCheck := cmdCheck.Run()
+
+	if enable {
+		if errCheck == nil {
+			return false, nil
+		}
+		cmdAdd := exec.Command("iptables", "-A", "OUTPUT", "-p", "tcp", "--tcp-flags", "RST", "RST", "-j", "DROP")
+		err = cmdAdd.Run()
+		return err == nil, err
+	} else {
+		if errCheck != nil {
+			return false, nil
+		}
+		cmdDel := exec.Command("iptables", "-D", "OUTPUT", "-p", "tcp", "--tcp-flags", "RST", "RST", "-j", "DROP")
+		err = cmdDel.Run()
+		return err == nil, err
+	}
 }
 
 // UDP
