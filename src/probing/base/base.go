@@ -215,24 +215,6 @@ func Main(mode string, targetsType string) {
 	loadProtocol(config.Protocol)
 	createPrebuildPackets()
 
-	// Setup senders
-	senderA = setupSender(config.IfaceA)
-	senderB = setupSender(config.IfaceB)
-
-	// Start saving probes
-	saveWg.Add(1)
-	go saveProbes()
-
-	// Start recording if enabled
-	if config.RecTraffic {
-		startRecording()
-	}
-
-	// Start receivers
-	recvWg.Add(2)
-	go setupReceiver(config.IfaceA)
-	go setupReceiver(config.IfaceB)
-
 	// Count total targets
 	countTotalTargets(targetsFile)
 
@@ -266,6 +248,24 @@ func Main(mode string, targetsType string) {
 			}
 		}
 	}
+
+	// Setup senders
+	senderA = setupSender(config.IfaceA)
+	senderB = setupSender(config.IfaceB)
+
+	// Start saving probes
+	saveWg.Add(1)
+	go saveProbes()
+
+	// Start recording if enabled
+	if config.RecTraffic {
+		startRecording()
+	}
+
+	// Start receivers
+	recvWg.Add(2)
+	go setupReceiver(config.IfaceA)
+	go setupReceiver(config.IfaceB)
 
 	// Start workers
 	for i := uint16(0); i < workerCount; i++ {
