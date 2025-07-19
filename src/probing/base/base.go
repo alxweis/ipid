@@ -283,7 +283,7 @@ func Main(mode string, targetsType string) {
 			targetCh: make(chan net.IP, workerTargetChSize),
 			recvCh:   make(chan *ReplyInfo, pm.probingVars().requestCount),
 		}
-		go startWorker(workers[i])
+		go startWorker(i, workers[i])
 	}
 
 	// Start statistics goroutine
@@ -427,7 +427,7 @@ func createProbe(target net.IP) *Probe {
 }
 
 // Start Worker
-func startWorker(w *Worker) {
+func startWorker(i uint16, w *Worker) {
 	defer workerWg.Done()
 
 	// Random delay before starting
@@ -435,6 +435,9 @@ func startWorker(w *Worker) {
 	time.Sleep(delay)
 
 	for target := range w.targetCh {
+		if len(w.targetCh) == cap(w.targetCh) {
+			log.Printf("Target channel of worker %d is full (%d/%d)\n", i, len(w.targetCh), cap(w.targetCh))
+		}
 		select {
 		case <-stopSignal:
 			return
