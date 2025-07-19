@@ -314,7 +314,7 @@ func Main(mode string, targetsType string) {
 		case <-stopSignal:
 			stopReadingTargetsFile = true
 		default:
-			log.Printf("Target Channel %d is full, blocking...", workerId)
+			log.Printf("Target Channel %d is full, blocking %s...", workerId, target.String())
 			workers[workerId].targetCh <- target
 		}
 
