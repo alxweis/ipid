@@ -249,14 +249,14 @@ func Main(mode string, targetsType string) {
 		}
 	}
 
-	//rstDropEnabled := false
-	//if proto.Id == "tcp" {
-	//	rstDropEnabled, err = setRSTDrop(true)
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//	log.Println("RST drop enabled")
-	//}
+	rstDropEnabled := false
+	if proto.Id == "tcp" {
+		rstDropEnabled, err = setRSTDrop(true)
+		if err != nil {
+			panic(err)
+		}
+		log.Println("RST drop enabled")
+	}
 
 	// Setup senders
 	senderA = setupSender(config.IfaceA)
@@ -324,13 +324,13 @@ func Main(mode string, targetsType string) {
 		log.Fatal(err)
 	}
 
-	//if proto.Id == "tcp" && rstDropEnabled {
-	//	_, err = setRSTDrop(false)
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//	log.Println("RST drop disabled")
-	//}
+	if proto.Id == "tcp" && rstDropEnabled {
+		_, err = setRSTDrop(false)
+		if err != nil {
+			panic(err)
+		}
+		log.Println("RST drop disabled")
+	}
 
 	cleanup()
 }
