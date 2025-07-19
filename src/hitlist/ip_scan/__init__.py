@@ -74,3 +74,57 @@ def cleanup(targets_file: str) -> str | None:
 
     except Exception as e:
         print(f"Error during processing: {str(e)}")
+
+
+def post_cleanup(targets_file: str) -> str | None:
+    overall_start = time.time()
+
+    print(f"Cleanup {targets_file}")
+
+    print("Verifying required columns exist in the CSV file...")
+    header_line = get_header_csv(targets_file)
+    missing_columns = [col for col in [config.ip_col_name, config.ts_ip_col_name, config.us_ip_col_name] if col not in header_line.split(',')]
+    if missing_columns:
+        print(f"Error: Missing required columns: {', '.join(missing_columns)}")
+        return None
+
+    try:
+        # Deduplicating
+        start = time.time()
+        print("Deduplicating...")
+        temp_file = tempfile.mktemp(prefix=f"{targets_file}.sort.", dir=".")
+        con = duckdb.connect()
+
+        con.execute(f"""
+        CREATE TABLE raw AS 
+        SELECT * FROM read_csv_auto('{targets_file}')
+        """)
+
+        con.execute(f"""
+        CREATE TABLE unique_ip AS
+        SELECT {config.ip_col_name}, {config.ts_ip_col_name}, {config.us_ip_col_name} FROM (
+          SELECT *, ROW_NUMBER() OVER (PARTITION BY {config.ip_col_name} ORDER BY 1) AS rn FROM raw
+        ) WHERE rn = 1
+        ORDER BY {config.ts_ip_col_name}, {config.us_ip_col_name}
+        """)
+
+        con.execute(f"""
+        COPY unique_ip TO '{temp_file}' (HEADER FALSE)
+        """)
+
+        con.close()
+
+        os.replace(temp_file, targets_file)
+        print(f"Deduplicating finished: {runtime(start)}")
+
+        # Compress
+        start = time.time()
+        print("Compressing file with zstd...")
+        result_file = compress_file(targets_file)
+        print(f"Compressing finished: {runtime(start)}")
+
+        print(f"Cleanup finished: {runtime(overall_start)}")
+        return result_file
+
+    except Exception as e:
+        print(f"Error during processing: {str(e)}")

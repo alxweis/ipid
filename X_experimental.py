@@ -15,6 +15,7 @@ from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
     analyze_sequence_stable_lens_natural
 )
+from hitlist.ip_scan import post_cleanup
 
 filename = os.path.basename(__file__)
 
@@ -37,6 +38,8 @@ def print_usage():
     print(f"    python {filename} 6 <ip_id_sequence>")
     print("  7 - Classification Intersection:")
     print(f"    python {filename} 7 <result_path_1> <result_path_2>")
+    print("  8 - Cleanup Targets CSV:")
+    print(f"    python {filename} 8 <targets_full_path>")
     sys.exit(1)
 
 
@@ -145,6 +148,13 @@ def main():
         result_path_2 = sys.argv[3]
 
         intersect_classifications(result_path_1, result_path_2)
+    elif mode == 8:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+
+        targets_full_path = sys.argv[2]
+        post_cleanup(targets_full_path)
     else:
         print_usage()
 
