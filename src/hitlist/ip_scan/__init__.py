@@ -41,9 +41,10 @@ def cleanup(targets_file: str) -> str | None:
 
         con.execute(f"""
         CREATE TABLE unique_ip AS
-        SELECT * FROM (
+        SELECT IP, TS_IP, US_IP FROM (
           SELECT *, ROW_NUMBER() OVER (PARTITION BY {ip_zmap_name} ORDER BY 1) AS rn FROM raw
         ) WHERE rn = 1
+        ORDER BY TS_IP, US_IP
         """)
 
         con.execute(f"""
