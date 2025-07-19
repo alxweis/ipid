@@ -283,7 +283,7 @@ func Main(mode string, targetsType string) {
 			targetCh: make(chan net.IP, workerTargetChSize),
 			recvCh:   make(chan *ReplyInfo, pm.probingVars().requestCount),
 		}
-		go startWorker(i, workers[i])
+		go startWorker(workers[i])
 	}
 
 	// Start statistics goroutine
@@ -313,6 +313,9 @@ func Main(mode string, targetsType string) {
 		case workers[workerId].targetCh <- target: // Send target to channel
 		case <-stopSignal:
 			stopReadingTargetsFile = true
+		default:
+			log.Printf("Target Channel %d is full, blocking...", workerId)
+			workers[workerId].targetCh <- target
 		}
 
 		if stopReadingTargetsFile {
@@ -427,7 +430,7 @@ func createProbe(target net.IP) *Probe {
 }
 
 // Start Worker
-func startWorker(i uint16, w *Worker) {
+func startWorker(w *Worker) {
 	defer workerWg.Done()
 
 	// Random delay before starting
@@ -435,9 +438,6 @@ func startWorker(i uint16, w *Worker) {
 	time.Sleep(delay)
 
 	for target := range w.targetCh {
-		if len(w.targetCh) == cap(w.targetCh) {
-			log.Printf("Target channel of worker %d is full (%d/%d)\n", i, len(w.targetCh), cap(w.targetCh))
-		}
 		select {
 		case <-stopSignal:
 			return
