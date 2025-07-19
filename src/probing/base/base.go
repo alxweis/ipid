@@ -669,7 +669,7 @@ func setupReceiver(iface Iface) {
 	for {
 		select {
 		case packet := <-packetSource:
-			go addToRecvChan(&ReplyInfo{
+			addToRecvChan(&ReplyInfo{
 				Packet: packet,
 				Time:   time.Now().UnixMicro(),
 			})
