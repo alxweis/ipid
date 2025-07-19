@@ -642,7 +642,7 @@ def plot_avg_rtt_per_continent(params: ProcessingParams):
     os.makedirs(output_dir, exist_ok=True)
     df_counts = df.groupby("continent").size().reset_index(name="rtts_count")
     with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
-        f.write(f"Total Count: {df_counts["rtts_count"].sum()}\n")
+        f.write(f"Total Count: {df_counts['rtts_count'].sum()}\n")
         f.write(f"RTTs Count Per Continent:\n{df_counts.to_string(index=False)}")
     df.to_pickle(os.path.join(output_dir, "data.pkl"))
     plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches="tight")
