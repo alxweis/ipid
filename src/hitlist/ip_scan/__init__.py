@@ -1,11 +1,7 @@
-import os
-import tempfile
 import time
 
-import duckdb
-
 from core.utils import config, compress_file, runtime
-from hitlist import get_header_csv, replace_header_csv
+from hitlist import get_header_csv, replace_header_csv, count_rows, deduplicate_csv, sort_csv
 
 ip_zmap_name = "saddr"
 ts_zmap_name = "timestamp_ts"
@@ -27,37 +23,23 @@ def cleanup(targets_file: str) -> str | None:
         print(f"Error: Missing required columns: {', '.join(missing_columns)}")
         return None
 
+    print("Count total rows in the file...")
+    total_rows = count_rows(targets_file)
+    print(f"Total rows: {total_rows}")
+
     try:
-        # Deduplicating
+        # Deduplicate
         start = time.time()
-        print("Deduplicating...")
-        temp_file = tempfile.mktemp(prefix=f"{targets_file}.sort.", dir=".")
-        con = duckdb.connect()
-        con.execute("SET memory_limit='1GB'")
-        con.execute("SET threads=1")
-        con.execute("SET preserve_insertion_order=false")
+        print("Deduplicating by IP address...")
+        removed_rows, removed_rows_percent = deduplicate_csv(input_csv=targets_file, total_rows=total_rows,
+                                                             column_name=ip_zmap_name)
+        print(f"Deduplicating finished: {runtime(start)} removed_rows=[{removed_rows},{removed_rows_percent:.2f}%]")
 
-        con.execute(f"""
-        CREATE TABLE raw AS 
-        SELECT * FROM read_csv_auto('{targets_file}')
-        """)
-
-        con.execute(f"""
-        CREATE TABLE unique_ip AS
-        SELECT {ip_zmap_name}, {ts_zmap_name}, {us_zmap_name} FROM (
-          SELECT *, ROW_NUMBER() OVER (PARTITION BY {ip_zmap_name} ORDER BY 1) AS rn FROM raw
-        ) WHERE rn = 1
-        ORDER BY {ts_zmap_name}, {us_zmap_name}
-        """)
-
-        con.execute(f"""
-        COPY unique_ip TO '{temp_file}' (HEADER FALSE)
-        """)
-
-        con.close()
-
-        os.replace(temp_file, targets_file)
-        print(f"Deduplicating finished: {runtime(start)}")
+        # Sort
+        start = time.time()
+        print("Sorting by timestamp...")
+        sort_csv(input_csv=targets_file, column_names=[ts_zmap_name, us_zmap_name], remove_duplicates=False)
+        print(f"Sorting finished: {runtime(start)}")
 
         # Rename
         start = time.time()
@@ -86,39 +68,29 @@ def post_cleanup(targets_file: str) -> str | None:
 
     print("Verifying required columns exist in the CSV file...")
     header_line = get_header_csv(targets_file)
-    missing_columns = [col for col in [config.ip_col_name, config.ts_ip_col_name, config.us_ip_col_name] if col not in header_line.split(',')]
+    missing_columns = [col for col in [config.ip_col_name, config.ts_ip_col_name, config.us_ip_col_name] if
+                       col not in header_line.split(',')]
     if missing_columns:
         print(f"Error: Missing required columns: {', '.join(missing_columns)}")
         return None
 
+    print("Count total rows in the file...")
+    total_rows = count_rows(targets_file)
+    print(f"Total rows: {total_rows}")
+
     try:
-        # Deduplicating
+        # Deduplicate
         start = time.time()
-        print("Deduplicating...")
-        temp_file = tempfile.mktemp(prefix=f"{targets_file}.sort.", dir=".")
-        con = duckdb.connect()
+        print("Deduplicating by IP address...")
+        removed_rows, removed_rows_percent = deduplicate_csv(input_csv=targets_file, total_rows=total_rows,
+                                                             column_name=ip_zmap_name)
+        print(f"Deduplicating finished: {runtime(start)} removed_rows=[{removed_rows},{removed_rows_percent:.2f}%]")
 
-        con.execute(f"""
-        CREATE TABLE raw AS 
-        SELECT * FROM read_csv_auto('{targets_file}')
-        """)
-
-        con.execute(f"""
-        CREATE TABLE unique_ip AS
-        SELECT {config.ip_col_name}, {config.ts_ip_col_name}, {config.us_ip_col_name} FROM (
-          SELECT *, ROW_NUMBER() OVER (PARTITION BY {config.ip_col_name} ORDER BY 1) AS rn FROM raw
-        ) WHERE rn = 1
-        ORDER BY {config.ts_ip_col_name}, {config.us_ip_col_name}
-        """)
-
-        con.execute(f"""
-        COPY unique_ip TO '{temp_file}' (HEADER FALSE)
-        """)
-
-        con.close()
-
-        os.replace(temp_file, targets_file)
-        print(f"Deduplicating finished: {runtime(start)}")
+        # Sort
+        start = time.time()
+        print("Sorting by timestamp...")
+        sort_csv(input_csv=targets_file, column_names=[ts_zmap_name, us_zmap_name], remove_duplicates=False)
+        print(f"Sorting finished: {runtime(start)}")
 
         # Compress
         start = time.time()
