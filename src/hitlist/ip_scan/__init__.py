@@ -33,6 +33,9 @@ def cleanup(targets_file: str) -> str | None:
         print("Deduplicating...")
         temp_file = tempfile.mktemp(prefix=f"{targets_file}.sort.", dir=".")
         con = duckdb.connect()
+        con.execute("SET memory_limit='1GB'")
+        con.execute("SET threads=1")
+        con.execute("SET preserve_insertion_order=false")
 
         con.execute(f"""
         CREATE TABLE raw AS 
