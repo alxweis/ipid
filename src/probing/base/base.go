@@ -1193,7 +1193,7 @@ func getICMPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 // TCP
 func createTCPLayer(seq uint16) []gopacket.SerializableLayer {
 	tcpLayer := &layers.TCP{
-		SrcPort: layers.TCPPort(uint16(rand.Intn(65536-1024)) + 1024),
+		SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
 		DstPort: config.TcpDstPort,
 		Seq:     uint32(seq),
 		SYN:     strings.Contains(config.TcpReqFlags, "S"),
