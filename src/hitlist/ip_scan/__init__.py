@@ -38,7 +38,7 @@ def cleanup(targets_file: str) -> str | None:
         # Sort
         start = time.time()
         print("Sorting by timestamp...")
-        sort_csv(input_csv=targets_file, column_names=[ts_zmap_name, us_zmap_name])
+        sort_csv(input_csv=targets_file, column_names=[ts_zmap_name, us_zmap_name], remove_duplicates=False)
         print(f"Sorting finished: {runtime(start)}")
 
         # Rename
@@ -89,7 +89,7 @@ def post_cleanup(targets_file: str) -> str | None:
         # Sort
         start = time.time()
         print("Sorting by timestamp...")
-        sort_csv(input_csv=targets_file, column_names=[config.ts_ip_col_name, config.us_ip_col_name])
+        sort_csv(input_csv=targets_file, column_names=[config.ts_ip_col_name, config.us_ip_col_name], remove_duplicates=False)
         print(f"Sorting finished: {runtime(start)}")
 
         # Compress

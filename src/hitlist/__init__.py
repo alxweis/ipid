@@ -4,16 +4,7 @@ import tempfile
 
 
 def deduplicate_csv(input_csv: str, total_rows: int, column_name: str) -> (int, float):
-    sort_csv(input_csv=input_csv, column_names=[column_name])
-
-    column_index = get_column_index(input_csv=input_csv, column_name=column_name) + 1
-    temp_csv = tempfile.mktemp(prefix=f"{os.path.basename(input_csv)}.dedup.", dir=".")
-
-    awk_cmd = f"awk -F, '!seen[${column_index}]++' {input_csv} > {temp_csv}"
-    subprocess.run(awk_cmd, shell=True, check=True)
-
-    os.replace(temp_csv, input_csv)
-
+    sort_csv(input_csv=input_csv, column_names=[column_name], remove_duplicates=True)
     unique_rows = count_rows(input_csv)
     removed_rows = total_rows - unique_rows
     removed_rows_percent = (removed_rows / total_rows * 100) if total_rows > 0 else 0
@@ -50,14 +41,22 @@ def get_column_index(input_csv: str, column_name: str) -> int:
     return column_index
 
 
-def sort_csv(input_csv: str, column_names: list[str]) -> bool:
+def sort_csv(input_csv: str, column_names: list[str], remove_duplicates: bool) -> bool:
     try:
         column_indices = [get_column_index(input_csv=input_csv, column_name=col_name) for col_name in column_names]
         sort_keys = [f'-k{index + 1},{index + 1}n' for index in column_indices]
         temp_csv = tempfile.mktemp(prefix=f"{os.path.basename(input_csv)}.sort.", dir=".")
 
-        with open(temp_csv, 'w') as f:
-            subprocess.run(['sort', '-t,', *sort_keys, '-T', '.', input_csv], stdout=f, check=True)
+        if remove_duplicates:
+            awk_index = column_indices[0] + 1
+            cmd = (
+                f"sort -t, {' '.join(sort_keys)} -T . {input_csv} | "
+                f"awk -F, 'NR==1 || ${awk_index} != prev {{ print; prev=${awk_index} }}' > {temp_csv}"
+            )
+            subprocess.run(cmd, shell=True, check=True)
+        else:
+            with open(temp_csv, 'w') as f:
+                subprocess.run(['sort', '-t,', *sort_keys, '-T', '.', input_csv], stdout=f, check=True)
 
         os.replace(temp_csv, input_csv)
         return True
