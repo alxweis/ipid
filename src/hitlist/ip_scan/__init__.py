@@ -83,13 +83,13 @@ def post_cleanup(targets_file: str) -> str | None:
         start = time.time()
         print("Deduplicating by IP address...")
         removed_rows, removed_rows_percent = deduplicate_csv(input_csv=targets_file, total_rows=total_rows,
-                                                             column_name=ip_zmap_name)
+                                                             column_name=config.ip_col_name)
         print(f"Deduplicating finished: {runtime(start)} removed_rows=[{removed_rows},{removed_rows_percent:.2f}%]")
 
         # Sort
         start = time.time()
         print("Sorting by timestamp...")
-        sort_csv(input_csv=targets_file, column_names=[ts_zmap_name, us_zmap_name])
+        sort_csv(input_csv=targets_file, column_names=[config.ts_ip_col_name, config.us_ip_col_name])
         print(f"Sorting finished: {runtime(start)}")
 
         # Compress
