@@ -37,7 +37,7 @@ def print_usage():
     print("  6 - Quick Plot IP-ID Sequence:")
     print(f"    python {filename} 6 <ip_id_sequence>")
     print("  7 - Classification Intersection:")
-    print(f"    python {filename} 7 <result_path_1> <result_path_2>")
+    print(f"    python {filename} 7 <eval_file_path_seq> <eval_file_path_b2b>")
     print("  8 - Cleanup Targets CSV:")
     print(f"    python {filename} 8 <targets_full_path>")
     sys.exit(1)
@@ -144,10 +144,10 @@ def main():
             print_usage()
             return
 
-        result_path_1 = sys.argv[2]
-        result_path_2 = sys.argv[3]
+        eval_csv_seq_path = sys.argv[2]
+        eval_csv_b2b_path = sys.argv[3]
 
-        intersect_classifications(result_path_1, result_path_2)
+        intersect_classifications(eval_csv_seq_path, eval_csv_b2b_path)
     elif mode == 8:
         if len(sys.argv) < 3:
             print_usage()

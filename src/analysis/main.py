@@ -20,8 +20,9 @@ from geoip2.errors import AddressNotFoundError
 from tqdm import tqdm
 
 from core import EXP_INTERSECTIONS
-from core.classifier import IPIDSequence, Pattern, p_value, get_clusters, MAX_IP_ID, MULTI_GLOBAL_CLUSTER_MAX_INC
+from core.classifier import IPIDSequence, Pattern, get_clusters, MULTI_GLOBAL_CLUSTER_MAX_INC
 from core.utils import config, runtime
+from hitlist.os_scan import linux_distros, windows, bsd, apple
 from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import count_lines_in_zst
 
@@ -263,9 +264,42 @@ def calc_intersections(target_csvs: list[str], on: str):
         print(f"\n❌ Error writing to file {output_file}: {e}")
 
 
-def intersect_classifications(eval_csv_1: str, eval_csv_2: str):
-    # TODO Do classification intersection
-    pass
+def intersect_classifications(eval_csv_seq: str, eval_csv_b2b: str):
+    con = duckdb.connect()
+
+    con.execute(f"""
+        CREATE TABLE t1 AS 
+        SELECT {config.ip_col_name}, {config.ip_id_pattern_col_name} AS pattern1 
+        FROM read_csv_auto('{eval_csv_seq}', compression='zstd')
+    """)
+
+    con.execute(f"""
+        CREATE TABLE t2 AS 
+        SELECT {config.ip_col_name}, {config.ip_id_pattern_col_name} AS pattern2 
+        FROM read_csv_auto('{eval_csv_b2b}', compression='zstd')
+    """)
+
+    df = con.execute(f"""
+        SELECT t1.pattern1, t2.pattern2
+        FROM t1
+        INNER JOIN t2 USING ({config.ip_col_name})
+    """).fetchdf()
+
+    con.close()
+
+    conf_matrix = pd.crosstab(df['pattern1'], df['pattern2'], normalize='index') * 100
+    order = [p.value for p in Pattern]
+    rows = [p for p in order if p in conf_matrix.index]
+    cols = [p for p in order if p in conf_matrix.columns]
+    conf_matrix = conf_matrix.reindex(index=rows, columns=cols)
+
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(conf_matrix, annot=True, fmt='.2f', cmap='Blues', cbar_kws={'label': 'Percentage (%)'},
+                annot_kws={"fontsize": 12})
+    plt.xlabel('Back-To-Back', fontsize=14)
+    plt.ylabel('Sequential', fontsize=14)
+    plt.tight_layout()
+    plt.show()
 
 
 class ProcessingParams:
@@ -837,10 +871,10 @@ def start(result_dir: str):
         plot_increment_distribution(params, Pattern.RANDOM)
         plot_increment_distribution(params, Pattern.MULTI_GLOBAL)
 
-        # if params.is_os_scan:
-        #     plot_pattern_distribution_for_oses(params, linux_distros)
-        #     plot_pattern_distribution_for_oses(params, windows)
-        #     plot_pattern_distribution_for_oses(params, bsd)
-        #     plot_pattern_distribution_for_oses(params, apple)
+        if params.is_os_scan:
+            plot_pattern_distribution_for_oses(params, linux_distros)
+            plot_pattern_distribution_for_oses(params, windows)
+            plot_pattern_distribution_for_oses(params, bsd)
+            plot_pattern_distribution_for_oses(params, apple)
 
         print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")
