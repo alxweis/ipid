@@ -99,16 +99,13 @@ func fileWriter(results <-chan SSHResponse, outPath string, done chan<- bool, su
 	if err != nil {
 		panic(err)
 	}
-	defer outFile.Close()
 
 	encoder, err := zstd.NewWriter(outFile)
 	if err != nil {
 		panic(err)
 	}
-	defer encoder.Close()
 
 	writer := bufio.NewWriter(encoder)
-	defer writer.Flush()
 
 	writer.WriteString("IP,SSH_OS_INFO\n")
 
@@ -123,6 +120,10 @@ func fileWriter(results <-chan SSHResponse, outPath string, done chan<- bool, su
 			writer.Flush()
 		}
 	}
+
+	writer.Flush()
+	encoder.Close()
+	outFile.Close()
 
 	done <- true
 }
