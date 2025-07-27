@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf16"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -21,11 +22,133 @@ type SMBResponse struct {
 	OSInfo string
 }
 
-// SMB Negotiate Protocol Request (SMBv1/v2)
-func createSMBNegotiateRequest() []byte {
-	// SMBv2 Negotiate Request
+// SMBv1 Session Setup Request to get OS info
+func createSMBv1SessionSetup() []byte {
 	return []byte{
-		0x00, 0x00, 0x00, 0x7c, // NetBIOS Session Service length
+		0x00, 0x00, 0x00, 0x3E, // NetBIOS Session Service length
+		// SMB Header
+		0xFF, 0x53, 0x4D, 0x42, // Protocol ID (\xFFSMB)
+		0x73,                   // Command: Session Setup AndX
+		0x00, 0x00, 0x00, 0x00, // Status
+		0x18,       // Flags
+		0x01, 0x28, // Flags2
+		0x00, 0x00, // PID High
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Signature
+		0x00, 0x00, // Reserved
+		0x00, 0x00, // TID
+		0x00, 0x00, // PID
+		0x00, 0x00, // UID
+		0x00, 0x00, // MID
+		// Parameters (13 words = 26 bytes)
+		0x0D,       // Word Count
+		0xFF,       // AndXCommand: No further commands
+		0x00,       // Reserved
+		0x00, 0x00, // AndXOffset
+		0xFF, 0xFF, // MaxBufferSize
+		0x02, 0x00, // MaxMpxCount
+		0x01, 0x00, // VCNumber
+		0x00, 0x00, 0x00, 0x00, // SessionKey
+		0x00, 0x00, // ANSI Password Length
+		0x00, 0x00, // Unicode Password Length
+		0x00, 0x00, 0x00, 0x00, // Reserved
+		0x40, 0x00, 0x00, 0x00, // Capabilities
+		// Data
+		0x00, 0x00, // Byte Count
+	}
+}
+
+// SMBv1 Negotiate Protocol Request
+func createSMBv1Negotiate() []byte {
+	dialects := "\x02PC NETWORK PROGRAM 1.0\x00\x02LANMAN1.0\x00\x02Windows for Workgroups 3.1a\x00\x02LM1.2X002\x00\x02LANMAN2.1\x00\x02NT LM 0.12\x00"
+	dialectsLen := len(dialects)
+
+	header := []byte{
+		0x00, 0x00, 0x00, byte(35 + dialectsLen), // NetBIOS length
+		// SMB Header
+		0xFF, 0x53, 0x4D, 0x42, // Protocol ID
+		0x72,                   // Command: Negotiate Protocol
+		0x00, 0x00, 0x00, 0x00, // Status
+		0x18,       // Flags
+		0x53, 0xC8, // Flags2
+		0x00, 0x00, // PID High
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Signature
+		0x00, 0x00, // Reserved
+		0x00, 0x00, // TID
+		0x00, 0x00, // PID
+		0x00, 0x00, // UID
+		0x00, 0x00, // MID
+		// Parameters
+		0x00, // Word Count
+		// Data
+		byte(dialectsLen & 0xFF), byte(dialectsLen >> 8), // Byte Count
+	}
+
+	return append(header, []byte(dialects)...)
+}
+
+func probeSMB(ip string, timeout time.Duration) (string, error) {
+	conn, err := net.DialTimeout("tcp", ip+":445", timeout)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+
+	conn.SetReadDeadline(time.Now().Add(timeout))
+	conn.SetWriteDeadline(time.Now().Add(timeout))
+
+	// Try SMBv1 first for OS info
+	osInfo, err := probeSMBv1(conn, timeout)
+	if err == nil && osInfo != "" {
+		return osInfo, nil
+	}
+
+	// Fallback to SMBv2 for basic info
+	return probeSMBv2(conn, timeout)
+}
+
+func probeSMBv1(conn net.Conn, timeout time.Duration) (string, error) {
+	// Send Negotiate Protocol
+	negotiate := createSMBv1Negotiate()
+	_, err := conn.Write(negotiate)
+	if err != nil {
+		return "", err
+	}
+
+	// Read Negotiate Response
+	buffer := make([]byte, 4096)
+	n, err := conn.Read(buffer)
+	if err != nil {
+		return "", err
+	}
+
+	// Check if SMBv1 is supported
+	if n < 40 || string(buffer[4:8]) != "\xFF\x53\x4D\x42" {
+		return "", fmt.Errorf("not SMBv1")
+	}
+
+	conn.SetReadDeadline(time.Now().Add(timeout))
+	conn.SetWriteDeadline(time.Now().Add(timeout))
+
+	// Send Session Setup to get OS info
+	sessionSetup := createSMBv1SessionSetup()
+	_, err = conn.Write(sessionSetup)
+	if err != nil {
+		return "", err
+	}
+
+	// Read Session Setup Response
+	n, err = conn.Read(buffer)
+	if err != nil {
+		return "", err
+	}
+
+	return parseSMBv1OSInfo(buffer[:n])
+}
+
+func probeSMBv2(conn net.Conn, timeout time.Duration) (string, error) {
+	// SMBv2 Negotiate
+	request := []byte{
+		0x00, 0x00, 0x00, 0x7c, // NetBIOS length
 		0xfe, 0x53, 0x4d, 0x42, // SMB2 Protocol ID
 		0x40, 0x00, // Structure Size
 		0x00, 0x00, // Credit Charge
@@ -51,60 +174,112 @@ func createSMBNegotiateRequest() []byte {
 		0x02, 0x02, // SMB 2.0.2
 		0x10, 0x02, // SMB 2.1
 	}
-}
 
-func probeSMB(ip string, timeout time.Duration) (string, error) {
-	conn, err := net.DialTimeout("tcp", ip+":445", timeout)
-	if err != nil {
-		return "", err
-	}
-	defer conn.Close()
-
-	// Set read timeout
-	conn.SetReadDeadline(time.Now().Add(timeout))
-	conn.SetWriteDeadline(time.Now().Add(timeout))
-
-	// Send SMB negotiate request
-	request := createSMBNegotiateRequest()
-	_, err = conn.Write(request)
+	_, err := conn.Write(request)
 	if err != nil {
 		return "", err
 	}
 
-	// Read response
 	buffer := make([]byte, 1024)
 	n, err := conn.Read(buffer)
 	if err != nil {
 		return "", err
 	}
 
-	return parseSMBResponse(buffer[:n])
+	return parseSMB2Response(buffer[:n])
 }
 
-func parseSMBResponse(data []byte) (string, error) {
+func parseSMBv1OSInfo(data []byte) (string, error) {
+	if len(data) < 40 {
+		return "", fmt.Errorf("response too short")
+	}
+
+	// Check SMB signature
+	if string(data[4:8]) != "\xFF\x53\x4D\x42" {
+		return "", fmt.Errorf("not SMBv1 response")
+	}
+
+	// Check if it's a Session Setup AndX Response (0x73)
+	if data[8] != 0x73 {
+		return "SMBv1 (No OS Info)", nil
+	}
+
+	// Skip to parameters section
+	if len(data) < 37 {
+		return "SMBv1", nil
+	}
+
+	wordCount := data[36]
+	if wordCount < 3 {
+		return "SMBv1", nil
+	}
+
+	// Skip parameters to get to data section
+	dataOffset := 37 + int(wordCount)*2
+	if len(data) <= dataOffset+2 {
+		return "SMBv1", nil
+	}
+
+	// Read byte count
+	byteCount := binary.LittleEndian.Uint16(data[dataOffset : dataOffset+2])
+	dataStart := dataOffset + 2
+
+	if len(data) < dataStart+int(byteCount) {
+		return "SMBv1", nil
+	}
+
+	// Parse strings from data section
+	osInfo := extractSMBv1Strings(data[dataStart : dataStart+int(byteCount)])
+	if osInfo != "" {
+		return osInfo, nil
+	}
+
+	return "SMBv1", nil
+}
+
+func extractSMBv1Strings(data []byte) string {
+	var result []string
+	i := 0
+
+	// Extract up to 3 null-terminated strings (Native OS, Native LAN Manager, Primary Domain)
+	for stringNum := 0; stringNum < 3 && i < len(data); stringNum++ {
+		start := i
+
+		// Find null terminator
+		for i < len(data) && data[i] != 0 {
+			i++
+		}
+
+		if i > start {
+			str := string(data[start:i])
+			if strings.TrimSpace(str) != "" {
+				result = append(result, strings.TrimSpace(str))
+			}
+		}
+
+		// Skip null terminator
+		if i < len(data) && data[i] == 0 {
+			i++
+		}
+	}
+
+	if len(result) > 0 {
+		return strings.Join(result, " | ")
+	}
+
+	return ""
+}
+
+func parseSMB2Response(data []byte) (string, error) {
 	if len(data) < 16 {
 		return "", fmt.Errorf("response too short")
 	}
 
 	// Check for SMB2 magic
-	if len(data) >= 8 && string(data[4:8]) == "\xfe\x53\x4d\x42" {
-		return parseSMB2Response(data)
+	if string(data[4:8]) != "\xfe\x53\x4d\x42" {
+		return "", fmt.Errorf("not SMB2 response")
 	}
 
-	// Check for SMB1 magic
-	if len(data) >= 8 && string(data[4:8]) == "\xff\x53\x4d\x42" {
-		return "SMBv1", nil
-	}
-
-	return "Unknown SMB", nil
-}
-
-func parseSMB2Response(data []byte) (string, error) {
-	if len(data) < 68 {
-		return "SMBv2/3", nil
-	}
-
-	// Parse dialect revision from negotiate response
 	if len(data) >= 72 {
 		dialectRevision := binary.LittleEndian.Uint16(data[70:72])
 		switch dialectRevision {
@@ -126,11 +301,25 @@ func parseSMB2Response(data []byte) (string, error) {
 	return "SMBv2/3", nil
 }
 
+func utf16ToString(data []byte) string {
+	if len(data) < 2 {
+		return ""
+	}
+
+	// Convert UTF-16 to UTF-8
+	u16s := make([]uint16, len(data)/2)
+	for i := range u16s {
+		u16s[i] = binary.LittleEndian.Uint16(data[i*2:])
+	}
+
+	return string(utf16.Decode(u16s))
+}
+
 func worker(ips <-chan string, results chan<- SMBResponse, wg *sync.WaitGroup, processed *int64) {
 	defer wg.Done()
 
 	for ip := range ips {
-		osInfo, err := probeSMB(ip, 800*time.Millisecond)
+		osInfo, err := probeSMB(ip, 1200*time.Millisecond) // Longer timeout for OS detection
 		if err == nil && osInfo != "" {
 			results <- SMBResponse{IP: ip, OSInfo: osInfo}
 		}
@@ -157,11 +346,12 @@ func fileWriter(results <-chan SMBResponse, outPath string, done chan<- bool, su
 	writer.WriteString("IP,SMB_OS_INFO\n")
 
 	for result := range results {
-		writer.WriteString(fmt.Sprintf("%s,\"%s\"\n", result.IP, result.OSInfo))
+		// Escape quotes in OS info
+		escaped := strings.ReplaceAll(result.OSInfo, "\"", "\"\"")
+		writer.WriteString(fmt.Sprintf("%s,\"%s\"\n", result.IP, escaped))
 		atomic.AddInt64(successCount, 1)
 
-		// Flush periodically to avoid memory buildup
-		if atomic.LoadInt64(successCount)%1000 == 0 {
+		if atomic.LoadInt64(successCount)%500 == 0 {
 			writer.Flush()
 		}
 	}
@@ -198,8 +388,14 @@ func countLines(filePath string) (int64, error) {
 	return count, scanner.Err()
 }
 
-func Main(inputPath string) {
-	// Count total lines for progress monitoring
+func main() {
+	if len(os.Args) != 2 {
+		fmt.Println("Usage: program <ip_list_file>")
+		os.Exit(1)
+	}
+
+	inputPath := os.Args[1]
+
 	fmt.Println("Counting IPs...")
 	totalIPs, err := countLines(inputPath)
 	if err != nil {
@@ -216,11 +412,10 @@ func Main(inputPath string) {
 	dir := filepath.Dir(inputPath)
 	outPath := filepath.Join(dir, "smb_os_info.csv.zst")
 
-	// Calculate optimal goroutine count based on available memory
-	// Für <1.3GB RAM: konservativ 1000 workers
-	numWorkers := 1000
+	// Reduce workers for SMBv1 OS detection (more intensive)
+	numWorkers := 500
 	if runtime.NumCPU() < 8 {
-		numWorkers = runtime.NumCPU() * 100
+		numWorkers = runtime.NumCPU() * 50
 	}
 
 	// Channels
@@ -246,7 +441,7 @@ func Main(inputPath string) {
 	}
 
 	// Read and send IPs
-	fmt.Println("Starting SMB scan...")
+	fmt.Println("Starting SMB OS detection...")
 	go func() {
 		scanner := bufio.NewScanner(inputFile)
 		for scanner.Scan() {
