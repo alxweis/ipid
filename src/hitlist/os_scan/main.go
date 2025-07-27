@@ -1,4 +1,4 @@
-package os_scan
+package main
 
 import (
 	"fmt"
