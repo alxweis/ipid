@@ -41,6 +41,65 @@ def extract_os_name(expression: str) -> str | None:
     return None
 
 
+def run_port_scan(ips_tmp_file: str) -> (str, str, str):
+    base_dir = os.path.dirname(ips_tmp_file)
+    output_file = os.path.join(base_dir, "output.xml")
+
+    print(f"Starting Port-Scan for {ips_tmp_file}...")
+
+    process = subprocess.Popen([
+        "masscan",
+        "-iL", ips_tmp_file,
+        "-p22,161,445",
+        "--rate", "100000",
+        "-oX", output_file
+    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+
+    while True:
+        output = process.stdout.readline()
+        if output == '' and process.poll() is not None:
+            break
+        if output:
+            line = output.strip()
+            print(line)  # Live output
+
+    print(f"Port-Scan finished: result={output_file}")
+
+    ssh_ips = set()
+    snmp_ips = set()
+    smb_ips = set()
+
+    for event, elem in ET.iterparse(output_file, events=("end",)):
+        if elem.tag == "host":
+            ip = elem.find("address").get("addr")
+            for port in elem.find("ports").findall("port"):
+                port_id = port.get("portid")
+                if port_id == "22":
+                    ssh_ips.add(ip)
+                elif port_id == "161":
+                    snmp_ips.add(ip)
+                elif port_id == "445":
+                    smb_ips.add(ip)
+            elem.clear()
+
+    snmp_ips_file = os.path.join(base_dir, "snmp_ips.txt")
+    with open(snmp_ips_file, "w") as f:
+        f.writelines(ip + "\n" for ip in snmp_ips)
+    print(f"Saved IP addresses for SNMP/161 in {snmp_ips_file}")
+
+    ssh_ips_file = os.path.join(base_dir, "ssh_ips.txt")
+    with open(ssh_ips_file, "w") as f:
+        f.writelines(ip + "\n" for ip in ssh_ips)
+    print(f"Saved IP addresses for SSH/22 in {ssh_ips_file}")
+
+    smb_ips_file = os.path.join(base_dir, "smb_ips.txt")
+    with open(smb_ips_file, "w") as f:
+        f.writelines(ip + "\n" for ip in smb_ips)
+    print(f"Saved IP addresses for SMB/445 in {smb_ips_file}")
+
+    return snmp_ips_file, ssh_ips_file, smb_ips_file
+
+
 def run_scanner(executable: str, mode: str, ips_file: str) -> str:
     print(f"Starting {mode.upper()} OS-Scan...")
     process = subprocess.Popen(
@@ -75,66 +134,15 @@ def run_scanner(executable: str, mode: str, ips_file: str) -> str:
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
     base_dir = os.path.dirname(ips_tmp_file)
 
-    # region PORT SCANNING
-    portscan_output_file = os.path.join(base_dir, "output.xml")
-    print(f"Executing masscan for {ips_tmp_file} with output {portscan_output_file}...")
-    result = subprocess.run([
-        "masscan",
-        "-iL", ips_tmp_file,
-        "-p22,161,445",
-        "--rate", "100000",
-        "-oX", portscan_output_file
-    ], capture_output=True, text=True)
+    snmp_ips_file, ssh_ips_file, smb_ips_file = run_port_scan(ips_tmp_file)
 
-    print("Exit-Code:", result.returncode)
-    print(f"Saved in {portscan_output_file}")
-    # endregion
-
-    # region OUTPUT PARSING
-    ssh_ips = set()
-    snmp_ips = set()
-    smb_ips = set()
-
-    for event, elem in ET.iterparse("output.xml", events=("end",)):
-        if elem.tag == "host":
-            ip = elem.find("address").get("addr")
-            for port in elem.find("ports").findall("port"):
-                port_id = port.get("portid")
-                if port_id == "22":
-                    ssh_ips.add(ip)
-                elif port_id == "161":
-                    snmp_ips.add(ip)
-                elif port_id == "445":
-                    smb_ips.add(ip)
-            elem.clear()
-
-    ssh_ips_file = os.path.join(base_dir, "ssh_ips.txt")
-    with open(ssh_ips_file, "w") as f:
-        f.writelines(ip + "\n" for ip in ssh_ips)
-    print(f"Saved IP addresses for SSH/22 in {ssh_ips_file}")
-
-    snmp_ips_file = os.path.join(base_dir, "snmp_ips.txt")
-    with open(snmp_ips_file, "w") as f:
-        f.writelines(ip + "\n" for ip in snmp_ips)
-    print(f"Saved IP addresses for SNMP/161 in {snmp_ips_file}")
-
-    smb_ips_file = os.path.join(base_dir, "smb_ips.txt")
-    with open(smb_ips_file, "w") as f:
-        f.writelines(ip + "\n" for ip in smb_ips)
-    print(f"Saved IP addresses for SMB/445 in {smb_ips_file}")
-    # endregion
-
-    # region BUILD SCANNER
     build_file = os.path.join(base_dir, "main.go")
     executable = os.path.join(base_dir, "scanner")
     subprocess.run(["go", "build", "-o", executable, build_file], check=True)
-    # endregion
 
-    # region OS FINGERPRINTING
     snmp_result_file = run_scanner(executable, "snmp", snmp_ips_file)
     ssh_result_file = run_scanner(executable, "ssh", ssh_ips_file)
     smb_result_file = run_scanner(executable, "smb", smb_ips_file)
-    # endregion
 
     print(f"TODO: Join {snmp_result_file}, {ssh_result_file}, {smb_result_file} on IP")
 
