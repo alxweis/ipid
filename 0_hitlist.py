@@ -77,7 +77,10 @@ def get_targets_path(index: int) -> (str, str, str | None):
         match = re.match(pattern, targets_path)
         if match:
             protocol = match.group(1)
-            port = match.group(2) if protocol == "icmp" else None
+            if protocol == "icmp":
+                port = None
+            else:
+                port = match.group(2)
             return targets_path, protocol, port
     print_usage()
 
