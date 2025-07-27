@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
-	"smb_scanner"
-	"snmp_scanner"
-	"ssh_scanner"
+	"os_scan/smb_scanner"
+	"os_scan/snmp_scanner"
+	"os_scan/ssh_scanner"
 )
 
 func main() {
