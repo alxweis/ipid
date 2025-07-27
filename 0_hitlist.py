@@ -104,7 +104,7 @@ def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool)
 
     targets_path = create_output_dir(protocol, port)
     if protocol == "icmp":
-        icmp.start(targets_path=targets_path, max_ips=max_ips)
+        icmp.start(targets_path=targets_path, max_ips=max_ips, enable_os_scan=enable_os_scan)
     elif protocol == "tcp":
         tcp.start(targets_path=targets_path, port=port, max_ips=max_ips, enable_os_scan=enable_os_scan)
     elif protocol == "udp":

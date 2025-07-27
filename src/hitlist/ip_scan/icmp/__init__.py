@@ -20,9 +20,12 @@ def run_zmap_scan(output_file: str, max_ips: int):
     subprocess.run(command)
 
 
-def start(targets_path: str, max_ips: int):
+def start(targets_path: str, max_ips: int, enable_os_scan: bool):
     start_time = time.time()
     targets_file = os.path.join(targets_path, "targets.csv")
     run_zmap_scan(targets_file, max_ips)
     result_file = cleanup(targets_file)
     print(f"ICMP IP-Scan finished: {runtime(start_time)} result=[{result_file}]")
+
+    if enable_os_scan:
+        subprocess.run(["python3", "0_hitlist.py", "os_scan", os.path.dirname(result_file)])
