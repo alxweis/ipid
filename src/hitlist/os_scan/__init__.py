@@ -132,13 +132,11 @@ def run_scanner(executable: str, mode: str, ips_file: str) -> str:
 
 
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
-    base_dir = os.path.dirname(ips_tmp_file)
-
     snmp_ips_file, ssh_ips_file, smb_ips_file = run_port_scan(ips_tmp_file)
 
-    build_file = os.path.join(base_dir, "main.go")
-    executable = os.path.join(base_dir, "scanner")
-    subprocess.run(["go", "build", "-o", executable, build_file], check=True)
+    go_file = os.path.join(".", "main.go")
+    executable = os.path.join(".", "scanner")
+    subprocess.run(["go", "build", "-o", executable, go_file], check=True)
 
     snmp_result_file = run_scanner(executable, "snmp", snmp_ips_file)
     ssh_result_file = run_scanner(executable, "ssh", ssh_ips_file)
