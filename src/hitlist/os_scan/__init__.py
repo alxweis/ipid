@@ -41,7 +41,8 @@ def extract_os_name(expression: str) -> str | None:
 
 
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
-    portscan_output_file = f"{os.path.join(os.path.dirname(ips_tmp_file), "output.xml")}"
+    portscan_output_file = os.path.join(os.path.dirname(ips_tmp_file), "output.xml")
+    print(f"Executing masscan for {ips_tmp_file} with output {portscan_output_file}...")
     result = subprocess.run([
         "masscan",
         "-iL", ips_tmp_file,
