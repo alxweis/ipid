@@ -5,6 +5,7 @@ import math
 import multiprocessing as mp
 import os
 import os.path
+import pickle
 import time
 from collections import Counter
 from functools import partial
@@ -288,18 +289,36 @@ def intersect_classifications(eval_csv_seq: str, eval_csv_b2b: str):
     con.close()
 
     conf_matrix = pd.crosstab(df['pattern1'], df['pattern2'], normalize='index') * 100
+    abs_matrix = pd.crosstab(df['pattern1'], df['pattern2'])  # absolute counts
+
     order = [p.value for p in Pattern]
     rows = [p for p in order if p in conf_matrix.index]
     cols = [p for p in order if p in conf_matrix.columns]
     conf_matrix = conf_matrix.reindex(index=rows, columns=cols)
+    abs_matrix = abs_matrix.reindex(index=rows, columns=cols)
 
+    # Save confusion matrix as .pkl
+    out_dir = os.path.join(EXP_INTERSECTIONS, "seq_vs_b2b")
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "conf_matrix.pkl"), "wb") as f:
+        pickle.dump(conf_matrix, f)
+
+    # Save metadata to info.txt
+    with open(os.path.join(out_dir, "info.txt"), "w", encoding="utf-8") as f:
+        f.write("Absolute counts:\n")
+        f.write(abs_matrix.to_string())
+        f.write("\n\nPercentage distribution (%):\n")
+        f.write(conf_matrix.round(2).to_string())
+        f.write(f"\n\nNumber of matching IPs: {len(df)}")
+
+    # Plot
     plt.figure(figsize=(10, 8))
     sns.heatmap(conf_matrix, annot=True, fmt='.2f', cmap='Blues', cbar_kws={'label': 'Percentage (%)'},
                 annot_kws={"fontsize": 12})
     plt.xlabel('Back-To-Back', fontsize=14)
     plt.ylabel('Sequential', fontsize=14)
     plt.tight_layout()
-    plt.show()
+    plt.savefig(os.path.join(out_dir, "plot.pdf"), bbox_inches="tight")
 
 
 class ProcessingParams:
