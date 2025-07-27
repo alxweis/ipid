@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
+	"hitlist/os_scan/smb_scanner"
+	"hitlist/os_scan/snmp_scanner"
+	"hitlist/os_scan/ssh_scanner"
 	"os"
-	"os_scan/smb_scanner"
-	"os_scan/snmp_scanner"
-	"os_scan/ssh_scanner"
 )
 
 func main() {

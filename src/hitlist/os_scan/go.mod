@@ -1,4 +1,4 @@
-module os_scan
+module hitlist/os_scan
 
 go 1.23.1
 
