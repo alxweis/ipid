@@ -69,7 +69,7 @@ def get_enable_os_scan(index: int) -> bool:
         return False
 
 
-def get_targets_path(index: int) -> (str, str, str):
+def get_targets_path(index: int) -> (str, str, str | None):
     if len(sys.argv) > index:
         targets_path = sys.argv[index]
         # value has format: targets/<protocol>/<port>/<YYYY-MM-DD_HH-MM-SS>
@@ -77,7 +77,7 @@ def get_targets_path(index: int) -> (str, str, str):
         match = re.match(pattern, targets_path)
         if match:
             protocol = match.group(1)
-            port = match.group(2)
+            port = match.group(2) if protocol == "icmp" else None
             return targets_path, protocol, port
     print_usage()
 
@@ -110,7 +110,7 @@ def ip_scan(protocol: str, port: None | str, max_ips: int, enable_os_scan: bool)
         print_usage()
 
 
-def os_scan(targets_path: str, protocol: str, port: str):
+def os_scan(targets_path: str, protocol: str, port: str | None):
     print("Starting OS Scan...")
     print(f"Targets Directory: {targets_path}")
     print(f"Protocol: {protocol.upper()}")
