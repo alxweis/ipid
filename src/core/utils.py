@@ -37,9 +37,12 @@ class Config:
     ip_col_name: str
     ts_ip_col_name: str
     us_ip_col_name: str
-    os_col_name: str
     us_os_col_name: str
     ts_os_col_name: str
+    snmp_os_col_name: str
+    ssh_os_col_name: str
+    smb_os_col_name: str
+    os_col_name: str
     ip_id_seq_col_name: str
     sent_ts_seq_col_name: str
     received_ts_seq_col_name: str

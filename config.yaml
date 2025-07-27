@@ -40,9 +40,12 @@ zmap_bandwidth: "30M" # Bandwidth for zmap scans
 ip_col_name: "IP"
 ts_ip_col_name: "TS_IP"
 us_ip_col_name: "US_IP"
-os_col_name: "OS"
 ts_os_col_name: "TS_OS"
 us_os_col_name: "US_OS"
+snmp_os_col_name: "SNMP_OS"
+ssh_os_col_name: "SSH_OS"
+smb_os_col_name: "SMB_OS"
+os_col_name: "OS"
 
 ip_id_seq_col_name: "IP_ID_SEQUENCE"
 sent_ts_seq_col_name: "SENT_TS_SEQUENCE"

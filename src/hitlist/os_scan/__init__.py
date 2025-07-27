@@ -2,6 +2,7 @@ import csv
 import io
 import os
 import re
+import subprocess
 import time
 
 import zstandard as zstd
@@ -40,7 +41,18 @@ def extract_os_name(expression: str) -> str | None:
 
 
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
-    pass
+    portscan_output_file = f"{os.path.join(os.path.dirname(ips_tmp_file), "output.xml")}"
+    result = subprocess.run([
+        "masscan",
+        "-iL", ips_tmp_file,
+        "-p22,161,445",
+        "--rate", "100000",
+        "-oX", portscan_output_file
+    ], capture_output=True, text=True)
+
+    print("Exit-Code:", result.returncode)
+    print("Output:", result.stdout)
+    print("Errors:", result.stderr)
 
 
 def start(targets_path: str):
