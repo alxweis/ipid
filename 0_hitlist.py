@@ -73,7 +73,7 @@ def get_targets_path(index: int) -> (str, str, str):
     if len(sys.argv) > index:
         targets_path = sys.argv[index]
         # value has format: targets/<protocol>/<port>/<YYYY-MM-DD_HH-MM-SS>
-        pattern = r"^targets/(icmp|tcp|udp)/(\d{1,5})/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$"
+        pattern = r"^targets/(icmp|(?:tcp|udp)/\d{1,5})/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$"
         match = re.match(pattern, targets_path)
         if match:
             protocol = match.group(1)
