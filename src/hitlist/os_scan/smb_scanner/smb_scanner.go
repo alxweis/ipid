@@ -388,14 +388,7 @@ func countLines(filePath string) (int64, error) {
 	return count, scanner.Err()
 }
 
-func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: program <ip_list_file>")
-		os.Exit(1)
-	}
-
-	inputPath := os.Args[1]
-
+func Main(inputPath string) {
 	fmt.Println("Counting IPs...")
 	totalIPs, err := countLines(inputPath)
 	if err != nil {
