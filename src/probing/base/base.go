@@ -156,7 +156,7 @@ var (
 
 const (
 	workerCount        = 1 << 12
-	workerTargetChSize = 1 << 4
+	workerTargetChSize = 1 << 5
 )
 
 var (
