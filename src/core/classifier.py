@@ -28,16 +28,8 @@ class IPIDSubsequence:
         self.sequence: np.ndarray = sequence
         self.increments: np.ndarray = np.diff(self.sequence) % (MAX_IP_ID + 1)
 
-    def is_increasing(self) -> bool:
-        return np.all((1 <= self.increments) & (self.increments <= MAX_INC))
-
-    def is_bounded_increasing(self, lower_inc_bound: int, upper_inc_bound: int) -> bool:
-        if not self.is_increasing():
-            return False
-        return np.all((self.increments >= lower_inc_bound) & (self.increments <= upper_inc_bound))
-
-    # def has_uniform_increments(self, min_inc: int, max_inc: int, alpha: float) -> bool:
-    #     return is_uniform(values=self.increments, start_point=min_inc, stop_point=max_inc, alpha=alpha)
+    def is_increasing(self, min_inc: int, max_inc: int) -> bool:
+        return np.all((min_inc <= self.increments) & (self.increments <= max_inc))
 
 
 class IPIDSequence:
@@ -137,17 +129,17 @@ def is_constant(seq: IPIDSequence) -> bool:
 
 
 def is_local_eq1(seq: IPIDSequence) -> bool:
-    return (seq.even.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=1) and
-            seq.odd.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=1))
+    return (seq.even.is_increasing(min_inc=1, max_inc=1) and
+            seq.odd.is_increasing(min_inc=1, max_inc=1))
 
 
 def is_local_ge1(seq: IPIDSequence) -> bool:
-    return (seq.even.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC) and
-            seq.odd.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC))
+    return (seq.even.is_increasing(min_inc=1, max_inc=MAX_INC) and
+            seq.odd.is_increasing(min_inc=1, max_inc=MAX_INC))
 
 
 def is_global(seq: IPIDSequence) -> bool:
-    return seq.full.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC)
+    return seq.full.is_increasing(min_inc=1, max_inc=MAX_INC)
 
 
 def is_multi_global(seq: IPIDSequence) -> bool:
@@ -156,7 +148,7 @@ def is_multi_global(seq: IPIDSequence) -> bool:
     for cluster in clusters:
         arr = np.array(list(cluster.values()), dtype=np.int32)
         cluster_seq = IPIDSequence(arr)
-        if not cluster_seq.full.is_bounded_increasing(lower_inc_bound=1, upper_inc_bound=MAX_INC):
+        if not cluster_seq.full.is_increasing(min_inc=1, max_inc=MAX_INC):
             return False
 
     return (np.all(seq.full.increments >= 1) and

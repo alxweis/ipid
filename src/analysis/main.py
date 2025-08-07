@@ -6,6 +6,7 @@ import multiprocessing as mp
 import os
 import os.path
 import pickle
+import sys
 import time
 from collections import Counter
 from functools import partial
@@ -805,6 +806,53 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
     plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches="tight")
 
     plt.close()
+
+
+def print_ip_id_sequences_for_pattern(params: ProcessingParams, pattern: Pattern, sample_count: int, show_plot: bool):
+    print(f"Sampling {sample_count} IPID sequences for pattern: {pattern.value}")
+    probing_dctx = zstd.ZstdDecompressor()
+    eval_dctx = zstd.ZstdDecompressor()
+    printed = 0
+
+    def parse_sequence(row) -> np.ndarray:
+        return np.fromstring(row.IP_ID_SEQUENCE, sep=",", dtype=np.int32)
+
+    with open(params.probing_csv, "rb") as probing_f, open(params.eval_csv, "rb") as eval_f:
+        with probing_dctx.stream_reader(probing_f) as probing_reader, \
+                eval_dctx.stream_reader(eval_f) as eval_reader:
+            with io.TextIOWrapper(probing_reader, encoding="utf-8") as probing_text_reader, \
+                    io.TextIOWrapper(eval_reader, encoding="utf-8") as eval_text_reader:
+
+                probing_iter = pd.read_csv(probing_text_reader, chunksize=params.chunk_size(),
+                                           usecols=["IP", "IP_ID_SEQUENCE"])
+                eval_iter = pd.read_csv(eval_text_reader, chunksize=params.chunk_size(),
+                                        usecols=["IP", "IP_ID_PATTERN"])
+
+                for probing_chunk, eval_chunk in zip(probing_iter, eval_iter):
+                    assert probing_chunk["IP"].equals(eval_chunk["IP"])
+                    merged = pd.concat([probing_chunk, eval_chunk.drop(columns="IP")], axis=1)
+                    filtered = merged[merged["IP_ID_PATTERN"] == pattern.value]
+
+                    for row in filtered.itertuples(index=False):
+                        try:
+                            sequence = parse_sequence(row)
+                            print(f"IP: {row.IP}, Sequence: {sequence.tolist()}")
+
+                            if show_plot:
+                                y_values = list(map(int, sequence.tolist()))
+                                x_values = list(range(1, len(y_values) + 1))
+                                plt.plot(x_values, y_values, marker='o')
+                                plt.xlabel("Index")
+                                plt.ylabel("Value")
+                                plt.title(f"IP-ID Sequence for {row.IP}")
+                                plt.grid(True)
+                                plt.show()
+
+                            printed += 1
+                            if printed >= sample_count:
+                                return
+                        except Exception:
+                            continue
 
 
 def start(result_dir: str):

@@ -53,7 +53,7 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
         "masscan",
         "-iL", ips_tmp_file,
         "-p22,161,445,80,53",
-        "--rate", "300000",
+        "--rate", "30000",
         "-oX", output_file
     ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
 
