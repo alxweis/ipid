@@ -164,7 +164,8 @@ def main():
 
         eval_csv_path = sys.argv[2]
         class_filter = sys.argv[3]
-        filter_ips_by_class(eval_csv_path, class_filter.split(","))
+        output_file = filter_ips_by_class(eval_csv_path, class_filter.split(","))
+        print(f"Result saved in {output_file}")
     else:
         print_usage()
 
