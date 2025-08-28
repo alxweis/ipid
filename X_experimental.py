@@ -129,8 +129,7 @@ def main():
             print_usage()
             return
 
-        l = sys.argv[2].strip("[]")
-        y_values = list(map(int, l.split()))
+        y_values = list(map(int, sys.argv[2].split(",")))
         x_values = list(range(1, len(y_values) + 1))
         plt.plot(x_values, y_values, marker='o')
         plt.xlabel("Index")
