@@ -29,11 +29,17 @@ from postproc.main import count_lines_in_zst
 
 
 def filter_ips_by_class(eval_csv: str, class_filter: list[str]):
-    rel_path = os.path.relpath(eval_csv, "results")
-    output_file = os.path.join("targets", rel_path)
-    output_file = output_file.replace("eval.csv.zst", "target.csv.zst")
+    # Input example: results/x/y/z/eval.csv.zst
+    parts = eval_csv.split(os.sep)
 
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    # Expected structure: results / x / y / z / eval.csv.zst
+    if len(parts) < 5 or parts[-1] != "eval.csv.zst":
+        raise ValueError("Path does not match expected pattern results/x/y/z/eval.csv.zst")
+
+    y, z = parts[-3], parts[-2]  # extract folder names y and z
+    output_dir = os.path.join("targets", y, z)
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "targets.csv.zst")
 
     con = duckdb.connect()
     try:
