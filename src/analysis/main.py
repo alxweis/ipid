@@ -6,7 +6,6 @@ import multiprocessing as mp
 import os
 import os.path
 import pickle
-import sys
 import time
 from collections import Counter
 from functools import partial
@@ -27,6 +26,38 @@ from core.utils import config, runtime
 from hitlist.os_scan import linux_distros, windows, bsd, apple
 from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import count_lines_in_zst
+
+
+def filter_ips_by_class(eval_csv: str, class_filter: list[str]):
+    rel_path = os.path.relpath(eval_csv, "results")
+    output_file = os.path.join("targets", rel_path)
+    output_file = output_file.replace("eval.csv.zst", "target.csv.zst")
+
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    con = duckdb.connect()
+    try:
+        if not class_filter:
+            con.execute("CREATE TEMP TABLE t(IP VARCHAR);")
+            con.execute(
+                "COPY t TO ? (FORMAT CSV, HEADER, COMPRESSION ZSTD);",
+                [output_file],
+            )
+            return output_file
+
+        in_list = ", ".join("'" + s.replace("'", "''") + "'" for s in class_filter)
+
+        sql = f"""
+        COPY (
+            SELECT IP
+            FROM read_csv_auto('{eval_csv}', header=true)
+            WHERE "IPID Pattern" IN ({in_list})
+        ) TO '{output_file}' (FORMAT CSV, HEADER, COMPRESSION ZSTD);
+        """
+        con.execute(sql)
+        return output_file
+    finally:
+        con.close()
 
 
 def plot_response_rate(targets_csv: str, ts_type: str):

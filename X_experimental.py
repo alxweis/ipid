@@ -9,7 +9,7 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import zstandard as zstd
 
-from analysis.main import plot_response_rate, calc_intersections, intersect_classifications
+from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core.utils import config
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
@@ -40,6 +40,8 @@ def print_usage():
     print(f"    python {filename} 7 <eval_file_path_seq> <eval_file_path_b2b>")
     print("  8 - Cleanup Targets CSV:")
     print(f"    python {filename} 8 <targets_full_path>")
+    print("  9 - Create hitlist from evaluation with class filter:")
+    print(f"    python {filename} 9 <eval_path> <class_filter>")
     sys.exit(1)
 
 
@@ -155,6 +157,14 @@ def main():
 
         targets_full_path = sys.argv[2]
         post_cleanup(targets_full_path)
+    elif mode == 9:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        eval_csv_path = sys.argv[2]
+        class_filter = sys.argv[3]
+        filter_ips_by_class(eval_csv_path, class_filter.split(","))
     else:
         print_usage()
 
