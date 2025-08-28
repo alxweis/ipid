@@ -60,29 +60,32 @@ type SEQ struct {
 func (pm *SEQ) probingVars() *ProbingVars { return pm.ProbingVars }
 
 type Config struct {
-	Targets              string         `yaml:"targets"`
-	Protocol             string         `yaml:"protocol"`
-	RecTraffic           bool           `yaml:"record_traffic"`
-	TcpDstPort           layers.TCPPort `yaml:"tcp_dst_port"`
-	TcpReqFlags          string         `yaml:"tcp_request_flags"`
-	TcpSrcPortOffset     uint16         `yaml:"tcp_src_port_offset"`
-	UdpDstPort           layers.UDPPort `yaml:"udp_dst_port"`
-	UdpSrcPortOffset     uint16         `yaml:"udp_src_port_offset"`
-	B2BReqCount          uint16         `yaml:"b2b_request_count"`
-	B2BReqInterval       time.Duration  `yaml:"b2b_request_interval"`
-	B2BRetryCount        uint16         `yaml:"b2b_retry_count"`
-	SEQReqCount          uint16         `yaml:"seq_request_count"`
-	SEQRetryCount        uint16         `yaml:"seq_retry_count"`
-	IfaceA               Iface          `yaml:"iface_a"`
-	IfaceB               Iface          `yaml:"iface_b"`
-	MaxRTT               time.Duration  `yaml:"max_rtt"`
-	DefaultSendIpIds     []uint16       `yaml:"default_send_ip_ids"`
-	DetectReflectedIpIds bool           `yaml:"detect_reflected_ip_ids"`
-	ReflectionSendIpIds  []uint16       `yaml:"reflection_send_ip_ids"`
-	IpColName            string         `yaml:"ip_col_name"`
-	IpIdSeqColName       string         `yaml:"ip_id_seq_col_name"`
-	SentTsColName        string         `yaml:"sent_ts_seq_col_name"`
-	RecvTsColName        string         `yaml:"received_ts_seq_col_name"`
+	Targets                   string         `yaml:"targets"`
+	Protocol                  string         `yaml:"protocol"`
+	RecTraffic                bool           `yaml:"record_traffic"`
+	TcpDstPort                layers.TCPPort `yaml:"tcp_dst_port"`
+	TcpReqFlags               string         `yaml:"tcp_request_flags"`
+	TcpSrcPortOffset          uint16         `yaml:"tcp_src_port_offset"`
+	UdpDstPort                layers.UDPPort `yaml:"udp_dst_port"`
+	UdpSrcPortOffset          uint16         `yaml:"udp_src_port_offset"`
+	B2BReqCount               uint16         `yaml:"b2b_request_count"`
+	B2BReqInterval            time.Duration  `yaml:"b2b_request_interval"`
+	B2BRetryCount             uint16         `yaml:"b2b_retry_count"`
+	SEQReqCount               uint16         `yaml:"seq_request_count"`
+	SEQRetryCount             uint16         `yaml:"seq_retry_count"`
+	MASSReqCount              uint16         `yaml:"mass_request_count"`
+	MASSReqInterval           time.Duration  `yaml:"mass_request_interval"`
+	MASSReplyPortionThreshold float64        `yaml:"mass_reply_portion_threshold"`
+	IfaceA                    Iface          `yaml:"iface_a"`
+	IfaceB                    Iface          `yaml:"iface_b"`
+	MaxRTT                    time.Duration  `yaml:"max_rtt"`
+	DefaultSendIpIds          []uint16       `yaml:"default_send_ip_ids"`
+	DetectReflectedIpIds      bool           `yaml:"detect_reflected_ip_ids"`
+	ReflectionSendIpIds       []uint16       `yaml:"reflection_send_ip_ids"`
+	IpColName                 string         `yaml:"ip_col_name"`
+	IpIdSeqColName            string         `yaml:"ip_id_seq_col_name"`
+	SentTsColName             string         `yaml:"sent_ts_seq_col_name"`
+	RecvTsColName             string         `yaml:"received_ts_seq_col_name"`
 }
 
 type Iface struct {
@@ -183,6 +186,7 @@ var (
 	proto                *Protocol
 	outputDir            string
 	stopSignal           = make(chan struct{})
+	isMassScan           bool
 )
 
 func Main(mode string, targetsType string) {
@@ -504,10 +508,12 @@ func (pm *B2B) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
 	for {
 		// Probe Target
 		pm.sendPackets(packets, probe, &sentByteCount, &sentPacketCount)
-		foundAllReplies, _ := pm.receivePackets(recvCh, target, probe)
+		foundAllReplies, rc := pm.receivePackets(recvCh, target, probe)
 		//recvCounter = rc
 
-		if foundAllReplies { // Successfully finished probing
+		massScanCheck := isMassScan && (float64(rc)/float64(pm.requestCount) >= config.MASSReplyPortionThreshold)
+
+		if foundAllReplies || massScanCheck { // Successfully finished probing
 			probeSaveChan <- probe
 			atomic.AddInt64(&totalValidProbeCount, 1)
 			break
@@ -1049,6 +1055,16 @@ func loadProbingMode(mode string) {
 				retryCount:   config.SEQRetryCount,
 				dirName:      "seq",
 			},
+		}
+	} else if mode == "mass" {
+		isMassScan = true
+		pm = &B2B{
+			ProbingVars: &ProbingVars{
+				requestCount: config.MASSReqCount,
+				retryCount:   0,
+				dirName:      "mass",
+			},
+			requestInterval: config.MASSReqInterval,
 		}
 	} else {
 		panic(fmt.Sprintf("Unsupported mode: %s", mode))

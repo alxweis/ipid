@@ -21,6 +21,11 @@ b2b_retry_count: 0
 seq_request_count: 10
 seq_retry_count: 0
 
+# MASS Probing
+mass_request_count: 100
+mass_request_interval: "10ms"
+mass_reply_portion_threshold: 0.8
+
 # Probing
 iface_a:
   name: "eth0"
