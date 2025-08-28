@@ -51,7 +51,7 @@ def filter_ips_by_class(eval_csv: str, class_filter: list[str]):
         COPY (
             SELECT IP
             FROM read_csv_auto('{eval_csv}', header=true)
-            WHERE "IPID Pattern" IN ({in_list})
+            WHERE "IP_ID_PATTERN" IN ({in_list})
         ) TO '{output_file}' (FORMAT CSV, HEADER, COMPRESSION ZSTD);
         """
         con.execute(sql)
