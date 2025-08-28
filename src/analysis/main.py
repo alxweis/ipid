@@ -29,15 +29,10 @@ from postproc.main import count_lines_in_zst
 
 
 def filter_ips_by_class(eval_csv: str, class_filter: list[str]):
-    # Input example: results/x/y/z/eval.csv.zst
-    parts = eval_csv.split(os.sep)
-
-    # Expected structure: results / x / y / z / eval.csv.zst
-    if len(parts) < 5 or parts[-1] != "eval.csv.zst":
-        raise ValueError("Path does not match expected pattern results/x/y/z/eval.csv.zst")
-
-    y, z = parts[-3], parts[-2]  # extract folder names y and z
-    output_dir = os.path.join("targets", y, z)
+    # Example input_file: results/a/b/eval.csv.zst
+    parts = eval_csv.split(os.sep)   # -> ["results","a","b","eval.csv.zst"]
+    subdir = parts[2]                  # the "b"
+    output_dir = os.path.join("targets", subdir)
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "targets.csv.zst")
 
