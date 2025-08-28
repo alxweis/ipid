@@ -906,6 +906,9 @@ func saveProbes() {
 
 		for i, pp := range probe.Data {
 			if !pp.Check {
+				if isMassScan {
+					break
+				}
 				panic("Probe Point is not checked!")
 			}
 			ipIds[i] = strconv.Itoa(int(pp.IpId))
