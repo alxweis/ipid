@@ -29,10 +29,13 @@ from postproc.main import count_lines_in_zst
 
 
 def filter_ips_by_class(eval_csv: str, class_filter: list[str]):
-    # Example input_file: results/a/b/eval.csv.zst
-    parts = eval_csv.split(os.sep)   # -> ["results","a","b","eval.csv.zst"]
-    subdir = parts[2]                  # the "b"
-    output_dir = os.path.join("targets", subdir)
+    base = os.path.basename(eval_csv)
+    assert base == "eval.csv.zst"
+
+    parts = eval_csv.split(os.sep)
+    ts = parts[-2]
+    proto = parts[-3]
+    output_dir = os.path.join("targets", proto, ts)
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "targets.csv.zst")
 
