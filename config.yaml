@@ -37,18 +37,18 @@ reflection_send_ip_ids: [18933,18933,3717,3718,3719] # Sequence with fixed arbit
 zmap_bandwidth: "30M" # Bandwidth for zmap scans
 
 # Filenames
-targets_ip_fn: targets_ip.csv.zst
-targets_os_fn: targets_os.csv.zst
-
-probing_base_fn: probing_base.csv.zst
-eval_base_fn: eval_base.csv.zst
-targets_ip_rest_fn: targets_ip_rest.csv.zst
-
-probing_rest_fn: probing_rest.csv.zst
-eval_rest_fn: eval_rest.csv.zst
-
-probing_fn: probing.csv.zst
-eval_fn: eval.csv.zst
+#targets_ip_fn: targets_ip.csv.zst
+#targets_os_fn: targets_os.csv.zst
+#
+#probing_base_fn: probing_base.csv.zst
+#eval_base_fn: eval_base.csv.zst
+#targets_ip_rest_fn: targets_ip_rest.csv.zst
+#
+#probing_rest_fn: probing_rest.csv.zst
+#eval_rest_fn: eval_rest.csv.zst
+#
+#probing_fn: probing.csv.zst
+#eval_fn: eval.csv.zst
 
 # Dataframe column names # TODO Use Dataframe column names as reference in other scripts
 ip_col_name: "IP"
