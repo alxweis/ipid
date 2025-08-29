@@ -14,20 +14,20 @@ from core.classifier import IPIDSequence, get_pattern, Pattern
 from postproc import GEOLITE_ASN_DB
 
 
-def detect_pattern(ip_ids: np.ndarray) -> Pattern:
+def detect_pattern(ip_ids: np.ndarray, is_mass_scan: bool) -> Pattern:
     ip_id_sequence = IPIDSequence(ip_ids)
-    detected_pattern: Pattern = get_pattern(ip_id_sequence)
+    detected_pattern: Pattern = get_pattern(ip_id_sequence, is_mass_scan)
     return detected_pattern
 
 
-def process_row_optimized(row_data: Dict[str, Any], asn_reader) -> Tuple:
+def process_row_optimized(row_data: Dict[str, Any], is_mass_scan: bool, asn_reader: geoip2.database.Reader) -> Tuple:
     ip = row_data['IP']
     ip_ids = row_data['IP_ID_SEQUENCE']
     sent_ts = row_data['SENT_TS_SEQUENCE']
     recv_ts = row_data['RECEIVED_TS_SEQUENCE']
 
     try:
-        pattern = detect_pattern(ip_ids).value
+        pattern = detect_pattern(ip_ids, is_mass_scan).value
         rtts = recv_ts - sent_ts
         avg_rtt = np.round(np.average(rtts)).astype(int)
         std_rtt = np.round(np.std(rtts, ddof=1)).astype(int)
@@ -43,12 +43,12 @@ def process_row_optimized(row_data: Dict[str, Any], asn_reader) -> Tuple:
         return None
 
 
-def worker_process(rows_batch: List[Dict]) -> List:
+def worker_process(rows_batch: List[Dict], is_mass_scan: bool) -> List:
     asn_reader = geoip2.database.Reader(GEOLITE_ASN_DB)
     results = []
 
     for row_data in rows_batch:
-        result = process_row_optimized(row_data, asn_reader)
+        result = process_row_optimized(row_data, is_mass_scan, asn_reader)
         if result:
             results.append(result)
 
@@ -81,6 +81,7 @@ def count_lines_in_zst(file_path):
 def start(result_dir: str):
     probing_csv = os.path.join(result_dir, "probing.csv.zst")
     eval_csv = os.path.join(result_dir, "eval.csv.zst")
+    is_mass_scan = "mass" == result_dir.split(os.sep)[1]
 
     num_cpus = mp.cpu_count()
     num_workers = max(1, num_cpus - 1)
@@ -122,7 +123,7 @@ def start(result_dir: str):
             batches = [all_rows[i:i + batch_size] for i in range(0, len(all_rows), batch_size)]
 
             all_results = []
-            for batch_results in pool.map(worker_process, batches):
+            for batch_results in pool.map(worker_process, batches, is_mass_scan):
                 all_results.extend(batch_results)
 
             if all_results:

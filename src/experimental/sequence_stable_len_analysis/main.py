@@ -33,7 +33,7 @@ def calc_min_stable_len(seq: IPIDSequence) -> (Pattern, int):
 
     for i in range(2, len(seq) + 1):
         prefix_seq = IPIDSequence(seq.full.sequence[:i])
-        classified_pattern = get_pattern(prefix_seq)
+        classified_pattern = get_pattern(prefix_seq, is_mass_scan=False)
 
         if last_classified_pattern == Pattern.NONE or classified_pattern == last_classified_pattern:
             if min_stable_len == 0:

@@ -117,11 +117,12 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         misclassified_counts = defaultdict(int)
 
         for seq in ip_id_sequences:
-            predicted_pattern = get_pattern(seq)
+            predicted_pattern = get_pattern(seq, is_mass_scan=sequence_length >= 80)
 
             if true_pattern.value == predicted_pattern.value:
                 correct_classifications += 1
             else:
+                # print(f"'{",".join(map(str, seq.full.sequence.tolist()))}' is classified as {predicted_pattern} (real: {true_pattern})")
                 misclassified_counts[predicted_pattern.value] += 1
 
             # if true_pattern == Pattern.RANDOM and predicted_pattern == Pattern.FALLBACK:
@@ -233,12 +234,12 @@ class ClassifierTests(unittest.TestCase):
         # print(seq.even.has_uniform_increments())
         # print(seq.odd.has_uniform_increments())
 
-        sequence_length = 10
-        sequence_count_per_pattern = 10_000
+        sequence_length = 100
+        sequence_count_per_pattern = 100000
 
         self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
-        self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
-        self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
+        # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
+        # self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
 
 
 # class ConfigTests(unittest.TestCase):

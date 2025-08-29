@@ -18,9 +18,15 @@ GLOBAL_MAX_INC_TOLERANCE = 0.5
 LOCAL_GE1_MAX_INC = int(timeparse(config.max_rtt) * 1000)
 
 MULTI_GLOBAL_CLUSTER_MAX_INC = 100
-MULTI_GLOBAL_MAX_CLUSTERS = 4
+MULTI_GLOBAL_MAX_CLUSTERS = 10
 
 RANDOM_CLUSTER_MAX_INC = 1000
+
+CHI2_TEST_MAX = 1e-5
+DIR_SWITCH_MIN = 0.49
+DIR_SWITCH_MAX = 0.83
+AUTOCORR_MIN = 0.45
+AUTOCORR_MAX_LAG = 10
 
 
 class IPIDSubsequence:
@@ -98,7 +104,7 @@ def get_clusters(values: np.ndarray, max_diff: int) -> list[dict[int, np.int32]]
             current_idx = (current_idx + 1) % val_count
 
         if cluster:
-            final_clusters.append(cluster)
+            final_clusters.append(dict(sorted(cluster.items())))
 
         start_idx = break_idx
 
@@ -143,40 +149,85 @@ def is_global(seq: IPIDSequence) -> bool:
 
 
 def is_multi_global(seq: IPIDSequence) -> bool:
-    clusters = get_clusters(seq.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
+    clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
+
+    def check(sequence: list[np.int32]) -> bool:
+        _seq = sequence.copy()
+        counter = 0
+        segments = []
+
+        while _seq:
+            inc = [_seq[0]]
+            for x in _seq[1:]:
+                if x > inc[-1]:
+                    inc.append(x)
+            for x in inc:
+                _seq.remove(x)
+            segments.append(inc)
+            if len(inc) == 1:
+                counter += 1
+                if counter > 1:
+                    return False
+        return True
 
     for cluster in clusters:
-        arr = np.array(list(cluster.values()), dtype=np.int32)
-        cluster_seq = IPIDSequence(arr)
-        if not cluster_seq.full.is_increasing(min_inc=1, max_inc=MAX_INC):
+        cluster_sequence = list(cluster.values())
+        if not check(cluster_sequence):
             return False
 
-    return (np.all(seq.full.increments >= 1) and
-            1 < len(clusters) <= MULTI_GLOBAL_MAX_CLUSTERS)
+    return 1 < len(clusters) <= MULTI_GLOBAL_MAX_CLUSTERS
+
+
+def chi2_test(seq: IPIDSequence) -> float:
+    bins = 16
+    hist, _ = np.histogram(seq.full.sequence, bins=bins, range=(0, MAX_IP_ID + 1))
+    chi2, p_chi2 = chisquare(hist)
+    return p_chi2
+
+
+def dir_switch_count(seq: IPIDSequence) -> int:
+    diff = np.diff(seq.full.sequence)
+    signs = np.sign(diff)
+    return np.count_nonzero(signs[1:] != signs[:-1]) + 1
+
+
+def autocorr(seq: IPIDSequence, lag: int) -> float:
+    if is_constant(seq):
+        return 0
+    corr = np.corrcoef(seq.full.sequence[:-lag], seq.full.sequence[lag:])[0, 1]
+    return float(abs(corr))
 
 
 def is_random(seq: IPIDSequence) -> bool:
-    clusters = get_clusters(seq.full.sequence, max_diff=RANDOM_CLUSTER_MAX_INC)
-    return (np.all(seq.full.increments >= 1) and
-            1 < len(clusters))
+    # 1) Chi²-Test
+    if chi2_test(seq) < CHI2_TEST_MAX:
+        return False  # Filters REFLECTION, CONSTANT, LOCAL(=1)
+
+    # 2) Direction-Change
+    runs = dir_switch_count(seq)
+    if runs < len(seq) * DIR_SWITCH_MIN or runs > len(seq) * DIR_SWITCH_MAX:
+        return False  # Filters GLOBAL
+
+    # 3) Autocorrelation
+    for lag in range(1, AUTOCORR_MAX_LAG + 1):
+        if autocorr(seq, lag) > AUTOCORR_MIN:
+            return False
+
+    return True
 
 
-def is_anomalous(seq: IPIDSequence) -> bool:
-    return not has_pattern(seq)
+def is_anomalous(seq: IPIDSequence, is_mass_scan: bool) -> bool:
+    return not has_pattern(seq, is_mass_scan)
 
 
-def has_pattern(seq: IPIDSequence) -> bool:
-    return (
-            is_constant(seq)
-            or is_local_eq1(seq)
-            or is_local_ge1(seq)
-            or is_global(seq)
-            or is_multi_global(seq)
-            or is_random(seq)
-    )
+def has_pattern(seq: IPIDSequence, is_mass_scan: bool) -> bool:
+    checks = (is_constant, is_local_eq1, is_local_ge1, is_global)
+    if is_mass_scan:
+        checks += (is_multi_global, is_random)
+    return any(fn(seq) for fn in checks)
 
 
-def get_pattern(seq: IPIDSequence, get_all=False) -> list[Pattern] | Pattern:
+def get_pattern(seq: IPIDSequence, is_mass_scan: bool, get_all=False) -> list[Pattern] | Pattern:
     result = []
     if config.detect_reflected_ip_ids and is_reflection(seq):
         result.append(Pattern.REFLECTION)
@@ -188,12 +239,16 @@ def get_pattern(seq: IPIDSequence, get_all=False) -> list[Pattern] | Pattern:
         result.append(Pattern.LOCAL_EQ1)
     if is_local_ge1(seq):
         result.append(Pattern.LOCAL_GE1)
-    if is_multi_global(seq):
-        result.append(Pattern.MULTI_GLOBAL)
-    if is_random(seq):
-        result.append(Pattern.RANDOM)
-    if is_anomalous(seq):
+
+    if is_mass_scan:
+        if is_multi_global(seq):
+            result.append(Pattern.MULTI_GLOBAL)
+        if is_random(seq):
+            result.append(Pattern.RANDOM)
+
+    if is_anomalous(seq, is_mass_scan):
         result.append(Pattern.FALLBACK)
+
     return result if get_all else result[0]
 
 
@@ -295,6 +350,44 @@ def random_ip_id_sequence(length: int) -> IPIDSequence:
     for _ in range(length):
         seq.append(random_ip_id())
     return IPIDSequence(seq)
+
+
+def fallback_ip_id_sequence(length: int) -> IPIDSequence:
+    gen_map = {
+        Pattern.CONSTANT: (constant_ip_id_sequence, is_constant),
+        Pattern.GLOBAL: (global_ip_id_sequence, is_global),
+        Pattern.LOCAL_EQ1: (local_eq1_ip_id_sequence, is_local_eq1),
+        Pattern.LOCAL_GE1: (local_ge1_ip_id_sequence, is_local_ge1)
+    }
+
+    pattern, (generator, check) = random.choice(list(gen_map.items()))
+    sequence = generator(length).full.sequence.copy()
+
+    n = max(1, length // 10)  # 10% of the length, minimum 1
+
+    op = random.choice(["flip", "offset", "loss", "constant"])
+    idx = np.random.choice(length, n, replace=False)
+
+    if op == "flip":
+        for i in idx:
+            j = (i + 1) % length
+            sequence[i], sequence[j] = sequence[j], sequence[i]
+
+    elif op == "offset":
+        sequence[idx] = (sequence[idx] + MAX_IP_ID // 2) % (MAX_IP_ID + 1)
+
+    elif op == "loss":
+        sequence = np.delete(sequence, idx)
+
+    elif op == "constant":
+        for i in idx:
+            if i > 0:
+                sequence[i] = sequence[i - 1]
+
+    ip_id_seq = IPIDSequence(sequence)
+    if check(ip_id_seq):
+        return fallback_ip_id_sequence(length)
+    return ip_id_seq
 
 
 pattern_generation_map = {

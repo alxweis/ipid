@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import zstandard as zstd
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
+from core.classifier import pattern_generation_map, chi2_test, autocorr, dir_switch_count, AUTOCORR_MAX_LAG
 from core.utils import config
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
@@ -42,6 +43,8 @@ def print_usage():
     print(f"    python {filename} 8 <targets_full_path>")
     print("  9 - Create hitlist from evaluation with class filter:")
     print(f"    python {filename} 9 <eval_path> <class_filter>")
+    print("  10 - Compute value ranges for random class metrics:")
+    print(f"    python {filename} 10 <sequence_length>")
     sys.exit(1)
 
 
@@ -165,6 +168,49 @@ def main():
         class_filter = sys.argv[3]
         output_file = filter_ips_by_class(eval_csv_path, class_filter.split(","))
         print(f"Result saved in {output_file}")
+    elif mode == 10:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+
+        sequence_length = int(sys.argv[2])
+        sequence_count_per_pattern = 10000
+
+        chi2_result: dict[str, tuple[float, float]] = {}
+        dir_switch_result: dict[str, tuple[int, int]] = {}
+        autocorr_result: dict[str, tuple[float, float]] = {}
+
+        def update_range(d: dict, key: str, value_min: float, value_max: float) -> None:
+            if key in d:
+                old_min, old_max = d[key]
+                d[key] = min(old_min, value_min), max(old_max, value_max)
+            else:
+                d[key] = value_min, value_max
+
+        for pattern, generator in pattern_generation_map.items():
+            if generator is None:
+                continue
+
+            for _ in range(sequence_count_per_pattern):
+                seq = generator(sequence_length)
+
+                p_chi2 = chi2_test(seq)
+                turns = dir_switch_count(seq)
+                autocorrs = [autocorr(seq, lag) for lag in range(1, AUTOCORR_MAX_LAG + 1)]
+
+                update_range(chi2_result, pattern.value, p_chi2, p_chi2)
+                update_range(dir_switch_result, pattern.value, turns, turns)
+                update_range(autocorr_result, pattern.value, min(autocorrs), max(autocorrs))
+
+        def print_results(title: str, results: dict[str, tuple[float, float]]):
+            print(f"{title}:")
+            for pattern, (_min, _max) in results.items():
+                print(f"{pattern}: {_min}...{_max}")
+            print()
+
+        print_results("Chi2 Result", chi2_result)
+        print_results("Dir-Switch Result", dir_switch_result)
+        print_results("Autocorr Result", autocorr_result)
     else:
         print_usage()
 
