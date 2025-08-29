@@ -817,6 +817,8 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
 
     # Plot
     print(f"Total datapoints: {len(increments)}")
+    if len(increments) == 0:
+        return
     print(f"Plotting Increment Distribution for {pattern.value}...")
     increments_numpy = np.array(increments, dtype=np.int32)
     q = np.percentile(increments_numpy, 99)
