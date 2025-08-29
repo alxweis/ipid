@@ -1,8 +1,0 @@
-Total Count: 293857
-RTTs Count Per Continent:
-    continent  rtts_count
-       Africa        4189
-         Asia       86697
-       Europe       78133
-North America      110393
-South America       14445

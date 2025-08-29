@@ -1,6 +1,0 @@
-Total Absolute: 12
-Class Distribution:
-     class  absolute  relative
-    Global         3 25.000000
-Local (≥1)         7 58.333333
-    Random         2 16.666667

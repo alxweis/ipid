@@ -1,4 +1,0 @@
-Total Absolute: 9
-Class Distribution:
-     class  absolute  relative
-Local (≥1)         9     100.0
