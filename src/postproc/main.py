@@ -1,6 +1,7 @@
 import io
 import multiprocessing as mp
 import os
+from functools import partial
 from typing import List, Tuple, Dict, Any
 
 import geoip2.database
@@ -109,6 +110,7 @@ def start(result_dir: str):
         text_writer = io.TextIOWrapper(compressed_writer, encoding="utf-8")
 
         progress_bar = tqdm(total=total_rows, unit="rows")
+        func = partial(worker_process, is_mass_scan=is_mass_scan)
 
         for chunk_df in pd.read_csv(text_reader, chunksize=chunk_size, on_bad_lines="skip"):
             all_rows = []
@@ -123,7 +125,7 @@ def start(result_dir: str):
             batches = [all_rows[i:i + batch_size] for i in range(0, len(all_rows), batch_size)]
 
             all_results = []
-            for batch_results in pool.map(worker_process, batches, is_mass_scan):
+            for batch_results in pool.map(func, batches):
                 all_results.extend(batch_results)
 
             if all_results:
