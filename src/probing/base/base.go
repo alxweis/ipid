@@ -158,7 +158,7 @@ var (
 )
 
 const (
-	workerCount        = 1 << 13
+	workerCount        = 1 << 12
 	workerTargetChSize = 1 << 6
 )
 
