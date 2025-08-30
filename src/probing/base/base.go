@@ -44,6 +44,7 @@ type ProbingVars struct {
 	retryCount   uint16
 	requestCount uint16
 	dirName      string
+	maxRTT       time.Duration
 }
 
 type B2B struct {
@@ -78,7 +79,7 @@ type Config struct {
 	MASSReplyPortionThreshold float64        `yaml:"mass_reply_portion_threshold"`
 	IfaceA                    Iface          `yaml:"iface_a"`
 	IfaceB                    Iface          `yaml:"iface_b"`
-	MaxRTT                    time.Duration  `yaml:"max_rtt"`
+	MinRtt                    time.Duration  `yaml:"min_rtt"`
 	DefaultSendIpIds          []uint16       `yaml:"default_send_ip_ids"`
 	DetectReflectedIpIds      bool           `yaml:"detect_reflected_ip_ids"`
 	ReflectionSendIpIds       []uint16       `yaml:"reflection_send_ip_ids"`
@@ -691,7 +692,7 @@ func setupReceiver(iface Iface) {
 }
 
 func (pm *SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc net.IP, expDst net.IP, expSeq uint16, probe *Probe) bool {
-	timeout := time.After(config.MaxRTT)
+	timeout := time.After(pm.probingVars().maxRTT)
 	for {
 		select {
 		case replyInfo := <-recvCh:
@@ -712,7 +713,7 @@ func (pm *SEQ) receivePacket(recvCh chan *ReplyInfo, expSrc net.IP, expDst net.I
 func (pm *B2B) receivePackets(recvCh chan *ReplyInfo, expSrc net.IP, probe *Probe) (bool, uint16) {
 	recvCounter := uint16(0)
 	repliesFound := make(chan struct{})
-	timeout := time.After(config.MaxRTT)
+	timeout := time.After(pm.probingVars().maxRTT)
 	for {
 		select {
 		case replyInfo := <-recvCh:
@@ -784,7 +785,7 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 	}
 
 	rtt := time.Duration(replyInfo.Time - pp.SentTime)
-	if rtt > config.MaxRTT {
+	if rtt > pm.probingVars().maxRTT {
 		log.Printf("[%s] RTT too high (rtt=[%v])", src, rtt)
 		return 0
 	}
@@ -829,7 +830,7 @@ func (pm *B2B) processPacket(recvCounter *uint16, repliesFound chan struct{}, re
 	}
 
 	rtt := time.Duration(replyInfo.Time - pp.SentTime)
-	if rtt > config.MaxRTT {
+	if rtt > pm.probingVars().maxRTT {
 		log.Printf("[%s] RTT too high (rtt=[%v])", src, rtt)
 		return
 	}
@@ -906,9 +907,11 @@ func saveProbes() {
 			panic("Probe Data has not correct length!")
 		}
 
+		moveToNextProbe := false
 		for i, pp := range probe.Data {
 			if !pp.Check {
 				if isMassScan {
+					moveToNextProbe = true
 					break
 				}
 				panic("Probe Point is not checked!")
@@ -916,6 +919,10 @@ func saveProbes() {
 			ipIds[i] = strconv.Itoa(int(pp.IpId))
 			sentTimes[i] = strconv.FormatInt(pp.SentTime, 10)
 			receivedTimes[i] = strconv.FormatInt(pp.ReceivedTime, 10)
+		}
+
+		if moveToNextProbe {
+			continue
 		}
 
 		// Format record
@@ -928,9 +935,6 @@ func saveProbes() {
 
 		// Write the record to the output file
 		_, err = writer.WriteString(joinWithComma(record) + "\n")
-		if err != nil {
-			panic(err)
-		}
 		if err != nil {
 			panic(err)
 		}
@@ -1050,6 +1054,7 @@ func loadProbingMode(mode string) {
 				requestCount: config.B2BReqCount,
 				retryCount:   config.B2BRetryCount,
 				dirName:      "b2b",
+				maxRTT:       time.Duration(config.B2BReqCount)*config.B2BReqInterval + config.MinRtt,
 			},
 			requestInterval: config.B2BReqInterval,
 		}
@@ -1059,6 +1064,7 @@ func loadProbingMode(mode string) {
 				requestCount: config.SEQReqCount,
 				retryCount:   config.SEQRetryCount,
 				dirName:      "seq",
+				maxRTT:       config.MinRtt,
 			},
 		}
 	} else if mode == "mass" {
@@ -1068,6 +1074,7 @@ func loadProbingMode(mode string) {
 				requestCount: config.MASSReqCount,
 				retryCount:   0,
 				dirName:      "mass",
+				maxRTT:       time.Duration(config.MASSReqCount)*config.MASSReqInterval + config.MinRtt,
 			},
 			requestInterval: config.MASSReqInterval,
 		}

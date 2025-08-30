@@ -32,7 +32,7 @@ class Config:
     seq_retry_count: int
     iface_a: Interface
     iface_b: Interface
-    max_rtt: str
+    min_rtt: str
     default_send_ip_ids: List[int]
     detect_reflected_ip_ids: bool
     reflection_send_ip_ids: List[int]

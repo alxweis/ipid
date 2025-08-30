@@ -23,7 +23,7 @@ seq_retry_count: 0
 
 # MASS Probing
 mass_request_count: 100
-mass_request_interval: "10ms"
+mass_request_interval: "70ms"
 mass_reply_portion_threshold: 0.8
 
 # Probing
@@ -33,7 +33,7 @@ iface_a:
 iface_b:
   name: "eth1"
   ip: "141.76.94.15"
-max_rtt: "2s"
+min_rtt: "2s"
 default_send_ip_ids: [0] # Sends [0,0,0,...]
 detect_reflected_ip_ids: True
 reflection_send_ip_ids: [18933,18933,3717,3718,3719] # Sequence with fixed arbitrary values
