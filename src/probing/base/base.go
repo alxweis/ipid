@@ -524,7 +524,6 @@ func (pm *B2B) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
 			// Reset variables for next attempt
 			probe.Data = make(map[uint16]*ProbePoint)
 		} else { // All probing attempts failed
-			log.Printf("Failed probing target=[%s] with reply_portion=[%f]", target, replyPortion)
 			break
 		}
 	}
