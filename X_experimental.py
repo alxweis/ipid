@@ -270,6 +270,9 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
 
     con.close()
 
+    print(f"Merged {path_a} & {path_b} => {out_path}")
+    print(f"Rerun analysis of {out_path} to get merged results!")
+
 
 if __name__ == "__main__":
     main()

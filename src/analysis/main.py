@@ -623,7 +623,7 @@ def plot_time_between_requests(params: ProcessingParams):
     # Plot
     print(f"Total datapoints: {len(time_between_requests)}")
     print("Plotting Time Between Requests...")
-    deltas = np.array(time_between_requests, dtype=np.float32)
+    deltas = np.concatenate(time_between_requests).astype(np.float32)
     q = np.percentile(deltas, 99.9)
     deltas_cut = deltas[deltas <= q]
 
