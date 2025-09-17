@@ -3,6 +3,7 @@ import csv
 import io
 import ipaddress
 import os
+import shutil
 import sys
 from datetime import datetime
 
@@ -219,8 +220,8 @@ def main():
             print_usage()
             return
 
-        seq_msm_path = sys.argv[2]
-        mass_msm_path = sys.argv[3]
+        seq_msm_path = str(sys.argv[2])
+        mass_msm_path = str(sys.argv[3])
         merge_msm_path = seq_msm_path.replace("seq", "merge")
 
         merge_paths(seq_msm_path, mass_msm_path, merge_msm_path)
