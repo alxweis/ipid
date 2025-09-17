@@ -221,14 +221,15 @@ def main():
 
         seq_msm_path = sys.argv[2]
         mass_msm_path = sys.argv[3]
+        merge_msm_path = seq_msm_path.replace("seq", "merge")
 
-        merge_paths(seq_msm_path, mass_msm_path, seq_msm_path)
-        # shutil.rmtree(mass_msm_path)
+        merge_paths(seq_msm_path, mass_msm_path, merge_msm_path)
     else:
         print_usage()
 
 
 def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_count()):
+    os.makedirs(out_path, exist_ok=True)
     con = duckdb.connect()
     con.execute(f"PRAGMA threads={threads};")
 
@@ -275,6 +276,17 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
     merge_file("eval.csv.zst")
 
     con.close()
+
+    # targets.csv.zst von A als Symlink übernehmen (oder kopieren falls Datei)
+    src = os.path.join(path_a, "targets.csv.zst")
+    dst = os.path.join(out_path, "targets.csv.zst")
+    if os.path.lexists(dst):
+        os.remove(dst)
+    if os.path.islink(src):
+        target = os.readlink(src)
+        os.symlink(target, dst)
+    else:
+        shutil.copy(src, dst)
 
     print(f"Merged {path_a} & {path_b} => {out_path}")
     print(f"Rerun analysis of {out_path} to get merged results!")
