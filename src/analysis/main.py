@@ -788,8 +788,7 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
                     for probing_chunk_df in probing_iter:
                         eval_chunk_df = next(eval_iter)
 
-                        assert probing_chunk_df["IP"].equals(eval_chunk_df[
-                                                                 "IP"]), f"Probing Chunk Length != Eval Chunk Length ({len(probing_chunk_df)} != {len(eval_chunk_df)})"
+                        assert probing_chunk_df["IP"].equals(eval_chunk_df["IP"])
                         chunk_df = pd.concat([probing_chunk_df, eval_chunk_df.drop(columns="IP")], axis=1)
                         chunk_length = len(chunk_df)
 
