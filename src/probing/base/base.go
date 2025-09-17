@@ -515,6 +515,10 @@ func (pm *B2B) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
 
 		massScanCheck := isMassScan && (replyPortion >= config.MASSReplyPortionThreshold)
 
+		if !massScanCheck {
+			log.Printf("%d/%d replies mass-scan check failed!", rc, pm.requestCount)
+		}
+
 		if foundAllReplies || massScanCheck { // Successfully finished probing
 			probeSaveChan <- probe
 			atomic.AddInt64(&totalValidProbeCount, 1)
