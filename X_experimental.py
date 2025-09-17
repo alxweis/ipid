@@ -224,6 +224,10 @@ def main():
         mass_msm_path = str(sys.argv[3])
         merge_msm_path = seq_msm_path.replace("seq", "merge")
 
+        assert seq_msm_path != mass_msm_path
+        assert seq_msm_path != merge_msm_path
+        assert mass_msm_path != merge_msm_path
+
         merge_paths(seq_msm_path, mass_msm_path, merge_msm_path)
     else:
         print_usage()
