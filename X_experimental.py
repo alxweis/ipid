@@ -232,41 +232,47 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
     con = duckdb.connect()
     con.execute(f"PRAGMA threads={threads};")
 
-    # Targets einmal einlesen
+    # Targets laden
     con.execute(f"""
         CREATE TABLE targets AS
         SELECT IP FROM read_csv_auto('{path_b}/targets.csv.zst', compression='zstd');
     """)
 
-    # probing.csv.zst mergen und direkt schreiben
-    con.execute(f"""
-        COPY (
-            SELECT a.*
-            FROM read_csv_auto('{path_a}/probing.csv.zst', compression='zstd') a
-            ANTI JOIN targets t USING(IP)
-            UNION ALL
-            SELECT b.*
-            FROM read_csv_auto('{path_b}/probing.csv.zst', compression='zstd') b
-            SEMI JOIN targets t USING(IP)
-        )
-        TO '{out_path}/probing.csv.zst'
-        (FORMAT CSV, COMPRESSION ZSTD);
-    """)
+    def merge_file(fname: str):
+        # Schema von A bestimmen
+        cols = [c[0] for c in con.execute(
+            f"DESCRIBE SELECT * FROM read_csv_auto('{path_a}/{fname}', compression='zstd')"
+        ).fetchall()]
+        cols.remove("IP")  # IP wird zum Join benutzt, nicht coalesced
 
-    # eval.csv.zst mergen und direkt schreiben
-    con.execute(f"""
-        COPY (
-            SELECT a.*
-            FROM read_csv_auto('{path_a}/eval.csv.zst', compression='zstd') a
-            ANTI JOIN targets t USING(IP)
-            UNION ALL
-            SELECT b.*
-            FROM read_csv_auto('{path_b}/eval.csv.zst', compression='zstd') b
-            SEMI JOIN targets t USING(IP)
-        )
-        TO '{out_path}/eval.csv.zst'
-        (FORMAT CSV, COMPRESSION ZSTD);
-    """)
+        # Spaltenliste für COALESCE bauen
+        select_cols = ["IP"]
+        for col in cols:
+            select_cols.append(f"COALESCE(b.{col}, a.{col}) AS {col}")
+        select_sql = ", ".join(select_cols)
+
+        query = f"""
+            COPY (
+              SELECT {select_sql}
+              FROM (
+                SELECT row_number() OVER () AS rn, *
+                FROM read_csv_auto('{path_a}/{fname}', compression='zstd')
+              ) a
+              LEFT JOIN (
+                SELECT * 
+                FROM read_csv_auto('{path_b}/{fname}', compression='zstd')
+                SEMI JOIN targets USING(IP)
+              ) b
+              USING(IP)
+              ORDER BY rn
+            )
+            TO '{out_path}/{fname}' (FORMAT CSV, COMPRESSION ZSTD);
+        """
+        con.execute(query)
+
+    # probing und eval mergen
+    merge_file("probing.csv.zst")
+    merge_file("eval.csv.zst")
 
     con.close()
 
