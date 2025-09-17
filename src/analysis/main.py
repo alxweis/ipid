@@ -772,7 +772,7 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
     def prepare_row_data(row) -> np.ndarray:
         return np.fromstring(row.IP_ID_SEQUENCE, sep=",", dtype=np.int32)
 
-    with open(params.probing_csv, "rb") as probing_f, open(params.eval_csv, "rb") as eval_f:
+    with (open(params.probing_csv, "rb") as probing_f, open(params.eval_csv, "rb") as eval_f):
         with probing_dctx.stream_reader(probing_f) as probing_reader, \
                 eval_dctx.stream_reader(eval_f) as eval_reader:
             with io.TextIOWrapper(probing_reader, encoding="utf-8") as probing_text_reader, \
@@ -788,7 +788,8 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
                     for probing_chunk_df in probing_iter:
                         eval_chunk_df = next(eval_iter)
 
-                        assert probing_chunk_df["IP"].equals(eval_chunk_df["IP"])
+                        assert probing_chunk_df["IP"].equals(eval_chunk_df[
+                                                                 "IP"]), f"Probing Chunk Length != Eval Chunk Length ({len(probing_chunk_df)} != {len(eval_chunk_df)})"
                         chunk_df = pd.concat([probing_chunk_df, eval_chunk_df.drop(columns="IP")], axis=1)
                         chunk_length = len(chunk_df)
 
