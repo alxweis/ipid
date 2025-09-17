@@ -32,7 +32,7 @@ def filter_ips_by_class(eval_csv: str, class_filter: list[str]):
     base = os.path.basename(eval_csv)
     assert base == "eval.csv.zst"
 
-    parts = eval_csv.split(os.sep)
+    parts = eval_csv.split("/")
     ts = parts[-2]
     proto = parts[-3]
     output_dir = os.path.join("targets", proto, ts)

@@ -6,6 +6,7 @@ import os
 import sys
 from datetime import datetime
 
+import duckdb
 import matplotlib.pyplot as plt
 import zstandard as zstd
 
@@ -45,6 +46,8 @@ def print_usage():
     print(f"    python {filename} 9 <eval_path> <class_filter>")
     print("  10 - Compute value ranges for random class metrics:")
     print(f"    python {filename} 10 <sequence_length>")
+    print("  11 - Merge SEQ and MASS measurement into SEQ and delete MASS:")
+    print(f"    python {filename} 11 <seq_msm_path> <mass_msm_path>")
     sys.exit(1)
 
 
@@ -211,8 +214,61 @@ def main():
         print_results("Chi2 Result", chi2_result)
         print_results("Dir-Switch Result", dir_switch_result)
         print_results("Autocorr Result", autocorr_result)
+    elif mode == 11:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        seq_msm_path = sys.argv[2]
+        mass_msm_path = sys.argv[3]
+
+        merge_paths(seq_msm_path, mass_msm_path, seq_msm_path)
+        # shutil.rmtree(mass_msm_path)
     else:
         print_usage()
+
+
+def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_count()):
+    con = duckdb.connect()
+    con.execute(f"PRAGMA threads={threads};")
+
+    # Targets einmal einlesen
+    con.execute(f"""
+        CREATE TABLE targets AS
+        SELECT IP FROM read_csv_auto('{path_b}/targets.csv.zst', compression='zstd');
+    """)
+
+    # probing.csv.zst mergen und direkt schreiben
+    con.execute(f"""
+        COPY (
+            SELECT a.*
+            FROM read_csv_auto('{path_a}/probing.csv.zst', compression='zstd') a
+            ANTI JOIN targets t USING(IP)
+            UNION ALL
+            SELECT b.*
+            FROM read_csv_auto('{path_b}/probing.csv.zst', compression='zstd') b
+            SEMI JOIN targets t USING(IP)
+        )
+        TO '{out_path}/probing.csv.zst'
+        (FORMAT CSV, COMPRESSION ZSTD);
+    """)
+
+    # eval.csv.zst mergen und direkt schreiben
+    con.execute(f"""
+        COPY (
+            SELECT a.*
+            FROM read_csv_auto('{path_a}/eval.csv.zst', compression='zstd') a
+            ANTI JOIN targets t USING(IP)
+            UNION ALL
+            SELECT b.*
+            FROM read_csv_auto('{path_b}/eval.csv.zst', compression='zstd') b
+            SEMI JOIN targets t USING(IP)
+        )
+        TO '{out_path}/eval.csv.zst'
+        (FORMAT CSV, COMPRESSION ZSTD);
+    """)
+
+    con.close()
 
 
 if __name__ == "__main__":

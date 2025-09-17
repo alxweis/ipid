@@ -82,7 +82,7 @@ def count_lines_in_zst(file_path):
 def start(result_dir: str):
     probing_csv = os.path.join(result_dir, "probing.csv.zst")
     eval_csv = os.path.join(result_dir, "eval.csv.zst")
-    is_mass_scan = "mass" == result_dir.split(os.sep)[1]
+    is_mass_scan = "mass" == result_dir.split("/")[1]
 
     num_cpus = mp.cpu_count()
     num_workers = max(1, num_cpus - 1)
