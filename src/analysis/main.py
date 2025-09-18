@@ -29,8 +29,7 @@ from postproc.main import count_lines_in_zst
 
 
 def filter_ips_by_class(eval_csv: str, class_filter: list[str]):
-    base = os.path.basename(eval_csv)
-    assert base == "eval.csv.zst"
+    eval_csv = eval_csv + "/eval.csv.zst"
 
     parts = eval_csv.split("/")
     ts = parts[-2]
