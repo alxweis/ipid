@@ -17,35 +17,53 @@ class Config:
     targets: str
     protocol: List[str]
     record_traffic: bool
+
     tcp_dst_port: int
     tcp_request_flags: str
     tcp_src_port_offset: int
+
     udp_dst_port: int
     udp_src_port_offset: int
+
     b2b_request_count: int
     b2b_request_interval: str
     b2b_retry_count: int
+
     seq_request_count: int
+    seq_retry_count: int
+
     mass_request_count: int
     mass_request_interval: str
     mass_reply_portion_threshold: float
-    seq_retry_count: int
+
     iface_a: Interface
     iface_b: Interface
     min_rtt: str
     default_send_ip_ids: List[int]
     detect_reflected_ip_ids: bool
     reflection_send_ip_ids: List[int]
+
     zmap_bandwidth: str
+
+    targets_ip_fn: str
+    targets_os_fn: str
+
+    probing_fn: str
+    eval_fn: str
+
     ip_col_name: str
     ts_ip_col_name: str
     us_ip_col_name: str
+
     os_col_name: str
-    us_os_col_name: str
     ts_os_col_name: str
+    us_os_col_name: str
+    os_data_col_name: str
+
     ip_id_seq_col_name: str
     sent_ts_seq_col_name: str
     received_ts_seq_col_name: str
+
     ip_id_pattern_col_name: str
     avg_rtt_col_name: str
     std_rtt_col_name: str

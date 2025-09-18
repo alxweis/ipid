@@ -119,15 +119,7 @@ def os_scan(targets_path: str, protocol: str, port: str | None):
     print(f"Protocol: {protocol.upper()}")
     print(f"Port: {port}")
 
-    # TODO Port-independent OS scanning
     hitlist.os_scan.start(targets_path)
-
-    # if port == "80":
-    #     http.start(targets_path)
-    # elif port == "53":
-    #     dns.start(targets_path)
-    # else:
-    #     print(f"OS scan is not supported for port {port}!")
 
 
 def main():

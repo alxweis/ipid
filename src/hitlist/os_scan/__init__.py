@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 import zstandard as zstd
 
-from core.utils import config, compress_file
+from core.utils import config, compress_file, runtime
 
 
 def setup(targets_path: str) -> str:
@@ -356,8 +356,7 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
     http_result_file = run_http_scan(http_ips_file)
     dns_result_file = run_dns_scan(dns_ips_file)
 
-    print(
-        f"TODO: Join {snmp_result_file}, {ssh_result_file}, {smb_result_file}, {http_result_file}, {dns_result_file} on IP")
+    # TODO: Join snmp_result_file, ssh_result_file, smb_result_file, http_result_file, dns_result_file on IP
 
 
 def start(targets_path: str):
@@ -365,8 +364,8 @@ def start(targets_path: str):
     ips_tmp_file = setup(targets_path)
     targets_os_file = os.path.join(targets_path, "targets_os.csv")
     run_os_scan(ips_tmp_file, targets_os_file)
-    # result_file = cleanup(ips_tmp_file=ips_tmp_file, targets_os_file=targets_os_file)
-    # print(f"OS-Scan finished: {runtime(start_time)} result=[{result_file}]")
+    result_file = cleanup(ips_tmp_file=ips_tmp_file, targets_os_file=targets_os_file)
+    print(f"OS-Scan finished: {runtime(start_time)} result=[{result_file}]")
 
 
 linux_distros = [
