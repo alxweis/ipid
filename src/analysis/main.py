@@ -392,10 +392,14 @@ class ProcessingParams:
 
     def save(self):
         os.makedirs(self.analysis_dir, exist_ok=True)
+        con = duckdb.connect()
+        target_count = con.execute("SELECT COUNT(*) FROM read_csv_auto('targets.csv.zst')").fetchone()[0]
+        con.close()
         params = {
             "Number of Workers": self.num_workers,
             "Batch Size": self.batch_size,
             "Total Rows": self.total_rows,
+            "Coverage": f"{(self.total_rows / target_count):.2%}",
             "Total Samples": self.total_samples,
             "Targets CSV": self.targets_csv,
             "Is OS Scan": self.is_os_scan,
