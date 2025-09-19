@@ -1301,7 +1301,7 @@ func createUDPLayer(seq uint16) []gopacket.SerializableLayer {
 		QDCount: 1,
 		Questions: []layers.DNSQuestion{
 			{
-				Name:  []byte("example.com"),
+				Name:  []byte(fmt.Sprintf("example%d.com", seq)),
 				Type:  layers.DNSTypeA,
 				Class: layers.DNSClassIN,
 			},

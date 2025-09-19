@@ -923,41 +923,40 @@ def start(result_dir: str):
     total_rows_eval_csv = count_lines_in_zst(eval_csv)
     print(f"Total {total_rows_eval_csv} rows to process for eval_csv")
 
-    # TODO Remove this later
-    if total_rows_eval_csv < total_rows_probing_csv:
-        print("Trim probing.csv.zst...")
-        lines_to_remove = total_rows_probing_csv - total_rows_eval_csv
-        dctx = zstd.ZstdDecompressor()
-        lines = collections.deque(maxlen=lines_to_remove)
-
-        temp_file = probing_csv + ".tmp"
-        with open(probing_csv, 'rb') as f, open(temp_file, 'wb') as out:
-            reader = dctx.stream_reader(f)
-            encoder = zstd.ZstdCompressor().stream_writer(out)
-
-            line_buffer = b""
-            pbar = tqdm(total=total_rows_probing_csv, desc="Processing", unit="lines")
-
-            while chunk := reader.read(16384):
-                line_buffer += chunk
-                while b'\n' in line_buffer:
-                    line, line_buffer = line_buffer.split(b'\n', 1)
-                    if len(lines) == lines_to_remove:
-                        encoder.write(lines.popleft() + b'\n')
-                    lines.append(line)
-                    pbar.update(1)
-
-            if line_buffer:
-                if len(lines) == lines_to_remove:
-                    encoder.write(lines.popleft() + b'\n')
-                lines.append(line_buffer)
-
-            pbar.close()
-            encoder.flush(zstd.FLUSH_FRAME)
-
-        os.replace(temp_file, probing_csv)
-        start(result_dir)
-        return
+    # if total_rows_eval_csv < total_rows_probing_csv:
+    #     print("Trim probing.csv.zst...")
+    #     lines_to_remove = total_rows_probing_csv - total_rows_eval_csv
+    #     dctx = zstd.ZstdDecompressor()
+    #     lines = collections.deque(maxlen=lines_to_remove)
+    #
+    #     temp_file = probing_csv + ".tmp"
+    #     with open(probing_csv, 'rb') as f, open(temp_file, 'wb') as out:
+    #         reader = dctx.stream_reader(f)
+    #         encoder = zstd.ZstdCompressor().stream_writer(out)
+    #
+    #         line_buffer = b""
+    #         pbar = tqdm(total=total_rows_probing_csv, desc="Processing", unit="lines")
+    #
+    #         while chunk := reader.read(16384):
+    #             line_buffer += chunk
+    #             while b'\n' in line_buffer:
+    #                 line, line_buffer = line_buffer.split(b'\n', 1)
+    #                 if len(lines) == lines_to_remove:
+    #                     encoder.write(lines.popleft() + b'\n')
+    #                 lines.append(line)
+    #                 pbar.update(1)
+    #
+    #         if line_buffer:
+    #             if len(lines) == lines_to_remove:
+    #                 encoder.write(lines.popleft() + b'\n')
+    #             lines.append(line_buffer)
+    #
+    #         pbar.close()
+    #         encoder.flush(zstd.FLUSH_FRAME)
+    #
+    #     os.replace(temp_file, probing_csv)
+    #     start(result_dir)
+    #     return
 
     assert total_rows_eval_csv == total_rows_probing_csv, "probing_csv and eval_csv should have same line count!"
 

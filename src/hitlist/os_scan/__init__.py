@@ -8,6 +8,7 @@ import sys
 import time
 import xml.etree.ElementTree as ET
 
+import duckdb
 import zstandard as zstd
 
 from core.utils import config, compress_file, runtime
@@ -356,16 +357,60 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
     http_result_file = run_http_scan(http_ips_file)
     dns_result_file = run_dns_scan(dns_ips_file)
 
-    # TODO: Join snmp_result_file, ssh_result_file, smb_result_file, http_result_file, dns_result_file on IP
+    con = duckdb.connect()
+    query = f"""
+    COPY (
+        SELECT
+            COALESCE(snmp.IP, ssh.IP, smb.IP, http.IP, dns.IP) AS IP,
+    
+            COALESCE(
+              REGEXP_EXTRACT(
+                COALESCE(NULLIF(snmp.SNMP_OS_INFO,''), 
+                         NULLIF(smb.SMB_OS_INFO,''), 
+                         NULLIF(ssh.SSH_OS_INFO,''), 
+                         NULLIF(http.HTTP_OS_INFO,''), 
+                         NULLIF(dns.DNS_OS_INFO,'')),
+                '(?i)({os_pattern_str})'
+              ),
+              ''
+            ) AS OS,
+    
+            COALESCE(snmp.SNMP_OS_INFO, '')   AS SNMP_OS_INFO,
+            COALESCE(smb.SMB_OS_INFO, '')     AS SMB_OS_INFO,
+            COALESCE(ssh.SSH_OS_INFO, '')     AS SSH_OS_INFO,
+            COALESCE(http.HTTP_OS_INFO, '')   AS HTTP_OS_INFO,
+            COALESCE(dns.DNS_OS_INFO, '')     AS DNS_OS_INFO
+    
+        FROM read_csv_auto('{snmp_result_file}') snmp
+        FULL OUTER JOIN read_csv_auto('{ssh_result_file}') ssh USING (IP)
+        FULL OUTER JOIN read_csv_auto('{smb_result_file}') smb USING (IP)
+        FULL OUTER JOIN read_csv_auto('{http_result_file}') http USING (IP)
+        FULL OUTER JOIN read_csv_auto('{dns_result_file}') dns USING (IP)
+    ) TO '{targets_os_file}' (FORMAT CSV, COMPRESSION ZSTD, HEADER);
+    """
+    con.execute(query)
+
+    # Cleanup
+    os.remove(snmp_ips_file)
+    os.remove(ssh_ips_file)
+    os.remove(smb_ips_file)
+    os.remove(http_ips_file)
+    os.remove(dns_ips_file)
+
+    os.remove(snmp_result_file)
+    os.remove(ssh_result_file)
+    os.remove(smb_result_file)
+    os.remove(http_result_file)
+    os.remove(dns_result_file)
 
 
 def start(targets_path: str):
     start_time = time.time()
     ips_tmp_file = setup(targets_path)
-    targets_os_file = os.path.join(targets_path, "targets_os.csv")
+    targets_os_file = os.path.join(targets_path, "targets_os.csv.zst")
     run_os_scan(ips_tmp_file, targets_os_file)
-    result_file = cleanup(ips_tmp_file=ips_tmp_file, targets_os_file=targets_os_file)
-    print(f"OS-Scan finished: {runtime(start_time)} result=[{result_file}]")
+    os.remove(ips_tmp_file)
+    print(f"OS-Scan finished: {runtime(start_time)} result=[{targets_os_file}]")
 
 
 linux_distros = [
@@ -394,3 +439,4 @@ oses = [
     "qnx", "freertos", "openembedded", "yocto", "utm", "gaia", "router", "server"
 ]
 os_pattern = re.compile("|".join(oses), re.IGNORECASE)
+os_pattern_str = "|".join(re.escape(x) for x in oses)
