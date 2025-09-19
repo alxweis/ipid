@@ -393,7 +393,7 @@ class ProcessingParams:
     def save(self):
         os.makedirs(self.analysis_dir, exist_ok=True)
         con = duckdb.connect()
-        target_count = con.execute("SELECT COUNT(*) FROM read_csv_auto('targets.csv.zst')").fetchone()[0]
+        target_count = con.execute(f"SELECT COUNT(*) FROM read_csv_auto('{self.targets_csv}')").fetchone()[0]
         con.close()
         params = {
             "Number of Workers": self.num_workers,
