@@ -388,8 +388,9 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
                       COALESCE(dns.DNS_OS_INFO, '')
                    ),
                    '(?i)(' || '{os_pattern_str}' || ')'
-                ) AS OS
-
+                ),
+                ''
+            ) AS OS,
     
             COALESCE(snmp.SNMP_OS_INFO, '')   AS SNMP_OS_INFO,
             COALESCE(smb.SMB_OS_INFO, '')     AS SMB_OS_INFO,
