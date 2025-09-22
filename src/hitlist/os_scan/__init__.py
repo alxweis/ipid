@@ -111,6 +111,19 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str):
     )
 
 
+def ensure_header(output_file: str, mode: str):
+    if os.path.getsize(output_file) == 0:
+        con = duckdb.connect()
+        query = f"""
+        COPY (
+            SELECT NULL AS IP, NULL AS {mode.upper()}_OS_INFO
+            WHERE FALSE
+        ) TO '{output_file}' (FORMAT CSV, COMPRESSION ZSTD, HEADER);
+        """
+        con.execute(query)
+        con.close()
+
+
 def run_scanner(executable: str, mode: str, ips_file: str) -> str:
     print(f"Starting {mode.upper()} OS-Scan...")
     process = subprocess.Popen(
@@ -139,6 +152,7 @@ def run_scanner(executable: str, mode: str, ips_file: str) -> str:
     processed = parts[1]
     success_count = parts[2]
     print(f"{mode.upper()} OS-Scan finished: result={output_file} processed={processed} success={success_count}")
+    ensure_header(output_file, mode)
     return output_file
 
 
