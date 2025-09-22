@@ -446,12 +446,12 @@ router = ['router']
 
 oses = [
     "ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo", "opensuse", "euleros", "zorin",
-    "linux", "windows server", "windows", "win", "freebsd", "openbsd", "netbsd", "bsd", "macos", "darwin", "solaris",
+    "linux", "windows server", "windows", "win", "microsoft", "lanman", "freebsd", "openbsd", "netbsd", "bsd", "macos", "darwin", "solaris",
     "fritz", "rasp", "openwrt", "lede", "dd-wrt", "ddwrt", "wrt", "vyos", "vyatta", "pfsense", "routeros", "mikrotik",
     "edgeos", "airos", "unifi", "ubiquiti", "junos", "juniper", "cisco ios", "ios-xe", "nx-os", "ios", "cisco",
     "fortios", "fortinet", "forti", "sonicos", "sonicwall", "sonic", "arubaos", "aruba", "draytek", "drayos", "vigor",
     "dray", "zynos", "zyxel", "aix", "hp-ux", "hpux", "z/os", "zos", "openvms", "vms", "vrp", "busybox", "vxworks",
-    "qnx", "freertos", "openembedded", "yocto", "utm", "gaia", "router", "server"
+    "qnx", "freertos", "openembedded", "yocto", "utm", "gaia", "huawei", "router", "server"
 ]
 os_pattern = re.compile("|".join(oses), re.IGNORECASE)
 os_pattern_str = "|".join(re.escape(x) for x in oses)
