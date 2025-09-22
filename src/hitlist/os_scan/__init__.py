@@ -377,10 +377,10 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
             COALESCE(http.HTTP_OS_INFO, '')   AS HTTP_OS_INFO,
             COALESCE(dns.DNS_OS_INFO, '')     AS DNS_OS_INFO
     
-        FROM read_csv_auto('{snmp_result_file}') snmp
-        FULL OUTER JOIN read_csv_auto('{ssh_result_file}') ssh USING (IP)
-        FULL OUTER JOIN read_csv_auto('{http_result_file}') http USING (IP)
-        FULL OUTER JOIN read_csv_auto('{dns_result_file}') dns USING (IP)
+        FROM read_csv('{snmp_result_file}', delim=',', header=true, compression='zstd', quote='"') snmp
+        FULL OUTER JOIN read_csv('{ssh_result_file}',  delim=',', header=true, compression='zstd', quote='"') ssh USING (IP)
+        FULL OUTER JOIN read_csv('{http_result_file}', delim=',', header=true, compression='zstd', quote='"') http USING (IP)
+        FULL OUTER JOIN read_csv('{dns_result_file}',  delim=',', header=true, compression='zstd', quote='', escape='') dns USING (IP)
     ) TO '{targets_os_file}' (FORMAT CSV, COMPRESSION ZSTD, HEADER);
     """
     con.execute(query)
