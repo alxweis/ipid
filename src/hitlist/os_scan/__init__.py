@@ -360,9 +360,11 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
     
             COALESCE(
               REGEXP_EXTRACT(
-                COALESCE(NULLIF(snmp.SNMP_OS_INFO,''), 
-                         NULLIF(ssh.SSH_OS_INFO,''), 
-                         NULLIF(http.HTTP_OS_INFO,''), 
+                COALESCE(
+                  NULLIF(snmp.SNMP_OS_INFO,''),
+                  NULLIF(ssh.SSH_OS_INFO,''),
+                  NULLIF(http.HTTP_OS_INFO,'')
+                ),
                 '(?i)({os_pattern_str})'
               ),
               ''
