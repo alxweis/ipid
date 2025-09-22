@@ -44,7 +44,7 @@ def extract_os_name(expression: str) -> str | None:
     return None
 
 
-def run_port_scan(ips_tmp_file: str) -> (str, str, str, str):
+def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
     base_dir = os.path.dirname(ips_tmp_file)
     output_file = os.path.join(base_dir, "output.xml")
 
@@ -53,7 +53,7 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str):
     process = subprocess.Popen([
         "masscan",
         "-iL", ips_tmp_file,
-        "-p22,161,80,53",
+        "-p22,161,445,80,53",
         "--rate", "30000",
         "-oX", output_file
     ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
@@ -71,6 +71,7 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str):
     services = {
         "22": "ssh",
         "161": "snmp",
+        "445": "smb",
         "80": "http",
         "53": "dns"
     }
@@ -106,6 +107,7 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str):
     return (
         service_files.get("snmp"),
         service_files.get("ssh"),
+        service_files.get("smb"),
         service_files.get("http"),
         service_files.get("dns")
     )
@@ -358,7 +360,7 @@ def run_dns_scan(ips_tmp_file: str) -> str:
 
 
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
-    snmp_ips_file, ssh_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
+    snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
 
     go_file = os.path.join(os.path.dirname(__file__), "main.go")
     executable = os.path.join(os.path.dirname(__file__), "scanner")
@@ -366,6 +368,7 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
 
     snmp_result_file = run_scanner(executable, "snmp", snmp_ips_file)
     ssh_result_file = run_scanner(executable, "ssh", ssh_ips_file)
+    smb_result_file = run_scanner(executable, "smb", smb_ips_file)
     http_result_file = run_http_scan(http_ips_file)
     dns_result_file = run_dns_scan(dns_ips_file)
 
@@ -373,26 +376,30 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
     query = f"""
     COPY (
         SELECT
-            COALESCE(snmp.IP, ssh.IP, http.IP, dns.IP) AS IP,
+            COALESCE(snmp.IP, ssh.IP, smb.IP, http.IP, dns.IP) AS IP,
     
             COALESCE(
-              REGEXP_EXTRACT(
-                COALESCE(NULLIF(snmp.SNMP_OS_INFO,''), 
-                         NULLIF(ssh.SSH_OS_INFO,''), 
-                         NULLIF(http.HTTP_OS_INFO,''), 
-                         NULLIF(dns.DNS_OS_INFO,'')),
-                '(?i)({os_pattern_str})'
-              ),
-              ''
-            ) AS OS,
+                REGEXP_EXTRACT(
+                   CONCAT_WS(' ',
+                      COALESCE(snmp.SNMP_OS_INFO, ''),
+                      COALESCE(smb.SMB_OS_INFO, ''),
+                      COALESCE(ssh.SSH_OS_INFO, ''),
+                      COALESCE(http.HTTP_OS_INFO, ''),
+                      COALESCE(dns.DNS_OS_INFO, '')
+                   ),
+                   '(?i)(' || '{os_pattern_str}' || ')'
+                ) AS OS
+
     
             COALESCE(snmp.SNMP_OS_INFO, '')   AS SNMP_OS_INFO,
+            COALESCE(smb.SMB_OS_INFO, '')     AS SMB_OS_INFO,
             COALESCE(ssh.SSH_OS_INFO, '')     AS SSH_OS_INFO,
             COALESCE(http.HTTP_OS_INFO, '')   AS HTTP_OS_INFO,
             COALESCE(dns.DNS_OS_INFO, '')     AS DNS_OS_INFO
     
         FROM read_csv_auto('{snmp_result_file}') snmp
         FULL OUTER JOIN read_csv_auto('{ssh_result_file}') ssh USING (IP)
+        FULL OUTER JOIN read_csv_auto('{smb_result_file}') smb USING (IP)
         FULL OUTER JOIN read_csv_auto('{http_result_file}') http USING (IP)
         FULL OUTER JOIN read_csv_auto('{dns_result_file}') dns USING (IP)
     ) TO '{targets_os_file}' (FORMAT CSV, COMPRESSION ZSTD, HEADER);
