@@ -515,9 +515,9 @@ func (pm *B2B) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
 
 		massScanCheck := isMassScan && (replyPortion >= config.MASSReplyPortionThreshold)
 
-		if replyPortion < config.MASSReplyPortionThreshold {
-			log.Printf("%d/%d replies. Too few replies!", rc, pm.requestCount)
-		}
+		//if replyPortion < config.MASSReplyPortionThreshold {
+		//	log.Printf("%d/%d replies. Too few replies!", rc, pm.requestCount)
+		//}
 
 		if foundAllReplies || massScanCheck { // Successfully finished probing
 			probeSaveChan <- probe
@@ -1433,8 +1433,8 @@ func logStatistics() {
 			}
 		}
 
-		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] sent_pps=[%.0f] worker_count=[%d]\n",
-			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, sentPps, workerCount)
+		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %d/%d=%.2f%%] sent_mbps=[%.2f] sent_pps=[%.0f] worker_count=[%d]\n",
+			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, totalValidProbeCount, totalProbeCount, validProbeCountPercentage, sentMbps, sentPps, workerCount)
 
 		lastTotalProbeCount = totalProbeCount
 		lastTotalValidProbeCount = totalValidProbeCount
