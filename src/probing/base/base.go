@@ -159,7 +159,7 @@ var (
 )
 
 const (
-	workerCount        = 1 << 12
+	workerCount        = 1 << 10
 	workerTargetChSize = 1 << 6
 )
 
@@ -1301,7 +1301,7 @@ func createUDPLayer(seq uint16) []gopacket.SerializableLayer {
 		QDCount: 1,
 		Questions: []layers.DNSQuestion{
 			{
-				Name:  []byte(fmt.Sprintf("example%d.com", seq)),
+				Name:  []byte(fmt.Sprintf("%d.example.com", seq)),
 				Type:  layers.DNSTypeA,
 				Class: layers.DNSClassIN,
 			},
