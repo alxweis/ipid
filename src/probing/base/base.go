@@ -900,9 +900,9 @@ func saveProbes() {
 	}
 
 	length := int(pm.probingVars().requestCount)
-	ipIds := make([]string, length)
-	sentTimes := make([]string, length)
-	receivedTimes := make([]string, length)
+	var ipIds []string
+	var sentTimes []string
+	var receivedTimes []string
 
 	// Read from channel and write each probe to the output file
 	for probe := range probeSaveChan {
@@ -910,22 +910,16 @@ func saveProbes() {
 			panic("Probe Data has not correct length!")
 		}
 
-		moveToNextProbe := false
-		for i, pp := range probe.Data {
+		for _, pp := range probe.Data {
 			if !pp.Check {
 				if isMassScan {
-					moveToNextProbe = true
-					break
+					continue
 				}
 				panic("Probe Point is not checked!")
 			}
-			ipIds[i] = strconv.Itoa(int(pp.IpId))
-			sentTimes[i] = strconv.FormatInt(pp.SentTime, 10)
-			receivedTimes[i] = strconv.FormatInt(pp.ReceivedTime, 10)
-		}
-
-		if moveToNextProbe {
-			continue
+			ipIds = append(ipIds, strconv.Itoa(int(pp.IpId)))
+			sentTimes = append(sentTimes, strconv.FormatInt(pp.SentTime, 10))
+			receivedTimes = append(receivedTimes, strconv.FormatInt(pp.ReceivedTime, 10))
 		}
 
 		// Format record
@@ -941,11 +935,15 @@ func saveProbes() {
 		if err != nil {
 			panic(err)
 		}
+
+		ipIds = ipIds[:0]
+		sentTimes = sentTimes[:0]
+		receivedTimes = receivedTimes[:0]
 	}
 }
 
-func joinWithComma(arr []string) string {
-	return strings.Join(arr, ",")
+func joinWithComma(lst []string) string {
+	return strings.Join(lst, ",")
 }
 
 // Setup
