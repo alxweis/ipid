@@ -46,27 +46,29 @@ def extract_os_name(expression: str) -> str | None:
 
 def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
     base_dir = os.path.dirname(ips_tmp_file)
-    output_file = os.path.join(base_dir, "output.xml")
+    # output_file = os.path.join(base_dir, "output.xml")
+    #
+    # print(f"Starting Port-Scan for {ips_tmp_file}...")
+    #
+    # process = subprocess.Popen([
+    #     "masscan",
+    #     "-iL", ips_tmp_file,
+    #     "-p22,161,445,80,53",
+    #     "--rate", "30000",
+    #     "-oX", output_file
+    # ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+    #
+    # while True:
+    #     output = process.stdout.readline()
+    #     if output == '' and process.poll() is not None:
+    #         break
+    #     if output:
+    #         line = output.strip()
+    #         print(line)  # Live output
+    #
+    # print(f"Port-Scan finished: result={output_file}")
 
-    print(f"Starting Port-Scan for {ips_tmp_file}...")
-
-    process = subprocess.Popen([
-        "masscan",
-        "-iL", ips_tmp_file,
-        "-p22,161,445,80,53",
-        "--rate", "30000",
-        "-oX", output_file
-    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
-
-    while True:
-        output = process.stdout.readline()
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            line = output.strip()
-            print(line)  # Live output
-
-    print(f"Port-Scan finished: result={output_file}")
+    output_file = "targets/tcp/80/2025-09-29_09-14-21/output.xml"  # TODO: Revert this later
 
     services = {
         "22": "ssh",
