@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+from typing import Optional
 
 import duckdb
 import zstandard as zstd
@@ -70,48 +71,70 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
 
     output_file = "targets/tcp/80/2025-09-29_09-14-21/output.xml"  # TODO: Revert this later
 
+    progress_every = 100000
+
     services = {
         "22": "ssh",
         "161": "snmp",
         "445": "smb",
         "80": "http",
         "53": "dns"
-    }
+    }    # open output files for immediate write
+    files = {srv: open(os.path.join(base_dir, f"{srv}_ips.txt"), "w") for srv in services.values()}
 
-    # Initialize IP sets for each service
-    service_ips = {service: set() for service in services.values()}
+    parsed = 0
+    try:
+        # iterparse with end events streams and elem.clear saves RAM
+        for event, elem in ET.iterparse(output_file, events=("end",)):
+            tag = elem.tag.split("}", 1)[-1]  # namespace safe
+            if tag != "host":
+                elem.clear()
+                continue
 
-    # Parse XML and categorize IPs by open ports
-    for event, elem in ET.iterparse(output_file, events=("end",)):
-        if elem.tag == "host":
-            ip = elem.find("address").get("addr")
-            ports = elem.find("ports")
-            if ports is not None:
-                for port in ports.findall("port"):
-                    port_id = port.get("portid")
-                    if port_id in services:
-                        service_ips[services[port_id]].add(ip)
+            addr = elem.find(".//address")
+            if addr is not None:
+                ip = addr.get("addr")
+                if ip:
+                    # find all port entries under host and only accept open states
+                    for p in elem.findall(".//port"):
+                        pid = p.get("portid") or p.get("port")
+                        if not pid:
+                            continue
+                        state_elem = p.find("state")
+                        if state_elem is not None:
+                            st = state_elem.get("state")
+                            if st != "open":
+                                continue
+                        srv = services.get(pid)
+                        if srv:
+                            files[srv].write(ip + "\n")
+
+            parsed += 1
+            if parsed % progress_every == 0:
+                print(f"parsed hosts: {parsed}")
+
             elem.clear()
+    except ET.ParseError as e:
+        print("XML parse error:", e)
+    finally:
+        for f in files.values():
+            f.close()
 
-    # Write IP lists and collect file paths
-    service_files = {}
-    for service, ips in service_ips.items():
-        if ips:  # Only create files for services with IPs
-            filename = os.path.join(base_dir, f"{service}_ips.txt")
-            with open(filename, "w") as f:
-                f.writelines(f"{ip}\n" for ip in ips)
+    for srv in services.values():
+        path = os.path.join(base_dir, f"{srv}_ips.txt")
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            subprocess.run(["sort", "-u", "-o", path, path], check=False)
 
-            print(f"Saved {len(ips)} IP addresses for {service.upper()} in {filename}")
-            service_files[service] = filename
-        else:
-            service_files[service] = None
+    def maybe_path(srv: str) -> Optional[str]:
+        p = os.path.join(base_dir, f"{srv}_ips.txt")
+        return p if os.path.exists(p) and os.path.getsize(p) > 0 else None
 
     return (
-        service_files.get("snmp"),
-        service_files.get("ssh"),
-        service_files.get("smb"),
-        service_files.get("http"),
-        service_files.get("dns")
+        maybe_path("snmp"),
+        maybe_path("ssh"),
+        maybe_path("smb"),
+        maybe_path("http"),
+        maybe_path("dns"),
     )
 
 
@@ -448,7 +471,8 @@ router = ['router']
 
 oses = [
     "ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo", "opensuse", "euleros", "zorin",
-    "linux", "windows server", "windows", "win", "microsoft", "lanman", "freebsd", "openbsd", "netbsd", "bsd", "macos", "darwin", "solaris",
+    "linux", "windows server", "windows", "win", "microsoft", "lanman", "freebsd", "openbsd", "netbsd", "bsd", "macos",
+    "darwin", "solaris",
     "fritz", "rasp", "openwrt", "lede", "dd-wrt", "ddwrt", "wrt", "vyos", "vyatta", "pfsense", "routeros", "mikrotik",
     "edgeos", "airos", "unifi", "ubiquiti", "junos", "juniper", "cisco ios", "ios-xe", "nx-os", "ios", "cisco",
     "fortios", "fortinet", "forti", "sonicos", "sonicwall", "sonic", "arubaos", "aruba", "draytek", "drayos", "vigor",
