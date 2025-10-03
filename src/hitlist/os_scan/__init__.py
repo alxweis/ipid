@@ -7,7 +7,6 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
-from typing import Optional
 
 import duckdb
 import zstandard as zstd
@@ -47,31 +46,27 @@ def extract_os_name(expression: str) -> str | None:
 
 def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
     base_dir = os.path.dirname(ips_tmp_file)
-    # output_file = os.path.join(base_dir, "output.xml")
-    #
-    # print(f"Starting Port-Scan for {ips_tmp_file}...")
-    #
-    # process = subprocess.Popen([
-    #     "masscan",
-    #     "-iL", ips_tmp_file,
-    #     "-p22,161,445,80,53",
-    #     "--rate", "30000",
-    #     "-oX", output_file
-    # ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
-    #
-    # while True:
-    #     output = process.stdout.readline()
-    #     if output == '' and process.poll() is not None:
-    #         break
-    #     if output:
-    #         line = output.strip()
-    #         print(line)  # Live output
-    #
-    # print(f"Port-Scan finished: result={output_file}")
+    output_file = os.path.join(base_dir, "output.xml")
 
-    output_file = "targets/tcp/80/2025-09-29_09-14-21/output.xml"  # TODO: Revert this later
+    print(f"Starting Port-Scan for {ips_tmp_file}...")
 
-    progress_every = 100000
+    process = subprocess.Popen([
+        "masscan",
+        "-iL", ips_tmp_file,
+        "-p22,161,445,80,53",
+        "--rate", "30000",
+        "-oX", output_file
+    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+
+    while True:
+        output = process.stdout.readline()
+        if output == '' and process.poll() is not None:
+            break
+        if output:
+            line = output.strip()
+            print(line)  # Live output
+
+    print(f"Port-Scan finished: result={output_file}")
 
     services = {
         "22": "ssh",
@@ -79,62 +74,42 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
         "445": "smb",
         "80": "http",
         "53": "dns"
-    }    # open output files for immediate write
-    files = {srv: open(os.path.join(base_dir, f"{srv}_ips.txt"), "w") for srv in services.values()}
+    }
 
-    parsed = 0
-    try:
-        # iterparse with end events streams and elem.clear saves RAM
-        for event, elem in ET.iterparse(output_file, events=("end",)):
-            tag = elem.tag.split("}", 1)[-1]  # namespace safe
-            if tag != "host":
-                elem.clear()
-                continue
+    # Initialize IP sets for each service
+    service_ips = {service: set() for service in services.values()}
 
-            addr = elem.find(".//address")
-            if addr is not None:
-                ip = addr.get("addr")
-                if ip:
-                    # find all port entries under host and only accept open states
-                    for p in elem.findall(".//port"):
-                        pid = p.get("portid") or p.get("port")
-                        if not pid:
-                            continue
-                        state_elem = p.find("state")
-                        if state_elem is not None:
-                            st = state_elem.get("state")
-                            if st != "open":
-                                continue
-                        srv = services.get(pid)
-                        if srv:
-                            files[srv].write(ip + "\n")
-
-            parsed += 1
-            if parsed % progress_every == 0:
-                print(f"parsed hosts: {parsed}")
-
+    # Parse XML and categorize IPs by open ports
+    for event, elem in ET.iterparse(output_file, events=("end",)):
+        if elem.tag == "host":
+            ip = elem.find("address").get("addr")
+            ports = elem.find("ports")
+            if ports is not None:
+                for port in ports.findall("port"):
+                    port_id = port.get("portid")
+                    if port_id in services:
+                        service_ips[services[port_id]].add(ip)
             elem.clear()
-    except ET.ParseError as e:
-        print("XML parse error:", e)
-    finally:
-        for f in files.values():
-            f.close()
 
-    for srv in services.values():
-        path = os.path.join(base_dir, f"{srv}_ips.txt")
-        if os.path.exists(path) and os.path.getsize(path) > 0:
-            subprocess.run(["sort", "-u", "-o", path, path], check=False)
+    # Write IP lists and collect file paths
+    service_files = {}
+    for service, ips in service_ips.items():
+        if ips:  # Only create files for services with IPs
+            filename = os.path.join(base_dir, f"{service}_ips.txt")
+            with open(filename, "w") as f:
+                f.writelines(f"{ip}\n" for ip in ips)
 
-    def maybe_path(srv: str) -> Optional[str]:
-        p = os.path.join(base_dir, f"{srv}_ips.txt")
-        return p if os.path.exists(p) and os.path.getsize(p) > 0 else None
+            print(f"Saved {len(ips)} IP addresses for {service.upper()} in {filename}")
+            service_files[service] = filename
+        else:
+            service_files[service] = None
 
     return (
-        maybe_path("snmp"),
-        maybe_path("ssh"),
-        maybe_path("smb"),
-        maybe_path("http"),
-        maybe_path("dns"),
+        service_files.get("snmp"),
+        service_files.get("ssh"),
+        service_files.get("smb"),
+        service_files.get("http"),
+        service_files.get("dns")
     )
 
 
@@ -402,7 +377,7 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
     COPY (
         SELECT
             COALESCE(snmp.IP, ssh.IP, smb.IP, http.IP, dns.IP) AS IP,
-    
+
             COALESCE(
                 REGEXP_EXTRACT(
                    CONCAT_WS(' ',
@@ -416,13 +391,13 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
                 ),
                 ''
             ) AS OS,
-    
+
             COALESCE(snmp.SNMP_OS_INFO, '')   AS SNMP_OS_INFO,
             COALESCE(smb.SMB_OS_INFO, '')     AS SMB_OS_INFO,
             COALESCE(ssh.SSH_OS_INFO, '')     AS SSH_OS_INFO,
             COALESCE(http.HTTP_OS_INFO, '')   AS HTTP_OS_INFO,
             COALESCE(dns.DNS_OS_INFO, '')     AS DNS_OS_INFO
-    
+
         FROM read_csv_auto('{snmp_result_file}') snmp
         FULL OUTER JOIN read_csv_auto('{ssh_result_file}') ssh USING (IP)
         FULL OUTER JOIN read_csv_auto('{smb_result_file}') smb USING (IP)
