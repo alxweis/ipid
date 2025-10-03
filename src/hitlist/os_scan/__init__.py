@@ -6,7 +6,6 @@ import re
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ET
 
 import duckdb
 import zstandard as zstd
@@ -46,71 +45,78 @@ def extract_os_name(expression: str) -> str | None:
 
 def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
     base_dir = os.path.dirname(ips_tmp_file)
-    output_file = os.path.join(base_dir, "output.xml")
-
-    print(f"Starting Port-Scan for {ips_tmp_file}...")
-
-    process = subprocess.Popen([
-        "masscan",
-        "-iL", ips_tmp_file,
-        "-p22,161,445,80,53",
-        "--rate", "30000",
-        "-oX", output_file
-    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
-
-    while True:
-        output = process.stdout.readline()
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            line = output.strip()
-            print(line)  # Live output
-
-    print(f"Port-Scan finished: result={output_file}")
-
-    services = {
-        "22": "ssh",
-        "161": "snmp",
-        "445": "smb",
-        "80": "http",
-        "53": "dns"
-    }
-
-    # Initialize IP sets for each service
-    service_ips = {service: set() for service in services.values()}
-
-    # Parse XML and categorize IPs by open ports
-    for event, elem in ET.iterparse(output_file, events=("end",)):
-        if elem.tag == "host":
-            ip = elem.find("address").get("addr")
-            ports = elem.find("ports")
-            if ports is not None:
-                for port in ports.findall("port"):
-                    port_id = port.get("portid")
-                    if port_id in services:
-                        service_ips[services[port_id]].add(ip)
-            elem.clear()
-
-    # Write IP lists and collect file paths
-    service_files = {}
-    for service, ips in service_ips.items():
-        if ips:  # Only create files for services with IPs
-            filename = os.path.join(base_dir, f"{service}_ips.txt")
-            with open(filename, "w") as f:
-                f.writelines(f"{ip}\n" for ip in ips)
-
-            print(f"Saved {len(ips)} IP addresses for {service.upper()} in {filename}")
-            service_files[service] = filename
-        else:
-            service_files[service] = None
-
     return (
-        service_files.get("snmp"),
-        service_files.get("ssh"),
-        service_files.get("smb"),
-        service_files.get("http"),
-        service_files.get("dns")
+        os.path.join(base_dir, "snmp_ips.txt"),
+        os.path.join(base_dir, "ssh_ips.txt"),
+        os.path.join(base_dir, "smb_ips.txt"),
+        os.path.join(base_dir, "http_ips.txt"),
+        os.path.join(base_dir, "dns_ips.txt")
     )
+    # output_file = os.path.join(base_dir, "output.xml")
+    #
+    # print(f"Starting Port-Scan for {ips_tmp_file}...")
+    #
+    # process = subprocess.Popen([
+    #     "masscan",
+    #     "-iL", ips_tmp_file,
+    #     "-p22,161,445,80,53",
+    #     "--rate", "30000",
+    #     "-oX", output_file
+    # ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+    #
+    # while True:
+    #     output = process.stdout.readline()
+    #     if output == '' and process.poll() is not None:
+    #         break
+    #     if output:
+    #         line = output.strip()
+    #         print(line)  # Live output
+    #
+    # print(f"Port-Scan finished: result={output_file}")
+    #
+    # services = {
+    #     "22": "ssh",
+    #     "161": "snmp",
+    #     "445": "smb",
+    #     "80": "http",
+    #     "53": "dns"
+    # }
+    #
+    # # Initialize IP sets for each service
+    # service_ips = {service: set() for service in services.values()}
+    #
+    # # Parse XML and categorize IPs by open ports
+    # for event, elem in ET.iterparse(output_file, events=("end",)):
+    #     if elem.tag == "host":
+    #         ip = elem.find("address").get("addr")
+    #         ports = elem.find("ports")
+    #         if ports is not None:
+    #             for port in ports.findall("port"):
+    #                 port_id = port.get("portid")
+    #                 if port_id in services:
+    #                     service_ips[services[port_id]].add(ip)
+    #         elem.clear()
+    #
+    # # Write IP lists and collect file paths
+    # service_files = {}
+    # for service, ips in service_ips.items():
+    #     if ips:  # Only create files for services with IPs
+    #         filename = os.path.join(base_dir, f"{service}_ips.txt")
+    #         with open(filename, "w") as f:
+    #             f.writelines(f"{ip}\n" for ip in ips)
+    #
+    #         print(f"Saved {len(ips)} IP addresses for {service.upper()} in {filename}")
+    #         service_files[service] = filename
+    #     else:
+    #         service_files[service] = None
+    #
+    # return (
+    #     service_files.get("snmp"),
+    #     service_files.get("ssh"),
+    #     service_files.get("smb"),
+    #     service_files.get("http"),
+    #     service_files.get("dns")
+    # )
 
 
 def ensure_header(output_file: str, mode: str):
