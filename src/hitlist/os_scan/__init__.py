@@ -404,7 +404,7 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
             COALESCE(http.HTTP_OS_INFO, '')   AS HTTP_OS_INFO,
             COALESCE(dns.DNS_OS_INFO, '')     AS DNS_OS_INFO
 
-        FROM read_csv_auto('{snmp_result_file}') snmp
+        FROM read_csv_auto('{snmp_result_file}', ignore_errors=True) snmp
         FULL OUTER JOIN read_csv_auto('{ssh_result_file}') ssh USING (IP)
         FULL OUTER JOIN read_csv_auto('{smb_result_file}') smb USING (IP)
         FULL OUTER JOIN read_csv_auto('{http_result_file}') http USING (IP)
