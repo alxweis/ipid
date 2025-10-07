@@ -368,11 +368,11 @@ def run_dns_scan(ips_tmp_file: str) -> str:
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
     # snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
 
-    go_file = os.path.join(os.path.dirname(__file__), "main.go")
-    executable = os.path.join(os.path.dirname(__file__), "scanner")
-    subprocess.run(["go", "build", "-o", executable, go_file], check=True, cwd=os.path.dirname(__file__))
+    # go_file = os.path.join(os.path.dirname(__file__), "main.go")
+    # executable = os.path.join(os.path.dirname(__file__), "scanner")
+    # subprocess.run(["go", "build", "-o", executable, go_file], check=True, cwd=os.path.dirname(__file__))
 
-    snmp_result_file = run_scanner(executable, "snmp", "targets/tcp/80/2025-09-29_09-14-21/snmp_ips.txt")
+    snmp_result_file = "targets/tcp/80/2025-09-29_09-14-21/snmp_os_info.csv.zst"
     ssh_result_file = "targets/tcp/80/2025-09-29_09-14-21/ssh_os_info.csv.zst"
     smb_result_file = "targets/tcp/80/2025-09-29_09-14-21/smb_os_info.csv.zst"
     http_result_file = "targets/tcp/80/2025-09-29_09-14-21/http_os_info.csv.zst"
