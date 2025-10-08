@@ -2,18 +2,22 @@ import bz2
 import csv
 import ipaddress
 import os
+import pickle
 import shutil
 import sys
 import tempfile
 from datetime import datetime
+from pathlib import Path
 
 import duckdb
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import zstandard as zstd
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
+from core import EXPERIMENTAL_RESULTS
 from core.classifier import pattern_generation_map, chi2_test, autocorr, dir_switch_count, AUTOCORR_MAX_LAG, Pattern
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
@@ -56,6 +60,8 @@ def print_usage():
     print(f"    python {filename} 13 <caida_itdk_path> <msm_path>")
     print("  14 - Analyze end-device IP-ID behavior:")
     print(f"    python {filename} 14 <caida_itdk_path> <msm_path>")
+    print("  15 - Plot transit-hop/end-host distribution:")
+    print(f"    python {filename} 15 <msm_path> <protocol_name>")
     sys.exit(1)
 
 
@@ -384,7 +390,6 @@ def main():
         ratio = result["consistency_ratio"][0]
 
         print(f"Consistency ratio (only multi-IP nodes): {consistent_nodes} / {total_nodes} = {ratio:.6f}")
-
     elif mode == 13:
         if len(sys.argv) < 4:
             print_usage()
@@ -395,6 +400,12 @@ def main():
             print_usage()
             return
         analyze_traceroute_device_behavior(str(sys.argv[2]), str(sys.argv[3]), t=0, d=1, name="end-device")
+    elif mode == 15:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        plot_distribution(str(sys.argv[2]),  str(sys.argv[3]))
     else:
         print_usage()
 
@@ -557,6 +568,79 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
 
     print(f"Merged {path_a} & {path_b} => {out_path}")
     print(f"Rerun analysis of {out_path} to get merged results!")
+
+
+def plot_distribution(msm_path: str, name: str):
+    # --- Load data ---
+
+    transit_path = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution", "data.pkl")
+    endhost_path = os.path.join(msm_path, "analysis", "end-device_pattern_distribution", "data.pkl")
+
+    with open(Path(transit_path), "rb") as f:
+        transit_data = pickle.load(f)
+    with open(Path(endhost_path), "rb") as f:
+        endhost_data = pickle.load(f)
+
+    # --- Handle DataFrame input ---
+    if isinstance(transit_data, pd.DataFrame):
+        transit_data = dict(zip(transit_data["class"], transit_data["relative"]))
+    if isinstance(endhost_data, pd.DataFrame):
+        endhost_data = dict(zip(endhost_data["class"], endhost_data["relative"]))
+
+    # --- Dynamic class order from Enum ---
+    class_order = [p.value for p in Pattern]
+    classes = [c for c in class_order if c in transit_data or c in endhost_data]
+
+    # --- Normalize and extract ---
+    transit_values = [float(transit_data[c]) for c in classes]
+    endhost_values = [float(endhost_data.get(c, 0.0)) for c in classes]
+
+    # --- ACM Plot style ---
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.size": 8,
+        "axes.linewidth": 0.6,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "legend.fontsize": 7,
+        "pdf.fonttype": 42,  # TrueType fonts for ACM
+    })
+
+    fig, ax = plt.subplots(figsize=(3.35, 1.6))  # fits double-column width
+
+    x = np.arange(len(classes))
+    width = 0.38
+
+    ax.bar(x - width / 2, transit_values, width, label="Transit-hops", color="#1f77b4", edgecolor="none")
+    ax.bar(x + width / 2, endhost_values, width, label="End-hosts", color="#ff7f0e", edgecolor="none")
+
+    # --- Percentage labels ---
+    for i, cls in enumerate(classes):
+        ax.text(x[i] - width / 2, transit_values[i] + 0.6,
+                f"{transit_values[i]:.1f}" if transit_values[i] >= 0.1 else "<0.1",
+                ha='center', va='bottom', fontsize=6.5)
+        ax.text(x[i] + width / 2, endhost_values[i] + 0.6,
+                f"{endhost_values[i]:.1f}" if endhost_values[i] >= 0.1 else "<0.1",
+                ha='center', va='bottom', fontsize=6.5)
+
+    # --- Labels, grid, and legend ---
+    ax.set_ylabel("Percentage [%]", labelpad=1)
+    ax.set_xticks(x)
+    ax.set_xticklabels(classes, rotation=25, ha='center')
+    ax.set_ylim(0, max(max(transit_values), max(endhost_values)) * 1.18)
+    ax.grid(axis='y', linestyle='--', linewidth=0.4, alpha=0.5)
+    ax.legend(frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.25))
+
+    # --- Compact layout ---
+    plt.tight_layout()
+
+    # --- Save ---
+    path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_distribution.pdf")
+    plt.savefig(path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[+] ACM-style figure saved to {path}")
 
 
 if __name__ == "__main__":
