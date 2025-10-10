@@ -1,6 +1,8 @@
 import bz2
 import csv
 import ipaddress
+import itertools
+import json
 import os
 import pickle
 import shutil
@@ -318,7 +320,7 @@ def main():
 
         con = duckdb.connect()
 
-        # load eval and node_to_ips
+        # --- Load data ---
         con.execute(f"""
             create table eval as
             select * from read_csv_auto('{eval_file}', compression='zstd')
@@ -329,7 +331,7 @@ def main():
             select * from read_csv_auto('{node_to_ips_file}', compression='zstd')
         """)
 
-        # explode IP_LIST into rows
+        # --- Explode IP_LIST into rows ---
         con.execute("""
             create table node_ip_map as
             select
@@ -338,23 +340,10 @@ def main():
             from node_to_ips
         """)
 
-        # join with eval
-        con.execute("""
-            create table node_eval as
-            select
-                m.NODE,
-                e.IP_ID_PATTERN
-            from node_ip_map m
-            join eval e
-            on m.IP = e.IP
-        """)
-
-        # check consistency: count distinct patterns per node
+        # --- Consistency analysis (only multi-IP nodes) ---
         result = con.execute("""
             with exploded as (
-                select
-                    NODE,
-                    unnest(string_split(IP_LIST, ' ')) as IP
+                select NODE, unnest(string_split(IP_LIST, ' ')) as IP
                 from node_to_ips
             ),
             filtered as (
@@ -364,17 +353,13 @@ def main():
                 having count(*) > 1
             ),
             node_eval as (
-                select
-                    e.NODE,
-                    v.IP_ID_PATTERN
+                select e.NODE, v.IP_ID_PATTERN
                 from exploded e
                 join eval v on e.IP = v.IP
                 where e.NODE in (select NODE from filtered)
             ),
             counts as (
-                select
-                    NODE,
-                    count(distinct IP_ID_PATTERN) as pattern_count
+                select NODE, count(distinct IP_ID_PATTERN) as pattern_count
                 from node_eval
                 group by NODE
             )
@@ -390,6 +375,105 @@ def main():
         ratio = result["consistency_ratio"][0]
 
         print(f"Consistency ratio (only multi-IP nodes): {consistent_nodes} / {total_nodes} = {ratio:.6f}")
+
+        # --- Pattern distribution for inconsistent nodes ---
+        inconsistent_patterns = con.execute("""
+            with exploded as (
+                select NODE, unnest(string_split(IP_LIST, ' ')) as IP
+                from node_to_ips
+            ),
+            filtered as (
+                select NODE, count(*) as ip_count
+                from exploded
+                group by NODE
+                having count(*) > 1
+            ),
+            node_eval as (
+                select e.NODE, v.IP_ID_PATTERN
+                from exploded e
+                join eval v on e.IP = v.IP
+                where e.NODE in (select NODE from filtered)
+            ),
+            counts as (
+                select NODE, count(distinct IP_ID_PATTERN) as pattern_count
+                from node_eval
+                group by NODE
+            ),
+            inconsistent as (
+                select n.NODE, v.IP_ID_PATTERN
+                from counts n
+                join node_eval v using (NODE)
+                where n.pattern_count > 1
+            )
+            select
+                IP_ID_PATTERN,
+                count(distinct NODE) as node_count
+            from inconsistent
+            group by IP_ID_PATTERN
+            order by node_count desc
+        """).fetchdf()
+
+        # print("\n[Pattern distribution among inconsistent multi-IP nodes]")
+        # print(inconsistent_patterns.to_string(index=False))
+
+        # --- Collect all pattern sets for inconsistent nodes ---
+        node_patterns = con.execute("""
+            with exploded as (
+                select NODE, unnest(string_split(IP_LIST, ' ')) as IP
+                from node_to_ips
+            ),
+            filtered as (
+                select NODE, count(*) as ip_count
+                from exploded
+                group by NODE
+                having count(*) > 1
+            ),
+            node_eval as (
+                select e.NODE, v.IP_ID_PATTERN
+                from exploded e
+                join eval v on e.IP = v.IP
+                where e.NODE in (select NODE from filtered)
+            ),
+            counts as (
+                select NODE, count(distinct IP_ID_PATTERN) as pattern_count
+                from node_eval
+                group by NODE
+            )
+            select NODE, array_agg(distinct IP_ID_PATTERN) as patterns
+            from node_eval
+            where NODE in (select NODE from counts where pattern_count > 1)
+            group by NODE
+        """).fetchdf()
+
+        # --- Pairwise pattern combinations ---
+        # pair_counter = {}
+        # for _, row in node_patterns.iterrows():
+        #     patterns = sorted(row["patterns"])
+        #     for a, b in itertools.combinations(patterns, 2):
+        #         pair = (a, b)
+        #         pair_counter[pair] = pair_counter.get(pair, 0) + 1
+        #
+        # pair_df = pd.DataFrame([
+        #     {"Pattern_A": a, "Pattern_B": b, "Nodes": n}
+        #     for (a, b), n in sorted(pair_counter.items(), key=lambda x: x[1], reverse=True)
+        # ])
+        #
+        # print("\n[Most common pairwise pattern combinations within inconsistent nodes]")
+        # print(pair_df.head(15).to_string(index=False))
+
+        # --- Full pattern sets (without cardinality) ---
+        set_counter = {}
+        for _, row in node_patterns.iterrows():
+            pattern_tuple = tuple(sorted(row["patterns"]))
+            set_counter[pattern_tuple] = set_counter.get(pattern_tuple, 0) + 1
+
+        set_df = pd.DataFrame([
+            {"Pattern_Set": json.dumps(list(s), ensure_ascii=False), "Nodes": n}
+            for s, n in sorted(set_counter.items(), key=lambda x: x[1], reverse=True)
+        ])
+
+        print("\n[Full pattern-set combinations]")
+        print(set_df.head(15).to_string(index=False))
     elif mode == 13:
         if len(sys.argv) < 4:
             print_usage()
@@ -405,7 +489,7 @@ def main():
             print_usage()
             return
 
-        plot_distribution(str(sys.argv[2]),  str(sys.argv[3]))
+        plot_distribution(str(sys.argv[2]), str(sys.argv[3]))
     else:
         print_usage()
 
@@ -587,13 +671,14 @@ def plot_distribution(msm_path: str, name: str):
     if isinstance(endhost_data, pd.DataFrame):
         endhost_data = dict(zip(endhost_data["class"], endhost_data["relative"]))
 
-    # --- Dynamic class order from Enum ---
-    class_order = [p.value for p in Pattern]
-    classes = [c for c in class_order if c in transit_data or c in endhost_data]
+    # --- Merge all classes that appear in either dataset ---
+    all_classes = sorted(set(transit_data.keys()) | set(endhost_data.keys()),
+                         key=lambda c: [p.value for p in Pattern].index(c)
+                         if c in [p.value for p in Pattern] else 999)
 
-    # --- Normalize and extract ---
-    transit_values = [float(transit_data[c]) for c in classes]
-    endhost_values = [float(endhost_data.get(c, 0.0)) for c in classes]
+    # --- Extract values safely ---
+    transit_values = [float(transit_data.get(c, 0.0)) for c in all_classes]
+    endhost_values = [float(endhost_data.get(c, 0.0)) for c in all_classes]
 
     # --- ACM Plot style ---
     plt.rcParams.update({
@@ -610,25 +695,34 @@ def plot_distribution(msm_path: str, name: str):
 
     fig, ax = plt.subplots(figsize=(3.35, 1.6))  # fits double-column width
 
-    x = np.arange(len(classes))
+    x = np.arange(len(all_classes))
     width = 0.38
 
     ax.bar(x - width / 2, transit_values, width, label="Transit-hops", color="#1f77b4", edgecolor="none")
     ax.bar(x + width / 2, endhost_values, width, label="End-hosts", color="#ff7f0e", edgecolor="none")
 
     # --- Percentage labels ---
-    for i, cls in enumerate(classes):
-        ax.text(x[i] - width / 2, transit_values[i] + 0.6,
-                f"{transit_values[i]:.1f}" if transit_values[i] >= 0.1 else "<0.1",
-                ha='center', va='bottom', fontsize=6.5)
-        ax.text(x[i] + width / 2, endhost_values[i] + 0.6,
-                f"{endhost_values[i]:.1f}" if endhost_values[i] >= 0.1 else "<0.1",
-                ha='center', va='bottom', fontsize=6.5)
+    for i, cls in enumerate(all_classes):
+        if transit_values[i] == 0:
+            tv = "0.0"
+        elif transit_values[i] > 0.1:
+            tv = f"{transit_values[i]:.1f}"
+        else:
+            tv = "<0.1"
+        ax.text(x[i] - width / 2, transit_values[i] + 0.5, tv, ha='center', va='bottom', fontsize=6.5)
+
+        if endhost_values[i] == 0:
+            ev = "0.0"
+        elif endhost_values[i] > 0.1:
+            ev = f"{endhost_values[i]:.1f}"
+        else:
+            ev = "<0.1"
+        ax.text(x[i] + width / 2, endhost_values[i] + 0.5, ev, ha='center', va='bottom', fontsize=6.5)
 
     # --- Labels, grid, and legend ---
     ax.set_ylabel("Percentage [%]", labelpad=1)
     ax.set_xticks(x)
-    ax.set_xticklabels(classes, rotation=25, ha='center')
+    ax.set_xticklabels(all_classes, rotation=25, ha='center')
     ax.set_ylim(0, max(max(transit_values), max(endhost_values)) * 1.18)
     ax.grid(axis='y', linestyle='--', linewidth=0.4, alpha=0.5)
     ax.legend(frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.25))
