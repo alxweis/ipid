@@ -161,7 +161,8 @@ var (
 const (
 	workerCount        = 1 << 10
 	workerTargetChSize = 1 << 6
-	tcpSeqBase         = 2419684879
+	tcpSeqBase         = 2419684780
+	allowRSTs          = true
 )
 
 var (
@@ -255,9 +256,9 @@ func Main(mode string, targetsType string) {
 		}
 	}
 
-	rstDropEnabled := false
+	rstDropChanged := false
 	if proto.Id == "tcp" {
-		rstDropEnabled, err = setRSTDrop(true)
+		rstDropChanged, err = setRSTDrop(!allowRSTs)
 		if err != nil {
 			panic(err)
 		}
@@ -333,8 +334,8 @@ func Main(mode string, targetsType string) {
 		log.Fatal(err)
 	}
 
-	if proto.Id == "tcp" && rstDropEnabled {
-		_, err = setRSTDrop(false)
+	if proto.Id == "tcp" && rstDropChanged {
+		_, err = setRSTDrop(allowRSTs)
 		if err != nil {
 			panic(err)
 		}
@@ -771,8 +772,15 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 		return 0
 	}
 
+	// If TCP, send RST to abort handshake cleanly
+	//if proto.Id == "tcp" {
+	//	sender, _ := getSender(seq)
+	//	sender.Send(rstPacket)
+	//}
+
 	if seq != expSeq {
-		// Commented because this happens too often due to double replies
+		// Happens for ICMP/UDP due to double replies
+		// Happens for TCP due to TCP retransmission
 		log.Printf("[%s] Seq is not expected (seq=[%d] exp_seq=[%d])", src, seq, expSeq)
 		return 0
 	}
