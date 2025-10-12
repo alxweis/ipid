@@ -12,6 +12,7 @@ from functools import partial
 
 import duckdb
 import geoip2.database
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -26,6 +27,8 @@ from core.utils import config, runtime
 from hitlist.os_scan import linux_distros, windows, bsd, apple
 from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import count_lines_in_zst
+
+matplotlib.use("Agg")
 
 
 def filter_ips_by_class(eval_csv: str, class_filter: list[str]):
@@ -924,7 +927,7 @@ def start(result_dir: str):
     plot_output_dir = os.path.join(result_dir, "analysis")
     os.makedirs(plot_output_dir, exist_ok=True)
 
-    num_workers = max(1, mp.cpu_count() - 1)
+    num_workers = max(1, min(8, mp.cpu_count() // 2))
     print(f"Using {num_workers} workers for processing")
 
     batch_size = 5000
