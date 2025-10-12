@@ -85,7 +85,7 @@ def start(result_dir: str):
     is_mass_scan = "mass" == result_dir.split("/")[1]
 
     num_cpus = mp.cpu_count()
-    num_workers = max(1, num_cpus - 1)
+    num_workers = max(1, num_cpus // 4)
     print(f"Using {num_workers} CPU cores for processing")
 
     batch_size = 1000

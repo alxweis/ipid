@@ -451,8 +451,19 @@ def plot_pattern_distribution(params: ProcessingParams):
                 finally:
                     progress_bar.close()
 
-    total = sum(pattern_counter.values())
-    df = pd.DataFrame(list(pattern_counter.items()), columns=['class', 'absolute'])
+    if "seq" in params.result_dir:
+        merged_counter = Counter()
+        for k, v in pattern_counter.items():
+            if k in [Pattern.RANDOM.value, Pattern.MULTI_GLOBAL.value, Pattern.FALLBACK.value]:
+                merged_counter[Pattern.FALLBACK.value] += v
+            else:
+                merged_counter[k] += v
+        total = sum(merged_counter.values())
+        df = pd.DataFrame(list(merged_counter.items()), columns=['class', 'absolute'])
+    else:
+        total = sum(pattern_counter.values())
+        df = pd.DataFrame(list(pattern_counter.items()), columns=['class', 'absolute'])
+
     df['relative'] = (df['absolute'] / float(total)) * 100
 
     full_order = [p.value for p in Pattern]
@@ -913,7 +924,7 @@ def start(result_dir: str):
     plot_output_dir = os.path.join(result_dir, "analysis")
     os.makedirs(plot_output_dir, exist_ok=True)
 
-    num_workers = max(1, mp.cpu_count() - 1)
+    num_workers = max(1, mp.cpu_count() // 4)
     print(f"Using {num_workers} workers for processing")
 
     batch_size = 5000
