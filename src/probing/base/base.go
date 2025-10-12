@@ -670,7 +670,7 @@ func setupReceiver(iface Iface) {
 	if proto.Filter != "" {
 		protoFilter += " and " + proto.Filter
 	}
-	bpfFilter := fmt.Sprintf("ip and (%s) and (dst host %s or dst host %s)", protoFilter, config.IfaceA.Ip, config.IfaceB.Ip)
+	bpfFilter := fmt.Sprintf("ether dst %s and ip and (%s) and dst host %s", ifc.HardwareAddr, protoFilter, iface.Ip)
 	bpfInstr, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet, ifc.MTU, bpfFilter)
 	if err != nil {
 		panic(err)
@@ -685,10 +685,19 @@ func setupReceiver(iface Iface) {
 	for {
 		select {
 		case packet := <-packetSource:
-			go addToRecvChan(&ReplyInfo{
+			replyInfo := &ReplyInfo{
 				Packet: packet,
 				Time:   time.Now().UnixMicro(),
-			})
+			}
+			if ipLayer := replyInfo.Packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
+				ip, _ := ipLayer.(*layers.IPv4)
+				workerId := hashIPAddrToWorkerId(ip.SrcIP)
+				if workers[workerId] != nil {
+					workers[workerId].recvCh <- replyInfo
+				} else {
+					log.Printf("Worker %d not initialized!", workerId)
+				}
+			}
 		case <-stopReceiving:
 			return
 		}
