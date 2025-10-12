@@ -161,7 +161,7 @@ var (
 const (
 	workerCount        = 1 << 10
 	workerTargetChSize = 1 << 6
-	tcpSeqBase         = 2384751920
+	tcpSeqBase         = 2419684879
 )
 
 var (
@@ -1258,7 +1258,31 @@ func setTCPChecksum(packet []byte) {
 
 func getTCPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 	if tcp, ok := replyInfo.Packet.Layer(layers.LayerTypeTCP).(*layers.TCP); ok {
-		return uint16(tcp.Ack - tcpSeqBase - 1), true
+		seq := uint16(tcp.Ack - tcpSeqBase - 1)
+
+		if tcp.SrcPort != config.TcpDstPort {
+			log.Println("SrcPort is invalid")
+			return 0, false
+		}
+
+		if tcp.DstPort != layers.TCPPort(seq+config.TcpSrcPortOffset) {
+			log.Println("DstPort is invalid")
+			return 0, false
+		}
+
+		if config.TcpReqFlags == "S" {
+			if !(tcp.SYN && tcp.ACK) {
+				log.Println("Flags are invalid. Should be SYN-ACK")
+				return 0, false
+			}
+		} else {
+			if !tcp.RST {
+				log.Println("Flags are invalid. Should be RST.")
+				return 0, false
+			}
+		}
+
+		return seq, true
 	} else {
 		log.Println("TCP layer not found")
 	}
