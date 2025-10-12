@@ -559,7 +559,7 @@ func setupSender(iface Iface) *Sender {
 		panic(err)
 	}
 
-	fd, _ := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(hToNs(syscall.ETH_P_ALL)))
+	fd, _ := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(hToNs(syscall.ETH_P_IP)))
 	addr := syscall.SockaddrLinklayer{
 		Ifindex: ifc.Index,
 		Halen:   6, // Ethernet address length is 6 bytes
@@ -1348,7 +1348,7 @@ func createUDPLayer(seq uint16) []gopacket.SerializableLayer {
 		QDCount: 1,
 		Questions: []layers.DNSQuestion{
 			{
-				Name:  []byte(fmt.Sprintf("example%d.com", seq)),
+				Name:  []byte(fmt.Sprintf("%d.example.com", seq)),
 				Type:  layers.DNSTypeA,
 				Class: layers.DNSClassIN,
 			},
