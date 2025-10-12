@@ -159,10 +159,8 @@ var (
 )
 
 const (
-	workerCount        = 1 << 10
+	workerCount        = 1 << 12
 	workerTargetChSize = 1 << 6
-	tcpSeqBase         = 2419684780
-	allowRSTs          = true
 )
 
 var (
@@ -256,9 +254,9 @@ func Main(mode string, targetsType string) {
 		}
 	}
 
-	rstDropChanged := false
+	rstDropEnabled := false
 	if proto.Id == "tcp" {
-		rstDropChanged, err = setRSTDrop(!allowRSTs)
+		rstDropEnabled, err = setRSTDrop(true)
 		if err != nil {
 			panic(err)
 		}
@@ -334,8 +332,8 @@ func Main(mode string, targetsType string) {
 		log.Fatal(err)
 	}
 
-	if proto.Id == "tcp" && rstDropChanged {
-		_, err = setRSTDrop(allowRSTs)
+	if proto.Id == "tcp" && rstDropEnabled {
+		_, err = setRSTDrop(false)
 		if err != nil {
 			panic(err)
 		}
@@ -517,9 +515,9 @@ func (pm *B2B) probeTarget(recvCh chan *ReplyInfo, target net.IP) {
 
 		massScanCheck := isMassScan && (replyPortion >= config.MASSReplyPortionThreshold)
 
-		//if replyPortion < config.MASSReplyPortionThreshold {
-		//	log.Printf("%d/%d replies. Too few replies!", rc, pm.requestCount)
-		//}
+		if replyPortion < config.MASSReplyPortionThreshold {
+			log.Printf("%d/%d replies. Too few replies!", rc, pm.requestCount)
+		}
 
 		if foundAllReplies || massScanCheck { // Successfully finished probing
 			probeSaveChan <- probe
@@ -559,7 +557,7 @@ func setupSender(iface Iface) *Sender {
 		panic(err)
 	}
 
-	fd, _ := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(hToNs(syscall.ETH_P_IP)))
+	fd, _ := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(hToNs(syscall.ETH_P_ALL)))
 	addr := syscall.SockaddrLinklayer{
 		Ifindex: ifc.Index,
 		Halen:   6, // Ethernet address length is 6 bytes
@@ -671,7 +669,7 @@ func setupReceiver(iface Iface) {
 	if proto.Filter != "" {
 		protoFilter += " and " + proto.Filter
 	}
-	bpfFilter := fmt.Sprintf("ether dst %s and ip and (%s) and dst host %s", ifc.HardwareAddr, protoFilter, iface.Ip)
+	bpfFilter := fmt.Sprintf("ip and (%s) and (dst host %s or dst host %s)", protoFilter, config.IfaceA.Ip, config.IfaceB.Ip)
 	bpfInstr, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet, ifc.MTU, bpfFilter)
 	if err != nil {
 		panic(err)
@@ -765,22 +763,15 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 
 	seq, ok := proto.GetSeq(replyInfo)
 	if !ok {
-		log.Printf("[%s] Protocol layer invalid", src)
+		//log.Printf("[%s] Protocol layer invalid", src)
 		return 0
 	} else if !(seq < pm.probingVars().requestCount) {
 		log.Printf("[%s] Seq is out of range (check seq=%d < %d failed)", src, seq, pm.probingVars().requestCount)
 		return 0
 	}
 
-	// If TCP, send RST to abort handshake cleanly
-	//if proto.Id == "tcp" {
-	//	sender, _ := getSender(seq)
-	//	sender.Send(rstPacket)
-	//}
-
 	if seq != expSeq {
-		// Happens for ICMP/UDP due to double replies
-		// Happens for TCP due to TCP retransmission
+		// Commented because this happens too often due to double replies
 		log.Printf("[%s] Seq is not expected (seq=[%d] exp_seq=[%d])", src, seq, expSeq)
 		return 0
 	}
@@ -909,6 +900,9 @@ func saveProbes() {
 	}
 
 	length := int(pm.probingVars().requestCount)
+	ipIds := make([]string, length)
+	sentTimes := make([]string, length)
+	receivedTimes := make([]string, length)
 
 	// Read from channel and write each probe to the output file
 	for probe := range probeSaveChan {
@@ -916,22 +910,22 @@ func saveProbes() {
 			panic("Probe Data has not correct length!")
 		}
 
-		var (
-			ipIds         []string
-			sentTimes     []string
-			receivedTimes []string
-		)
-
-		for _, pp := range probe.Data {
+		moveToNextProbe := false
+		for i, pp := range probe.Data {
 			if !pp.Check {
 				if isMassScan {
-					continue
+					moveToNextProbe = true
+					break
 				}
 				panic("Probe Point is not checked!")
 			}
-			ipIds = append(ipIds, strconv.Itoa(int(pp.IpId)))
-			sentTimes = append(sentTimes, strconv.FormatInt(pp.SentTime, 10))
-			receivedTimes = append(receivedTimes, strconv.FormatInt(pp.ReceivedTime, 10))
+			ipIds[i] = strconv.Itoa(int(pp.IpId))
+			sentTimes[i] = strconv.FormatInt(pp.SentTime, 10)
+			receivedTimes[i] = strconv.FormatInt(pp.ReceivedTime, 10)
+		}
+
+		if moveToNextProbe {
+			continue
 		}
 
 		// Format record
@@ -950,8 +944,8 @@ func saveProbes() {
 	}
 }
 
-func joinWithComma(lst []string) string {
-	return strings.Join(lst, ",")
+func joinWithComma(arr []string) string {
+	return strings.Join(arr, ",")
 }
 
 // Setup
@@ -1232,11 +1226,10 @@ func createTCPLayer(seq uint16) []gopacket.SerializableLayer {
 	tcpLayer := &layers.TCP{
 		SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
 		DstPort: config.TcpDstPort,
-		Seq:     tcpSeqBase + uint32(seq),
+		Seq:     uint32(seq),
 		SYN:     strings.Contains(config.TcpReqFlags, "S"),
 		ACK:     strings.Contains(config.TcpReqFlags, "A"),
 		RST:     strings.Contains(config.TcpReqFlags, "R"),
-		Window:  512,
 	}
 
 	return []gopacket.SerializableLayer{tcpLayer}
@@ -1266,44 +1259,7 @@ func setTCPChecksum(packet []byte) {
 
 func getTCPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 	if tcp, ok := replyInfo.Packet.Layer(layers.LayerTypeTCP).(*layers.TCP); ok {
-		seq := uint16(tcp.Ack - tcpSeqBase - 1)
-
-		if tcp.SrcPort != config.TcpDstPort {
-			log.Println("SrcPort is invalid")
-			return 0, false
-		}
-
-		if tcp.DstPort != layers.TCPPort(seq+config.TcpSrcPortOffset) {
-			log.Println("DstPort is invalid")
-			return 0, false
-		}
-
-		if !((tcp.SYN && tcp.ACK) || (tcp.RST && tcp.ACK) || tcp.RST) {
-			flags := ""
-			if tcp.SYN {
-				flags += "S"
-			}
-			if tcp.ACK {
-				flags += "A"
-			}
-			if tcp.RST {
-				flags += "R"
-			}
-			if tcp.FIN {
-				flags += "F"
-			}
-			if tcp.PSH {
-				flags += "P"
-			}
-			if tcp.URG {
-				flags += "U"
-			}
-
-			log.Printf("Flags are invalid (%s). Should be SA, RA or R\n", flags)
-			return 0, false
-		}
-
-		return seq, true
+		return uint16(tcp.Ack - 1), true
 	} else {
 		log.Println("TCP layer not found")
 	}
@@ -1345,7 +1301,7 @@ func createUDPLayer(seq uint16) []gopacket.SerializableLayer {
 		QDCount: 1,
 		Questions: []layers.DNSQuestion{
 			{
-				Name:  []byte(fmt.Sprintf("%d.example.com", seq)),
+				Name:  []byte(fmt.Sprintf("example%d.com", seq)),
 				Type:  layers.DNSTypeA,
 				Class: layers.DNSClassIN,
 			},
@@ -1477,8 +1433,8 @@ func logStatistics() {
 			}
 		}
 
-		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %d/%d=%.2f%%] sent_mbps=[%.2f] sent_pps=[%.0f] worker_count=[%d]\n",
-			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, totalValidProbeCount, totalProbeCount, validProbeCountPercentage, sentMbps, sentPps, workerCount)
+		log.Printf("estimated_time_left=[%s] probed_ip_addresses=[%d, %.2f%%] valid_probes=[%d, %.2f%%] sent_mbps=[%.2f] sent_pps=[%.0f] worker_count=[%d]\n",
+			timeLeft, deltaTotalProbeCount, probeCountPercentage, deltaTotalValidProbeCount, validProbeCountPercentage, sentMbps, sentPps, workerCount)
 
 		lastTotalProbeCount = totalProbeCount
 		lastTotalValidProbeCount = totalValidProbeCount

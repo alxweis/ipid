@@ -269,27 +269,30 @@ func fileWriter(results <-chan SNMPResponse, outPath string, done chan<- bool, s
 	if err != nil {
 		panic(err)
 	}
+	defer outFile.Close()
 
 	encoder, err := zstd.NewWriter(outFile)
 	if err != nil {
 		panic(err)
 	}
+	defer encoder.Close()
 
 	writer := bufio.NewWriter(encoder)
+	defer writer.Flush()
+
 	writer.WriteString("IP,SNMP_OS_INFO\n")
 
 	for result := range results {
+		// Escape quotes in description
 		escapedDescr := strings.ReplaceAll(result.SysDescr, "\"", "\"\"")
 		writer.WriteString(fmt.Sprintf("%s,\"%s\"\n", result.IP, escapedDescr))
 		atomic.AddInt64(successCount, 1)
+
+		// Flush periodically
 		if atomic.LoadInt64(successCount)%500 == 0 {
 			writer.Flush()
 		}
 	}
-
-	writer.Flush()
-	encoder.Close()
-	outFile.Close()
 
 	done <- true
 }
