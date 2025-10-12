@@ -685,19 +685,10 @@ func setupReceiver(iface Iface) {
 	for {
 		select {
 		case packet := <-packetSource:
-			replyInfo := &ReplyInfo{
+			go addToRecvChan(&ReplyInfo{
 				Packet: packet,
 				Time:   time.Now().UnixMicro(),
-			}
-			if ipLayer := replyInfo.Packet.Layer(layers.LayerTypeIPv4); ipLayer != nil {
-				ip, _ := ipLayer.(*layers.IPv4)
-				workerId := hashIPAddrToWorkerId(ip.SrcIP)
-				if workers[workerId] != nil {
-					workers[workerId].recvCh <- replyInfo
-				} else {
-					log.Printf("Worker %d not initialized!", workerId)
-				}
-			}
+			})
 		case <-stopReceiving:
 			return
 		}
