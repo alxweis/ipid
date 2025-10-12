@@ -558,7 +558,7 @@ func setupSender(iface Iface) *Sender {
 		panic(err)
 	}
 
-	fd, _ := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(hToNs(syscall.ETH_P_ALL)))
+	fd, _ := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, int(hToNs(syscall.ETH_P_IP)))
 	addr := syscall.SockaddrLinklayer{
 		Ifindex: ifc.Index,
 		Halen:   6, // Ethernet address length is 6 bytes
@@ -1229,7 +1229,7 @@ func createTCPLayer(seq uint16) []gopacket.SerializableLayer {
 		SYN:     strings.Contains(config.TcpReqFlags, "S"),
 		ACK:     strings.Contains(config.TcpReqFlags, "A"),
 		RST:     strings.Contains(config.TcpReqFlags, "R"),
-		Window:  64240,
+		Window:  512,
 	}
 
 	return []gopacket.SerializableLayer{tcpLayer}
