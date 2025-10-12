@@ -1279,17 +1279,29 @@ func getTCPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 			return 0, false
 		}
 
-		if config.TcpReqFlags == "S" {
-			if !(tcp.SYN && tcp.ACK) {
-				log.Printf("Flags are invalid (SYN=%t, ACK=%t, RST=%t, FIN=%t, PSH=%t, URG=%t). Should be SYN-ACK.\n",
-					tcp.SYN, tcp.ACK, tcp.RST, tcp.FIN, tcp.PSH, tcp.URG)
-				return 0, false
+		if !((tcp.SYN && tcp.ACK) || (tcp.RST && tcp.ACK) || tcp.RST) {
+			flags := ""
+			if tcp.SYN {
+				flags += "S"
 			}
-		} else {
-			if !tcp.RST {
-				log.Println("Flags are invalid. Should be RST.")
-				return 0, false
+			if tcp.ACK {
+				flags += "A"
 			}
+			if tcp.RST {
+				flags += "R"
+			}
+			if tcp.FIN {
+				flags += "F"
+			}
+			if tcp.PSH {
+				flags += "P"
+			}
+			if tcp.URG {
+				flags += "U"
+			}
+
+			log.Printf("Flags are invalid (%s). Should be SA, RA or R\n", flags)
+			return 0, false
 		}
 
 		return seq, true
