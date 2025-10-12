@@ -922,7 +922,18 @@ func saveProbes() {
 			receivedTimes []string
 		)
 
-		for _, pp := range probe.Data {
+		keys := make([]int, 0, len(probe.Data))
+		for k := range probe.Data {
+			keys = append(keys, int(k))
+		}
+		sort.Ints(keys)
+
+		probePoints := make([]*ProbePoint, 0, len(keys))
+		for _, k := range keys {
+			probePoints = append(probePoints, probe.Data[uint16(k)])
+		}
+
+		for _, pp := range probePoints {
 			if !pp.Check {
 				if isMassScan {
 					continue
