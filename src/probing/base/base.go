@@ -1229,6 +1229,7 @@ func createTCPLayer(seq uint16) []gopacket.SerializableLayer {
 		SYN:     strings.Contains(config.TcpReqFlags, "S"),
 		ACK:     strings.Contains(config.TcpReqFlags, "A"),
 		RST:     strings.Contains(config.TcpReqFlags, "R"),
+		Window:  64240,
 	}
 
 	return []gopacket.SerializableLayer{tcpLayer}
