@@ -909,15 +909,18 @@ func saveProbes() {
 	}
 
 	length := int(pm.probingVars().requestCount)
-	var ipIds []string
-	var sentTimes []string
-	var receivedTimes []string
 
 	// Read from channel and write each probe to the output file
 	for probe := range probeSaveChan {
 		if len(probe.Data) != length {
 			panic("Probe Data has not correct length!")
 		}
+
+		var (
+			ipIds         []string
+			sentTimes     []string
+			receivedTimes []string
+		)
 
 		for _, pp := range probe.Data {
 			if !pp.Check {
@@ -944,10 +947,6 @@ func saveProbes() {
 		if err != nil {
 			panic(err)
 		}
-
-		ipIds = ipIds[:0]
-		sentTimes = sentTimes[:0]
-		receivedTimes = receivedTimes[:0]
 	}
 }
 
