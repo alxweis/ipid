@@ -1272,7 +1272,8 @@ func getTCPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 
 		if config.TcpReqFlags == "S" {
 			if !(tcp.SYN && tcp.ACK) {
-				log.Println("Flags are invalid. Should be SYN-ACK")
+				log.Printf("Flags are invalid (SYN=%t, ACK=%t, RST=%t, FIN=%t, PSH=%t, URG=%t). Should be SYN-ACK.\n",
+					tcp.SYN, tcp.ACK, tcp.RST, tcp.FIN, tcp.PSH, tcp.URG)
 				return 0, false
 			}
 		} else {
