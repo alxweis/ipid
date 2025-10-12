@@ -161,6 +161,7 @@ var (
 const (
 	workerCount        = 1 << 10
 	workerTargetChSize = 1 << 6
+	tcpSeqBase         = 2384751920
 )
 
 var (
@@ -763,7 +764,7 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 
 	seq, ok := proto.GetSeq(replyInfo)
 	if !ok {
-		//log.Printf("[%s] Protocol layer invalid", src)
+		log.Printf("[%s] Protocol layer invalid", src)
 		return 0
 	} else if !(seq < pm.probingVars().requestCount) {
 		log.Printf("[%s] Seq is out of range (check seq=%d < %d failed)", src, seq, pm.probingVars().requestCount)
@@ -1224,7 +1225,7 @@ func createTCPLayer(seq uint16) []gopacket.SerializableLayer {
 	tcpLayer := &layers.TCP{
 		SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
 		DstPort: config.TcpDstPort,
-		Seq:     uint32(seq),
+		Seq:     tcpSeqBase + uint32(seq),
 		SYN:     strings.Contains(config.TcpReqFlags, "S"),
 		ACK:     strings.Contains(config.TcpReqFlags, "A"),
 		RST:     strings.Contains(config.TcpReqFlags, "R"),
@@ -1257,7 +1258,7 @@ func setTCPChecksum(packet []byte) {
 
 func getTCPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 	if tcp, ok := replyInfo.Packet.Layer(layers.LayerTypeTCP).(*layers.TCP); ok {
-		return uint16(tcp.Ack - 1), true
+		return uint16(tcp.Ack - tcpSeqBase - 1), true
 	} else {
 		log.Println("TCP layer not found")
 	}
