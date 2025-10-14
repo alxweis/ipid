@@ -782,8 +782,11 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 	if proto.Id == "tcp" {
 		sender, _ := getSender(seq)
 		tcp, _ := replyInfo.Packet.Layer(layers.LayerTypeTCP).(*layers.TCP)
-		rstPacket := buildRST(seq, dst, src, tcp.Ack)
-		sender.Send(rstPacket)
+		if tcp.SYN && tcp.ACK {
+			rstPacket := buildRST(seq, dst, src, tcp.Ack)
+			sender.Send(rstPacket)
+			log.Printf("Sent RST packet %d ms after SYN-ACK", (time.Now().UnixMicro()-replyInfo.Time)/1000)
+		}
 	}
 
 	pp, ok := probe.Data[seq]
