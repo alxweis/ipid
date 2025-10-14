@@ -25,7 +25,7 @@ from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_natural
 )
 from hitlist.ip_scan import post_cleanup
-from hitlist.os_scan import router, end_device
+from hitlist.os_scan import router, end_device, oses
 
 filename = os.path.basename(__file__)
 
@@ -499,7 +499,10 @@ def main():
 
         msm_path = str(sys.argv[2])
 
-        plot_os_distribution(msm_path)
+        plot_os_distribution(msm_path, oses, "all")
+        plot_os_distribution(msm_path, router, "router")
+        plot_os_distribution(msm_path, end_device, "end_device")
+
         plot_os_pattern_distribution(msm_path, router, "router")
         plot_os_pattern_distribution(msm_path, end_device, "end_device")
     else:
@@ -535,11 +538,15 @@ def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
     total = df['absolute'].sum()
     df['relative'] = (df['absolute'] / total) * 100
 
+    full_order = [p.value for p in Pattern]
+    df = df[df['relative'] > 0]
+    order = [p for p in full_order if p in df['class'].values]
+
     print(f"Total found IP addresses: {total}")
 
     print("Plotting Pattern Distribution...")
     plt.figure(figsize=(7, 7))
-    ax = sns.barplot(x="class", y="relative", data=df)
+    ax = sns.barplot(x="class", y="relative", data=df, order=order)
     for container in ax.containers:
         ax.bar_label(container, fmt='%.1f%%', label_type='edge', padding=3, fontsize=16)
 
@@ -564,25 +571,32 @@ def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
     print("Done.")
 
 
-def plot_os_distribution(msm_path: str):
+def plot_os_distribution(msm_path: str, oses: list[str], ident: str):
     eval_path = os.path.join(msm_path, "eval.csv.zst")
     targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
     targets_os_path = os.path.join(targets_base_path, "targets_os.csv.zst")
-    analysis_dir = os.path.join(msm_path, "analysis", "os_distribution")
+    analysis_dir = os.path.join(msm_path, "analysis", "os_distribution", ident)
+
+    print(f"Plotting OS Distribution for {ident}")
 
     con = duckdb.connect(database=':memory:')
     con.execute("PRAGMA threads=8;")
 
+    os_filter = ', '.join([f"'{o.lower()}'" for o in oses])
     query = f"""
         SELECT lower(t.OS) AS os
         FROM read_csv_auto('{eval_path}') AS e
         JOIN read_csv_auto('{targets_os_path}') AS t
         ON e.IP = t.IP
-        WHERE t.OS IS NOT NULL AND t.OS != ''
+        WHERE lower(t.OS) IN ({os_filter})
     """
 
     print("Loading and merging data via DuckDB...")
     df = con.execute(query).fetch_df()
+
+    if df.empty:
+        print("No matching OS entries found.")
+        return
 
     print("Computing OS Distribution...")
     df = df.value_counts().reset_index()
@@ -593,10 +607,13 @@ def plot_os_distribution(msm_path: str):
     print(f"Total merged IP addresses: {total}")
 
     print("Plotting OS Distribution...")
-    plt.figure(figsize=(25, 6))
-    ax = sns.barplot(x="os", y="relative", data=df.sort_values("relative", ascending=False))
+    plt.figure(figsize=(len(oses) / 3, 7))
+    df_sorted = df.sort_values("relative", ascending=False)
+    ax = sns.barplot(x="os", y="relative", data=df_sorted)
+
     for container in ax.containers:
-        ax.bar_label(container, fmt='%.1f%%', label_type='edge', padding=3, fontsize=14)
+        labels = [f"{v.get_height():.3f}%\n({int(df_sorted.iloc[i]['absolute'])})" for i, v in enumerate(container)]
+        ax.bar_label(container, labels=labels, rotation=90, label_type='edge', padding=3, fontsize=12)
 
     plt.xlabel("Operating System", fontsize=16)
     plt.xticks(rotation=45, fontsize=12)
@@ -605,12 +622,11 @@ def plot_os_distribution(msm_path: str):
     plt.grid(True, axis="y", linestyle='--', alpha=0.6)
     plt.tight_layout()
 
-    output_dir = os.path.join(analysis_dir)
-    os.makedirs(output_dir, exist_ok=True)
-    df.to_pickle(os.path.join(output_dir, "data.pkl"))
-    plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches="tight")
+    os.makedirs(analysis_dir, exist_ok=True)
+    df.to_pickle(os.path.join(analysis_dir, "data.pkl"))
+    plt.savefig(os.path.join(analysis_dir, "plot.pdf"), bbox_inches="tight")
 
-    with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
+    with open(os.path.join(analysis_dir, "info.txt"), 'w', encoding="utf-8") as f:
         f.write(f"Total IPs: {total}\n")
         f.write(f"OS Distribution:\n{df.to_string(index=False)}")
 
