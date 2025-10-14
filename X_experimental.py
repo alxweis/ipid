@@ -1,7 +1,6 @@
 import bz2
 import csv
 import ipaddress
-import itertools
 import json
 import os
 import pickle
@@ -26,6 +25,7 @@ from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_natural
 )
 from hitlist.ip_scan import post_cleanup
+from hitlist.os_scan import router, end_device
 
 filename = os.path.basename(__file__)
 
@@ -64,6 +64,8 @@ def print_usage():
     print(f"    python {filename} 14 <caida_itdk_path> <msm_path>")
     print("  15 - Plot transit-hop/end-host distribution:")
     print(f"    python {filename} 15 <msm_path> <protocol_name>")
+    print("  16 - Plot pattern distribution by OS:")
+    print(f"    python {filename} 16 <msm_path>")
     sys.exit(1)
 
 
@@ -490,8 +492,131 @@ def main():
             return
 
         plot_distribution(str(sys.argv[2]), str(sys.argv[3]))
+    elif mode == 16:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+
+        msm_path = str(sys.argv[2])
+
+        plot_os_distribution(msm_path)
+        plot_os_pattern_distribution(msm_path, router, "router")
+        plot_os_pattern_distribution(msm_path, end_device, "end_device")
     else:
         print_usage()
+
+
+def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
+    eval_path = os.path.join(msm_path, "eval.csv.zst")
+    targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
+    targets_os_path = os.path.join(targets_base_path, "targets_os.csv.zst")
+    analysis_dir = os.path.join(msm_path, "analysis", "os_pattern_distribution", ident)
+
+    print(f"Plotting OS Pattern Distribution for {ident}")
+
+    con = duckdb.connect(database=':memory:')
+    con.execute("PRAGMA threads=8;")
+
+    os_filter = ', '.join([f"'{o.lower()}'" for o in oses])
+    query = f"""
+        SELECT e.IP_ID_PATTERN AS class
+        FROM read_csv_auto('{eval_path}') AS e
+        JOIN read_csv_auto('{targets_os_path}') AS t
+        ON e.IP = t.IP
+        WHERE lower(t.OS) IN ({os_filter})
+    """
+
+    print("Loading and filtering data via DuckDB...")
+    df = con.execute(query).fetch_df()
+
+    print("Computing Pattern Distribution...")
+    df = df.value_counts().reset_index()
+    df.columns = ['class', 'absolute']
+    total = df['absolute'].sum()
+    df['relative'] = (df['absolute'] / total) * 100
+
+    print(f"Total found IP addresses: {total}")
+
+    print("Plotting Pattern Distribution...")
+    plt.figure(figsize=(7, 7))
+    ax = sns.barplot(x="class", y="relative", data=df)
+    for container in ax.containers:
+        ax.bar_label(container, fmt='%.1f%%', label_type='edge', padding=3, fontsize=16)
+
+    plt.xlabel("Class", fontsize=18)
+    plt.xticks(rotation=60, fontsize=16)
+    plt.ylabel("Percentage (%)", fontsize=18)
+    plt.yticks(fontsize=16)
+    plt.ylim(0, 100)
+    plt.grid(True, axis="y", linestyle='--', alpha=0.6)
+    plt.tight_layout()
+
+    os.makedirs(analysis_dir, exist_ok=True)
+    df.to_pickle(os.path.join(analysis_dir, "data.pkl"))
+    plt.savefig(os.path.join(analysis_dir, "plot.pdf"), bbox_inches="tight")
+
+    with open(os.path.join(analysis_dir, "info.txt"), 'w', encoding="utf-8") as f:
+        f.write(f"Total Absolute: {total}\n")
+        f.write(f"Class Distribution:\n{df.to_string(index=False)}")
+
+    plt.close()
+    con.close()
+    print("Done.")
+
+
+def plot_os_distribution(msm_path: str):
+    eval_path = os.path.join(msm_path, "eval.csv.zst")
+    targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
+    targets_os_path = os.path.join(targets_base_path, "targets_os.csv.zst")
+    analysis_dir = os.path.join(msm_path, "analysis", "os_distribution")
+
+    con = duckdb.connect(database=':memory:')
+    con.execute("PRAGMA threads=8;")
+
+    query = f"""
+        SELECT lower(t.OS) AS os
+        FROM read_csv_auto('{eval_path}') AS e
+        JOIN read_csv_auto('{targets_os_path}') AS t
+        ON e.IP = t.IP
+        WHERE t.OS IS NOT NULL AND t.OS != ''
+    """
+
+    print("Loading and merging data via DuckDB...")
+    df = con.execute(query).fetch_df()
+
+    print("Computing OS Distribution...")
+    df = df.value_counts().reset_index()
+    df.columns = ['os', 'absolute']
+    total = df['absolute'].sum()
+    df['relative'] = (df['absolute'] / total) * 100
+
+    print(f"Total merged IP addresses: {total}")
+
+    print("Plotting OS Distribution...")
+    plt.figure(figsize=(25, 6))
+    ax = sns.barplot(x="os", y="relative", data=df.sort_values("relative", ascending=False))
+    for container in ax.containers:
+        ax.bar_label(container, fmt='%.1f%%', label_type='edge', padding=3, fontsize=14)
+
+    plt.xlabel("Operating System", fontsize=16)
+    plt.xticks(rotation=45, fontsize=12)
+    plt.ylabel("Percentage (%)", fontsize=16)
+    plt.yticks(fontsize=12)
+    plt.grid(True, axis="y", linestyle='--', alpha=0.6)
+    plt.tight_layout()
+
+    output_dir = os.path.join(analysis_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    df.to_pickle(os.path.join(output_dir, "data.pkl"))
+    plt.savefig(os.path.join(output_dir, "plot.pdf"), bbox_inches="tight")
+
+    with open(os.path.join(output_dir, "info.txt"), 'w', encoding="utf-8") as f:
+        f.write(f"Total IPs: {total}\n")
+        f.write(f"OS Distribution:\n{df.to_string(index=False)}")
+
+    plt.close()
+    con.close()
+    print("Done.")
 
 
 def analyze_traceroute_device_behavior(caida_itdk_path: str, msm_path: str, t: int, d: int, name: str):

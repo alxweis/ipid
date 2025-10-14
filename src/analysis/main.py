@@ -23,7 +23,6 @@ from tqdm import tqdm
 from core import EXP_INTERSECTIONS
 from core.classifier import IPIDSequence, Pattern, get_clusters, MULTI_GLOBAL_CLUSTER_MAX_INC
 from core.utils import config, runtime
-from hitlist.os_scan import linux_distros, windows, bsd, apple
 from postproc import GEOLITE_COUNTRY_DB
 from postproc.main import count_lines_in_zst
 
@@ -987,11 +986,5 @@ def start(result_dir: str):
         plot_increment_distribution(params, Pattern.LOCAL_GE1)
         plot_increment_distribution(params, Pattern.RANDOM)
         plot_increment_distribution(params, Pattern.MULTI_GLOBAL)
-
-        if params.is_os_scan:
-            plot_pattern_distribution_for_oses(params, linux_distros)
-            plot_pattern_distribution_for_oses(params, windows)
-            plot_pattern_distribution_for_oses(params, bsd)
-            plot_pattern_distribution_for_oses(params, apple)
 
         print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")

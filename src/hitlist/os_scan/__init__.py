@@ -434,21 +434,17 @@ def start(targets_path: str):
     print(f"OS-Scan finished: {runtime(start_time)} result=[{targets_os_file}]")
 
 
-linux_distros = [
-    "ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo", "opensuse", "euleros", "zorin",
-    "linux"
-]
-windows = [
-    "windows server", "windows", "win"
-]
-bsd = [
-    "freebsd", "openbsd", "netbsd", "bsd"
-]
-apple = [
-    "macos", "darwin"
-]
-server = ['server']
-router = ['router']
+router = ["openwrt", "lede", "dd-wrt", "ddwrt", "wrt", "vyos", "vyatta", "pfsense",
+          "routeros", "mikrotik", "edgeos", "airos", "unifi", "ubiquiti",
+          "junos", "juniper", "cisco ios", "ios-xe", "nx-os", "ios", "cisco",
+          "fortios", "fortinet", "forti", "sonicos", "sonicwall", "sonic",
+          "arubaos", "aruba", "draytek", "drayos", "vigor", "dray",
+          "zynos", "zyxel", "vrp", "gaia", "router"]
+
+end_device = ["ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo",
+              "opensuse", "euleros", "zorin", "linux", "windows server", "windows",
+              "win", "microsoft", "lanman", "freebsd", "openbsd", "netbsd", "bsd",
+              "macos", "darwin", "solaris"]
 
 oses = [
     "ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo", "opensuse", "euleros", "zorin",
