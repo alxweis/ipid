@@ -162,7 +162,7 @@ const (
 	workerCount        = 1 << 10
 	workerTargetChSize = 1 << 6
 	tcpSeqBase         = 2419684780
-	allowRSTs          = true
+	allowRSTs          = false
 )
 
 var (
@@ -758,8 +758,7 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 	}
 
 	if !dst.Equal(expDst) {
-		// Commented because this happens too often due to double replies
-		//log.Printf("[%s] Dst is not expected (dst=[%s] exp_dst=[%s])", src, dst, expDst)
+		log.Printf("[%s] Dst is not expected (dst=[%s] exp_dst=[%s])", src, dst, expDst)
 		return 0
 	}
 
@@ -772,17 +771,19 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 		return 0
 	}
 
-	// If TCP, send RST to abort handshake cleanly
-	//if proto.Id == "tcp" {
-	//	sender, _ := getSender(seq)
-	//	sender.Send(rstPacket)
-	//}
-
 	if seq != expSeq {
 		// Happens for ICMP/UDP due to double replies
 		// Happens for TCP due to TCP retransmission
 		log.Printf("[%s] Seq is not expected (seq=[%d] exp_seq=[%d])", src, seq, expSeq)
 		return 0
+	}
+
+	// If TCP, send RST to abort handshake cleanly
+	if proto.Id == "tcp" {
+		sender, _ := getSender(seq)
+		tcp, _ := replyInfo.Packet.Layer(layers.LayerTypeTCP).(*layers.TCP)
+		rstPacket := buildRST(seq, dst, src, tcp.Ack)
+		sender.Send(rstPacket)
 	}
 
 	pp, ok := probe.Data[seq]
@@ -1340,6 +1341,39 @@ func setRSTDrop(enable bool) (changed bool, err error) {
 		err = cmdDel.Run()
 		return err == nil, err
 	}
+}
+
+func buildRST(seq uint16, srcIP net.IP, dstIP net.IP, ack uint32) []byte {
+	ipLayer := &layers.IPv4{
+		Version:  ipv4.Version,
+		TTL:      64,
+		Id:       21305,
+		Protocol: layers.IPProtocolTCP,
+		SrcIP:    srcIP,
+		DstIP:    dstIP,
+	}
+
+	tcpLayer := &layers.TCP{
+		SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
+		DstPort: config.TcpDstPort,
+		Seq:     ack,
+		RST:     true,
+	}
+	err := tcpLayer.SetNetworkLayerForChecksum(ipLayer)
+	if err != nil {
+		panic(err)
+	}
+
+	buf := gopacket.NewSerializeBuffer()
+	rstOpts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+
+	if err = gopacket.SerializeLayers(buf, rstOpts, ipLayer, tcpLayer); err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
 }
 
 // UDP
