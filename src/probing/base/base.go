@@ -785,7 +785,7 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 		if tcp.SYN && tcp.ACK {
 			rstPacket := buildRST(seq, dst, src, tcp.Ack)
 			sender.Send(rstPacket)
-			log.Printf("Sent RST packet %.3f ms after SYN-ACK", float64(time.Now().UnixMicro()-replyInfo.Time)/1000)
+			//log.Printf("Sent RST packet %.3f ms after SYN-ACK", float64(time.Now().UnixMicro()-replyInfo.Time)/1000)
 		}
 	}
 
