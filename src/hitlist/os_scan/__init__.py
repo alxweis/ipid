@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 
 import duckdb
 import zstandard as zstd
@@ -45,78 +46,72 @@ def extract_os_name(expression: str) -> str | None:
 
 def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
     base_dir = os.path.dirname(ips_tmp_file)
+
+    output_file = os.path.join(base_dir, "output.xml")
+
+    print(f"Starting Port-Scan for {ips_tmp_file}...")
+
+    process = subprocess.Popen([
+        "masscan",
+        "-iL", ips_tmp_file,
+        "-p22,161,445,80,53",
+        "--rate", "30000",
+        "-oX", output_file
+    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+
+    while True:
+        output = process.stdout.readline()
+        if output == '' and process.poll() is not None:
+            break
+        if output:
+            line = output.strip()
+            print(line)  # Live output
+
+    print(f"Port-Scan finished: result={output_file}")
+
+    services = {
+        "22": "ssh",
+        "161": "snmp",
+        "445": "smb",
+        "80": "http",
+        "53": "dns"
+    }
+
+    # Initialize IP sets for each service
+    service_ips = {service: set() for service in services.values()}
+
+    # Parse XML and categorize IPs by open ports
+    for event, elem in ET.iterparse(output_file, events=("end",)):
+        if elem.tag == "host":
+            ip = elem.find("address").get("addr")
+            ports = elem.find("ports")
+            if ports is not None:
+                for port in ports.findall("port"):
+                    port_id = port.get("portid")
+                    if port_id in services:
+                        service_ips[services[port_id]].add(ip)
+            elem.clear()
+
+    # Write IP lists and collect file paths
+    service_files = {}
+    for service, ips in service_ips.items():
+        if ips:  # Only create files for services with IPs
+            filename = os.path.join(base_dir, f"{service}_ips.txt")
+            with open(filename, "w") as f:
+                f.writelines(f"{ip}\n" for ip in ips)
+
+            print(f"Saved {len(ips)} IP addresses for {service.upper()} in {filename}")
+            service_files[service] = filename
+        else:
+            service_files[service] = None
+
     return (
-        os.path.join(base_dir, "snmp_ips.txt"),
-        os.path.join(base_dir, "ssh_ips.txt"),
-        os.path.join(base_dir, "smb_ips.txt"),
-        os.path.join(base_dir, "http_ips.txt"),
-        os.path.join(base_dir, "dns_ips.txt")
+        service_files.get("snmp"),
+        service_files.get("ssh"),
+        service_files.get("smb"),
+        service_files.get("http"),
+        service_files.get("dns")
     )
-    # output_file = os.path.join(base_dir, "output.xml")
-    #
-    # print(f"Starting Port-Scan for {ips_tmp_file}...")
-    #
-    # process = subprocess.Popen([
-    #     "masscan",
-    #     "-iL", ips_tmp_file,
-    #     "-p22,161,445,80,53",
-    #     "--rate", "30000",
-    #     "-oX", output_file
-    # ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
-    #
-    # while True:
-    #     output = process.stdout.readline()
-    #     if output == '' and process.poll() is not None:
-    #         break
-    #     if output:
-    #         line = output.strip()
-    #         print(line)  # Live output
-    #
-    # print(f"Port-Scan finished: result={output_file}")
-    #
-    # services = {
-    #     "22": "ssh",
-    #     "161": "snmp",
-    #     "445": "smb",
-    #     "80": "http",
-    #     "53": "dns"
-    # }
-    #
-    # # Initialize IP sets for each service
-    # service_ips = {service: set() for service in services.values()}
-    #
-    # # Parse XML and categorize IPs by open ports
-    # for event, elem in ET.iterparse(output_file, events=("end",)):
-    #     if elem.tag == "host":
-    #         ip = elem.find("address").get("addr")
-    #         ports = elem.find("ports")
-    #         if ports is not None:
-    #             for port in ports.findall("port"):
-    #                 port_id = port.get("portid")
-    #                 if port_id in services:
-    #                     service_ips[services[port_id]].add(ip)
-    #         elem.clear()
-    #
-    # # Write IP lists and collect file paths
-    # service_files = {}
-    # for service, ips in service_ips.items():
-    #     if ips:  # Only create files for services with IPs
-    #         filename = os.path.join(base_dir, f"{service}_ips.txt")
-    #         with open(filename, "w") as f:
-    #             f.writelines(f"{ip}\n" for ip in ips)
-    #
-    #         print(f"Saved {len(ips)} IP addresses for {service.upper()} in {filename}")
-    #         service_files[service] = filename
-    #     else:
-    #         service_files[service] = None
-    #
-    # return (
-    #     service_files.get("snmp"),
-    #     service_files.get("ssh"),
-    #     service_files.get("smb"),
-    #     service_files.get("http"),
-    #     service_files.get("dns")
-    # )
 
 
 def ensure_header(output_file: str, mode: str):
@@ -366,17 +361,11 @@ def run_dns_scan(ips_tmp_file: str) -> str:
 
 
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
-    # snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
+    snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
 
-    # go_file = os.path.join(os.path.dirname(__file__), "main.go")
-    # executable = os.path.join(os.path.dirname(__file__), "scanner")
-    # subprocess.run(["go", "build", "-o", executable, go_file], check=True, cwd=os.path.dirname(__file__))
-
-    snmp_result_file = "targets/tcp/80/2025-09-29_09-14-21/snmp_os_info.csv.zst"
-    ssh_result_file = "targets/tcp/80/2025-09-29_09-14-21/ssh_os_info.csv.zst"
-    smb_result_file = "targets/tcp/80/2025-09-29_09-14-21/smb_os_info.csv.zst"
-    http_result_file = "targets/tcp/80/2025-09-29_09-14-21/http_os_info.csv.zst"
-    dns_result_file = "targets/tcp/80/2025-09-29_09-14-21/dns_os_info.csv.zst"
+    go_file = os.path.join(os.path.dirname(__file__), "main.go")
+    executable = os.path.join(os.path.dirname(__file__), "scanner")
+    subprocess.run(["go", "build", "-o", executable, go_file], check=True, cwd=os.path.dirname(__file__))
 
     con = duckdb.connect()
     query = f"""
@@ -404,11 +393,11 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
             COALESCE(http.HTTP_OS_INFO, '')   AS HTTP_OS_INFO,
             COALESCE(dns.DNS_OS_INFO, '')     AS DNS_OS_INFO
 
-        FROM read_csv_auto('{snmp_result_file}', ignore_errors=True) snmp
-        FULL OUTER JOIN read_csv_auto('{ssh_result_file}') ssh USING (IP)
-        FULL OUTER JOIN read_csv_auto('{smb_result_file}') smb USING (IP)
-        FULL OUTER JOIN read_csv_auto('{http_result_file}') http USING (IP)
-        FULL OUTER JOIN read_csv_auto('{dns_result_file}') dns USING (IP)
+        FROM read_csv_auto('{snmp_ips_file}', ignore_errors=True) snmp
+        FULL OUTER JOIN read_csv_auto('{ssh_ips_file}') ssh USING (IP)
+        FULL OUTER JOIN read_csv_auto('{smb_ips_file}') smb USING (IP)
+        FULL OUTER JOIN read_csv_auto('{http_ips_file}') http USING (IP)
+        FULL OUTER JOIN read_csv_auto('{dns_ips_file}') dns USING (IP)
     ) TO '{targets_os_file}' (FORMAT CSV, COMPRESSION ZSTD, HEADER);
     """
     con.execute(query)
@@ -427,10 +416,10 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
 
 def start(targets_path: str):
     start_time = time.time()
-    # ips_tmp_file = setup(targets_path)
+    ips_tmp_file = setup(targets_path)
     targets_os_file = os.path.join(targets_path, "targets_os.csv.zst")
     run_os_scan("", targets_os_file)
-    # os.remove(ips_tmp_file) # TODO Revert this later
+    os.remove(ips_tmp_file)
     print(f"OS-Scan finished: {runtime(start_time)} result=[{targets_os_file}]")
 
 
