@@ -12,7 +12,7 @@ filename = os.path.basename(__file__)
 
 def print_usage():
     print("Usage:")
-    print(f"python {filename} ip_scan icmp [max_ips]")
+    print(f"python {filename} ip_scan icmp [max_ips] [enable_os_scan]")
     print(f"python {filename} ip_scan tcp <port> [max_ips] [enable_os_scan]")
     print(f"python {filename} ip_scan udp <port> [max_ips] [enable_os_scan]")
     print(f"python {filename} os_scan <targets_path>")
@@ -128,7 +128,7 @@ def main():
     if command == "ip_scan":
         protocol = get_protocol(2)
         if protocol == "icmp":
-            ip_scan(protocol, None, get_max_ips(3), False)
+            ip_scan(protocol, None, get_max_ips(3), get_enable_os_scan(4))
         elif protocol in ["tcp", "udp"]:
             ip_scan(protocol, get_port(3), get_max_ips(4), get_enable_os_scan(5))
         else:
