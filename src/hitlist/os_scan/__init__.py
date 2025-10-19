@@ -418,7 +418,7 @@ def start(targets_path: str):
     start_time = time.time()
     ips_tmp_file = setup(targets_path)
     targets_os_file = os.path.join(targets_path, "targets_os.csv.zst")
-    run_os_scan("", targets_os_file)
+    run_os_scan(ips_tmp_file, targets_os_file)
     os.remove(ips_tmp_file)
     print(f"OS-Scan finished: {runtime(start_time)} result=[{targets_os_file}]")
 
