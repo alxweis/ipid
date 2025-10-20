@@ -45,29 +45,30 @@ def extract_os_name(expression: str) -> str | None:
 
 
 def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
-    base_dir = os.path.dirname(ips_tmp_file)
+    base_dir = "targets/icmp/2025-10-18_11-33-47"  # os.path.dirname(ips_tmp_file)
 
     output_file = os.path.join(base_dir, "output.xml")
 
-    print(f"Starting Port-Scan for {ips_tmp_file}...")
-
-    process = subprocess.Popen([
-        "masscan",
-        "-iL", ips_tmp_file,
-        "-p22,161,445,80,53",
-        "--rate", "30000",
-        "-oX", output_file
-    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
-
-    while True:
-        output = process.stdout.readline()
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            line = output.strip()
-            print(line)  # Live output
-
-    print(f"Port-Scan finished: result={output_file}")
+    # print(f"Starting Port-Scan for {ips_tmp_file}...")
+    #
+    # process = subprocess.Popen([
+    #     "masscan",
+    #     "-iL", ips_tmp_file,
+    #     "-p22,161,445,80,53",
+    #     "--rate", "30000",
+    #     "-oX", output_file
+    # ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
+    #
+    # while True:
+    #     output = process.stdout.readline()
+    #     if output == '' and process.poll() is not None:
+    #         break
+    #     if output:
+    #         line = output.strip()
+    #         print(line)  # Live output
+    #
+    # print(f"Port-Scan finished: result={output_file}")
+    db_file = os.path.join(base_dir, "scan.duckdb")
 
     services = {
         "22": "ssh",
@@ -76,35 +77,68 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
         "80": "http",
         "53": "dns"
     }
+    service_list = list(services.values())
 
-    # Initialize IP sets for each service
-    service_ips = {service: set() for service in services.values()}
+    # DuckDB connection (on disk)
+    conn = duckdb.connect(database=db_file, read_only=False)
+    # Create simple table; DuckDB will store on disk so RAM stays small
+    conn.execute("CREATE TABLE IF NOT EXISTS scans(service VARCHAR, ip VARCHAR)")
 
-    # Parse XML and categorize IPs by open ports
+    batch = []
+    BATCH_SIZE = 2000
+
+    # Stream parse XML and insert batches into DuckDB
     for event, elem in ET.iterparse(output_file, events=("end",)):
         if elem.tag == "host":
-            ip = elem.find("address").get("addr")
+            addr = elem.find("address")
+            if addr is None:
+                elem.clear()
+                continue
+            ip = addr.get("addr")
             ports = elem.find("ports")
             if ports is not None:
                 for port in ports.findall("port"):
                     port_id = port.get("portid")
-                    if port_id in services:
-                        service_ips[services[port_id]].add(ip)
+                    svc = services.get(port_id)
+                    if svc:
+                        batch.append((svc, ip))
+                        if len(batch) >= BATCH_SIZE:
+                            # bulk insert
+                            conn.executemany("INSERT INTO scans VALUES (?, ?)", batch)
+                            batch.clear()
+            # free parsed element memory
             elem.clear()
 
-    # Write IP lists and collect file paths
+    # final flush
+    if batch:
+        conn.executemany("INSERT INTO scans VALUES (?, ?)", batch)
+        batch.clear()
+
+    # write per-service deduplicated files by streaming query results
     service_files = {}
-    for service, ips in service_ips.items():
-        if ips:  # Only create files for services with IPs
-            filename = os.path.join(base_dir, f"{service}_ips.txt")
-            with open(filename, "w") as f:
-                f.writelines(f"{ip}\n" for ip in ips)
-
-            print(f"Saved {len(ips)} IP addresses for {service.upper()} in {filename}")
-            service_files[service] = filename
+    for svc in service_list:
+        out_path = os.path.join(base_dir, f"{svc}_ips.txt")
+        q = f"SELECT DISTINCT ip FROM scans WHERE service = '{svc}'"
+        cur = conn.cursor()
+        cur.execute(q)
+        # write streaming to file to avoid large memory use
+        written = 0
+        with open(out_path, "w") as f:
+            while True:
+                rows = cur.fetchmany(1000)
+                if not rows:
+                    break
+                for (ip,) in rows:
+                    f.write(f"{ip}\n")
+                    written += 1
+        if written == 0:
+            os.remove(out_path)  # remove empty file
+            service_files[svc] = None
         else:
-            service_files[service] = None
+            service_files[svc] = out_path
+            print(f"Saved {written} IP addresses for {svc.upper()} in {out_path}")
 
+    conn.close()
     return (
         service_files.get("snmp"),
         service_files.get("ssh"),
@@ -416,10 +450,10 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
 
 def start(targets_path: str):
     start_time = time.time()
-    ips_tmp_file = setup(targets_path)
+    # ips_tmp_file = setup(targets_path)
     targets_os_file = os.path.join(targets_path, "targets_os.csv.zst")
-    run_os_scan(ips_tmp_file, targets_os_file)
-    os.remove(ips_tmp_file)
+    run_os_scan('', targets_os_file)
+    # os.remove(ips_tmp_file)
     print(f"OS-Scan finished: {runtime(start_time)} result=[{targets_os_file}]")
 
 
