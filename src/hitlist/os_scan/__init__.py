@@ -6,10 +6,10 @@ import re
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ET
 
 import duckdb
 import zstandard as zstd
+from lxml import etree
 
 from core.utils import config, compress_file, runtime
 
@@ -68,84 +68,52 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
     #         print(line)  # Live output
     #
     # print(f"Port-Scan finished: result={output_file}")
-    db_file = os.path.join(base_dir, "scan.duckdb")
+    db_file = os.path.join(base_dir, "lxml", "scan.duckdb")
 
-    services = {
-        "22": "ssh",
-        "161": "snmp",
-        "445": "smb",
-        "80": "http",
-        "53": "dns"
-    }
-    service_list = list(services.values())
-
-    # DuckDB connection (on disk)
-    conn = duckdb.connect(database=db_file, read_only=False)
-    # Create simple table; DuckDB will store on disk so RAM stays small
+    services = {"22": "ssh", "161": "snmp", "445": "smb", "80": "http", "53": "dns"}
+    conn = duckdb.connect(db_file)
     conn.execute("CREATE TABLE IF NOT EXISTS scans(service VARCHAR, ip VARCHAR)")
 
     batch = []
-    BATCH_SIZE = 2000
+    BATCH_SIZE = 10000
 
-    # Stream parse XML and insert batches into DuckDB
-    for event, elem in ET.iterparse(output_file, events=("end",)):
-        if elem.tag == "host":
-            addr = elem.find("address")
-            if addr is None:
-                elem.clear()
-                continue
-            ip = addr.get("addr")
-            ports = elem.find("ports")
-            if ports is not None:
-                for port in ports.findall("port"):
-                    port_id = port.get("portid")
-                    svc = services.get(port_id)
-                    if svc:
-                        batch.append((svc, ip))
-                        if len(batch) >= BATCH_SIZE:
-                            # bulk insert
-                            conn.executemany("INSERT INTO scans VALUES (?, ?)", batch)
-                            batch.clear()
-            # free parsed element memory
-            elem.clear()
+    context = etree.iterparse(output_file, events=('end',), tag='host')
+    for _, elem in context:
+        addr = elem.find("address")
+        if addr is None:
+            elem.clear();
+            continue
+        ip = addr.get("addr")
+        for port in elem.findall(".//port"):
+            port_id = port.get("portid")
+            svc = services.get(port_id)
+            if svc:
+                batch.append((svc, ip))
+                if len(batch) >= BATCH_SIZE:
+                    conn.executemany("INSERT INTO scans VALUES (?, ?)", batch)
+                    batch.clear()
+        elem.clear()
+        while elem.getprevious() is not None:
+            del elem.getparent()[0]
 
-    # final flush
     if batch:
         conn.executemany("INSERT INTO scans VALUES (?, ?)", batch)
-        batch.clear()
 
-    # write per-service deduplicated files by streaming query results
     service_files = {}
-    for svc in service_list:
-        out_path = os.path.join(base_dir, f"{svc}_ips.txt")
-        q = f"SELECT DISTINCT ip FROM scans WHERE service = '{svc}'"
-        cur = conn.cursor()
-        cur.execute(q)
-        # write streaming to file to avoid large memory use
-        written = 0
-        with open(out_path, "w") as f:
-            while True:
-                rows = cur.fetchmany(1000)
-                if not rows:
-                    break
-                for (ip,) in rows:
-                    f.write(f"{ip}\n")
-                    written += 1
-        if written == 0:
-            os.remove(out_path)  # remove empty file
+    for svc in services.values():
+        out = os.path.join(base_dir, "lxml", f"{svc}_ips.txt")
+        with open(out, "w") as f:
+            for (ip,) in conn.execute(f"SELECT DISTINCT ip FROM scans WHERE service='{svc}'"):
+                f.write(f"{ip}\n")
+        if os.path.getsize(out) == 0:
+            os.remove(out)
             service_files[svc] = None
         else:
-            service_files[svc] = out_path
-            print(f"Saved {written} IP addresses for {svc.upper()} in {out_path}")
+            service_files[svc] = out
+            print(f"Saved {svc} to {out}")
 
     conn.close()
-    return (
-        service_files.get("snmp"),
-        service_files.get("ssh"),
-        service_files.get("smb"),
-        service_files.get("http"),
-        service_files.get("dns")
-    )
+    return tuple(service_files.get(s) for s in ["snmp", "ssh", "smb", "http", "dns"])
 
 
 def ensure_header(output_file: str, mode: str):
