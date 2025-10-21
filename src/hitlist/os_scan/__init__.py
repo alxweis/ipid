@@ -46,6 +46,8 @@ def extract_os_name(expression: str) -> str | None:
 
 def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
     base_dir = "targets/icmp/2025-10-18_11-33-47"  # os.path.dirname(ips_tmp_file)
+    base_lxml_dir = os.path.join(base_dir, "lxml")
+    os.makedirs(base_lxml_dir, exist_ok=True)
 
     output_file = os.path.join(base_dir, "output.xml")
 
@@ -68,7 +70,7 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
     #         print(line)  # Live output
     #
     # print(f"Port-Scan finished: result={output_file}")
-    db_file = os.path.join(base_dir, "lxml", "scan.duckdb")
+    db_file = os.path.join(base_lxml_dir, "scan.duckdb")
 
     services = {"22": "ssh", "161": "snmp", "445": "smb", "80": "http", "53": "dns"}
     conn = duckdb.connect(db_file)
@@ -101,7 +103,7 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
 
     service_files = {}
     for svc in services.values():
-        out = os.path.join(base_dir, "lxml", f"{svc}_ips.txt")
+        out = os.path.join(base_lxml_dir, f"{svc}_ips.txt")
         with open(out, "w") as f:
             for (ip,) in conn.execute(f"SELECT DISTINCT ip FROM scans WHERE service='{svc}'"):
                 f.write(f"{ip}\n")
