@@ -432,7 +432,7 @@ router = ["openwrt", "lede", "dd-wrt", "ddwrt", "wrt", "vyos", "vyatta", "pfsens
           "junos", "juniper", "cisco ios", "ios-xe", "nx-os", "ios", "cisco",
           "fortios", "fortinet", "forti", "sonicos", "sonicwall", "sonic",
           "arubaos", "aruba", "draytek", "drayos", "vigor", "dray",
-          "zynos", "zyxel", "vrp", "gaia", "router"]
+          "zynos", "zyxel", "vrp", "gaia", "huawei", "router"]
 
 end_device = ["ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo",
               "opensuse", "euleros", "zorin", "linux", "windows server", "windows",
@@ -446,7 +446,7 @@ oses = [
     "fritz", "rasp", "openwrt", "lede", "dd-wrt", "ddwrt", "wrt", "vyos", "vyatta", "pfsense", "routeros", "mikrotik",
     "edgeos", "airos", "unifi", "ubiquiti", "junos", "juniper", "cisco ios", "ios-xe", "nx-os", "ios", "cisco",
     "fortios", "fortinet", "forti", "sonicos", "sonicwall", "sonic", "arubaos", "aruba", "draytek", "drayos", "vigor",
-    "dray", "zynos", "zyxel", "aix", "hp-ux", "hpux", "z/os", "zos", "openvms", "vms", "vrp", "busybox", "vxworks",
+    "dray", "zynos", "zyxel", "aix", "hp-ux", "hpux", "zos", "openvms", "vms", "vrp", "busybox", "vxworks",
     "qnx", "freertos", "openembedded", "yocto", "utm", "gaia", "huawei", "router", "server"
 ]
 os_pattern = re.compile("|".join(oses), re.IGNORECASE)

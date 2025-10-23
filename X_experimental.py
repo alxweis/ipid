@@ -25,7 +25,7 @@ from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_natural
 )
 from hitlist.ip_scan import post_cleanup
-from hitlist.os_scan import router, end_device, oses
+from hitlist.os_scan import oses, router, end_device
 
 filename = os.path.basename(__file__)
 
@@ -66,6 +66,8 @@ def print_usage():
     print(f"    python {filename} 15 <msm_path> <protocol_name>")
     print("  16 - Plot pattern distribution by OS:")
     print(f"    python {filename} 16 <msm_path>")
+    print("  17 - Plot pattern distribution:")
+    print(f"    python {filename} 17 <msm_path> <name>")
     sys.exit(1)
 
 
@@ -491,7 +493,7 @@ def main():
             print_usage()
             return
 
-        plot_distribution(str(sys.argv[2]), str(sys.argv[3]))
+        plot_transit_endhost_distribution(str(sys.argv[2]), str(sys.argv[3]))
     elif mode == 16:
         if len(sys.argv) < 3:
             print_usage()
@@ -503,10 +505,142 @@ def main():
         plot_os_distribution(msm_path, router, "router")
         plot_os_distribution(msm_path, end_device, "end_device")
 
-        plot_os_pattern_distribution(msm_path, router, "router")
-        plot_os_pattern_distribution(msm_path, end_device, "end_device")
+        rhel = (["redhat"], "RHEL")
+        ubuntu_debian = (["ubuntu", "debian"], "Ubuntu/Debian")
+        windows = (["microsoft", "windows"], "Windows")
+        centos = (["centos"], "CentOS")
+        fedora = (["fedora"], "Fedora")
+        freebsd = (["freebsd"], "FreeBSD")
+        openbsd = (["openbsd"], "OpenBSD")
+
+        huawei = (["huawei"], "Huawei VRP")
+        zyxel = (["zyxel"], "Zyxel ZLD")
+        cisco = (["cisco"], "Cisco IOS")
+        draytek = (["draytek"], "DrayOS")
+        mikrotik = (["mikrotik"], "MikroTik RouterOS")
+        sonicos = (["sonicwall"], "SonicOS")
+
+        # TCP/80
+        plot_os_heatmap(msm_path, "general_purpose_os_devices",
+                        [ubuntu_debian, windows, rhel, centos, freebsd, fedora, openbsd])
+        plot_os_heatmap(msm_path, "network_os_devices", [cisco, sonicos, huawei, zyxel, draytek, mikrotik])
+
+        # UDP/53
+        # plot_os_heatmap(msm_path, "general_purpose_os_devices",
+        #                 [ubuntu_debian, rhel, windows, centos, freebsd, fedora, openbsd])
+        # plot_os_heatmap(msm_path, "network_os_devices", [huawei, zyxel, cisco, draytek, mikrotik])
+    elif mode == 17:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        plot_pattern_distribution(str(sys.argv[2]), str(sys.argv[3]))
+    elif mode == 18:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+
+        plot_time_between_requests_acm_style(str(sys.argv[2]))
     else:
         print_usage()
+
+
+def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], str]]):
+    eval_path = os.path.join(msm_path, "eval.csv.zst")
+    targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
+    targets_os_path = os.path.join(targets_base_path, "targets_os.csv.zst")
+    analysis_dir = os.path.join(msm_path, "analysis", "os_heatmap", ident)
+
+    print(f"Plotting ACM-style OS Heatmap for {ident}")
+
+    con = duckdb.connect(database=':memory:')
+    con.execute("PRAGMA threads=8;")
+
+    os_conditions = []
+    for os_list, label in os_groups:
+        for name in os_list:
+            os_conditions.append(f"WHEN lower(t.OS) LIKE '%{name.lower()}%' THEN '{label}'")
+    os_case = " ".join(os_conditions)
+
+    query = f"""
+        SELECT e.IP_ID_PATTERN AS class,
+               CASE {os_case} ELSE 'Other' END AS os_group
+        FROM read_csv_auto('{eval_path}') AS e
+        JOIN read_csv_auto('{targets_os_path}') AS t
+        ON e.IP = t.IP
+    """
+
+    df = con.execute(query).fetch_df()
+    df = df[df["os_group"] != "Other"]
+
+    pivot = df.value_counts().reset_index()
+    pivot.columns = ["class", "os_group", "count"]
+    pivot_table = pivot.pivot(index="os_group", columns="class", values="count").fillna(0)
+
+    # Absolute Summen pro OS
+    pivot_table["Total"] = pivot_table.sum(axis=1)
+    pivot_table = pivot_table.sort_values("Total", ascending=False)
+
+    # Sortierung der Spalten
+    pattern_order = [p.value for p in Pattern if p.value in pivot_table.columns]
+    pivot_table = pivot_table[pattern_order + ["Total"]]
+
+    # Relative Werte
+    pivot_table_rel = pivot_table.div(pivot_table["Total"], axis=0) * 100
+    pivot_table_rel = pivot_table_rel.drop(columns=["Total"])
+
+    # ACM CCR Stil mit etwas größerer Schrift
+    plt.rcParams.update({
+        "font.family": "Times New Roman",
+        "font.size": 11,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+    })
+
+    plt.figure(figsize=(5.0, 2.5))
+    ax = sns.heatmap(
+        pivot_table_rel,
+        annot=True,
+        fmt=".1f",
+        cmap="Blues",
+        cbar_kws={'label': 'Percentage [%]'},
+        linewidths=0.4,
+        linecolor='white'
+    )
+
+    # OS Labels mit Total Count
+    os_labels = [f"{os_name}" for os_name, total in zip(pivot_table.index, pivot_table["Total"])]
+    ax.set_yticklabels(os_labels, rotation=0)
+
+    # Achsenbeschriftungen
+    plt.xlabel("Class", labelpad=4)
+    plt.ylabel("OS Group", labelpad=4)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=25, ha="center")
+
+    # Rand um Heatmap
+    for _, spine in ax.spines.items():
+        spine.set_visible(True)
+        spine.set_linewidth(0.5)
+        spine.set_color("black")
+
+    plt.tight_layout(pad=0.4)
+
+    os.makedirs(analysis_dir, exist_ok=True)
+    pivot_table_rel.to_pickle(os.path.join(analysis_dir, "data.pkl"))
+    plt.savefig(os.path.join(analysis_dir, "plot.pdf"), bbox_inches="tight", dpi=300)
+
+    # Info-Datei mit absoluten und relativen Werten
+    with open(os.path.join(analysis_dir, "info.txt"), "w", encoding="utf-8") as f:
+        f.write("=== Absolute Counts (including Totals) ===\n")
+        f.write(pivot_table.to_string(float_format=lambda x: f"{int(x)}"))
+        f.write("\n\n=== Relative Percentages ===\n")
+        f.write(pivot_table_rel.to_string(float_format=lambda x: f"{x:.1f}%"))
+
+    plt.close()
+    con.close()
+    print("Done.")
 
 
 def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
@@ -569,6 +703,66 @@ def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
     plt.close()
     con.close()
     print("Done.")
+
+
+def plot_pattern_distribution(msm_path: str, name: str):
+    # --- Load data ---
+    data_path = os.path.join(msm_path, "analysis", "pattern_distribution", "data.pkl")
+
+    with open(Path(data_path), "rb") as f:
+        data = pickle.load(f)
+
+    # --- Handle DataFrame input ---
+    if isinstance(data, pd.DataFrame):
+        data = dict(zip(data["class"], data["relative"]))
+
+    # --- Sort classes nach deiner Pattern-Enum ---
+    all_classes = sorted(
+        data.keys(),
+        key=lambda c: [p.value for p in Pattern].index(c)
+        if c in [p.value for p in Pattern] else 999
+    )
+
+    values = [float(data.get(c, 0.0)) for c in all_classes]
+
+    # --- ACM Plot style ---
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.size": 8,
+        "axes.linewidth": 0.6,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "pdf.fonttype": 42,
+    })
+
+    fig, ax = plt.subplots(figsize=(2.35, 1.6))
+
+    x = np.arange(len(all_classes)) * 0.7
+    width = 0.4
+
+    ax.bar(x, values, width, color="#1f77b4", edgecolor="none")
+
+    # --- Percentage labels ---
+    for i, cls in enumerate(all_classes):
+        val = "<0.1" if 0 < values[i] < 0.1 else f"{values[i]:.1f}" if values[i] > 0 else "0.0"
+        ax.text(x[i], values[i] + 0.5, val, ha='center', va='bottom', fontsize=6.5)
+
+    # --- Labels and grid ---
+    ax.set_ylabel("Percentage [%]", labelpad=0.5)
+    ax.set_xticks(x)
+    ax.set_xticklabels(all_classes, rotation=35, ha='right')
+    ax.set_ylim(0, max(values) * 1.18)
+    ax.grid(axis='y', linestyle='--', linewidth=0.4, alpha=0.5)
+
+    plt.tight_layout()
+
+    # --- Save ---
+    path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_pattern_distribution.pdf")
+    plt.savefig(path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[+] ACM-style single-group figure saved to {path}")
 
 
 def plot_os_distribution(msm_path: str, oses: list[str], ident: str):
@@ -795,9 +989,8 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
     print(f"Rerun analysis of {out_path} to get merged results!")
 
 
-def plot_distribution(msm_path: str, name: str):
+def plot_transit_endhost_distribution(msm_path: str, name: str):
     # --- Load data ---
-
     transit_path = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution", "data.pkl")
     endhost_path = os.path.join(msm_path, "analysis", "end-device_pattern_distribution", "data.pkl")
 
@@ -812,12 +1005,11 @@ def plot_distribution(msm_path: str, name: str):
     if isinstance(endhost_data, pd.DataFrame):
         endhost_data = dict(zip(endhost_data["class"], endhost_data["relative"]))
 
-    # --- Merge all classes that appear in either dataset ---
+    # --- Merge all classes ---
     all_classes = sorted(set(transit_data.keys()) | set(endhost_data.keys()),
                          key=lambda c: [p.value for p in Pattern].index(c)
                          if c in [p.value for p in Pattern] else 999)
 
-    # --- Extract values safely ---
     transit_values = [float(transit_data.get(c, 0.0)) for c in all_classes]
     endhost_values = [float(endhost_data.get(c, 0.0)) for c in all_classes]
 
@@ -831,10 +1023,10 @@ def plot_distribution(msm_path: str, name: str):
         "xtick.labelsize": 7,
         "ytick.labelsize": 7,
         "legend.fontsize": 7,
-        "pdf.fonttype": 42,  # TrueType fonts for ACM
+        "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(3.35, 1.6))  # fits double-column width
+    fig, ax = plt.subplots(figsize=(3.35, 1.6))
 
     x = np.arange(len(all_classes))
     width = 0.38
@@ -844,31 +1036,28 @@ def plot_distribution(msm_path: str, name: str):
 
     # --- Percentage labels ---
     for i, cls in enumerate(all_classes):
-        if transit_values[i] == 0:
-            tv = "0.0"
-        elif transit_values[i] > 0.1:
-            tv = f"{transit_values[i]:.1f}"
-        else:
-            tv = "<0.1"
+        tv = "<0.1" if 0 < transit_values[i] < 0.1 else f"{transit_values[i]:.1f}" if transit_values[i] > 0 else "0.0"
+        ev = "<0.1" if 0 < endhost_values[i] < 0.1 else f"{endhost_values[i]:.1f}" if endhost_values[i] > 0 else "0.0"
         ax.text(x[i] - width / 2, transit_values[i] + 0.5, tv, ha='center', va='bottom', fontsize=6.5)
-
-        if endhost_values[i] == 0:
-            ev = "0.0"
-        elif endhost_values[i] > 0.1:
-            ev = f"{endhost_values[i]:.1f}"
-        else:
-            ev = "<0.1"
         ax.text(x[i] + width / 2, endhost_values[i] + 0.5, ev, ha='center', va='bottom', fontsize=6.5)
 
-    # --- Labels, grid, and legend ---
+    # --- Labels and grid ---
     ax.set_ylabel("Percentage [%]", labelpad=1)
     ax.set_xticks(x)
     ax.set_xticklabels(all_classes, rotation=25, ha='center')
     ax.set_ylim(0, max(max(transit_values), max(endhost_values)) * 1.18)
     ax.grid(axis='y', linestyle='--', linewidth=0.4, alpha=0.5)
-    ax.legend(frameon=False, ncol=2, loc="upper center", bbox_to_anchor=(0.5, 1.25))
 
-    # --- Compact layout ---
+    # --- Legend inside plot ---
+    ax.legend(
+        loc="best",
+        frameon=True,
+        framealpha=0.8,
+        facecolor="white",
+        handlelength=1.2,
+        handletextpad=0.4
+    )
+
     plt.tight_layout()
 
     # --- Save ---
@@ -876,6 +1065,55 @@ def plot_distribution(msm_path: str, name: str):
     plt.savefig(path, format="pdf", bbox_inches="tight")
     plt.close(fig)
     print(f"[+] ACM-style figure saved to {path}")
+
+
+def plot_time_between_requests_acm_style(msm_path: str):
+    # --- Load data ---
+    data_path = os.path.join(msm_path, "analysis", "time_between_requests", "data.pkl")
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"Data file not found: {data_path}")
+
+    with open(Path(data_path), "rb") as f:
+        deltas = pickle.load(f)
+
+    # --- Cut extremes (99.9 percentile) ---
+    q = np.percentile(deltas, 99.9)
+    deltas = deltas[deltas <= q]
+
+    # --- ACM CCR Plot style ---
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.size": 8,
+        "axes.linewidth": 0.6,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "pdf.fonttype": 42,
+    })
+
+    fig, ax = plt.subplots(figsize=(2.35, 1.6))
+
+    sns.histplot(deltas, bins=80, stat="percent", color="#1f77b4", ax=ax)
+
+    # --- Labels and layout ---
+    ax.set_xlabel("Time between Requests (ms)")
+    ax.set_ylabel("Relative Frequency (%)")
+    ax.set_xlim(left=0)
+    ax.set_ylim(bottom=0)
+    ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.tick_params(width=0.4, length=2)
+
+    plt.tight_layout(pad=0.2)
+
+    # --- Save ---
+    output_dir = os.path.join(msm_path, "analysis", "time_between_requests")
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "plot_acm_style.pdf")
+
+    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=600)
+    plt.close(fig)
+    print(f"[+] ACM-style compact figure saved to {output_file}")
 
 
 if __name__ == "__main__":
