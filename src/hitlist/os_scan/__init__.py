@@ -6,10 +6,10 @@ import re
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 
 import duckdb
 import zstandard as zstd
-from lxml import etree
 
 from core.utils import config, compress_file, runtime
 
@@ -45,77 +45,72 @@ def extract_os_name(expression: str) -> str | None:
 
 
 def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
-    base_dir = "targets/icmp/2025-10-18_11-33-47"  # os.path.dirname(ips_tmp_file)
-    base_lxml_dir = os.path.join(base_dir, "lxml")
-    os.makedirs(base_lxml_dir, exist_ok=True)
-
+    base_dir = os.path.dirname(ips_tmp_file)
     output_file = os.path.join(base_dir, "output.xml")
 
-    # print(f"Starting Port-Scan for {ips_tmp_file}...")
-    #
-    # process = subprocess.Popen([
-    #     "masscan",
-    #     "-iL", ips_tmp_file,
-    #     "-p22,161,445,80,53",
-    #     "--rate", "30000",
-    #     "-oX", output_file
-    # ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
-    #
-    # while True:
-    #     output = process.stdout.readline()
-    #     if output == '' and process.poll() is not None:
-    #         break
-    #     if output:
-    #         line = output.strip()
-    #         print(line)  # Live output
-    #
-    # print(f"Port-Scan finished: result={output_file}")
-    db_file = os.path.join(base_lxml_dir, "scan.duckdb")
+    print(f"Starting Port-Scan for {ips_tmp_file}...")
 
-    services = {"22": "ssh", "161": "snmp", "445": "smb", "80": "http", "53": "dns"}
-    conn = duckdb.connect(db_file)
-    conn.execute("CREATE TABLE IF NOT EXISTS scans(service VARCHAR, ip VARCHAR)")
+    process = subprocess.Popen([
+        "masscan",
+        "-iL", ips_tmp_file,
+        "-p22,161,445,80,53",
+        "--rate", "30000",
+        "-oX", output_file
+    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
 
-    batch = []
-    BATCH_SIZE = 10000
+    while True:
+        output = process.stdout.readline()
+        if output == '' and process.poll() is not None:
+            break
+        if output:
+            line = output.strip()
+            print(line)  # Live output
 
-    context = etree.iterparse(output_file, events=('end',), tag='host')
-    for _, elem in context:
-        addr = elem.find("address")
-        if addr is None:
-            elem.clear();
-            continue
-        ip = addr.get("addr")
-        for port in elem.findall(".//port"):
-            port_id = port.get("portid")
-            svc = services.get(port_id)
-            if svc:
-                batch.append((svc, ip))
-                if len(batch) >= BATCH_SIZE:
-                    conn.executemany("INSERT INTO scans VALUES (?, ?)", batch)
-                    batch.clear()
-        elem.clear()
-        while elem.getprevious() is not None:
-            del elem.getparent()[0]
+    print(f"Port-Scan finished: result={output_file}")
 
-    if batch:
-        conn.executemany("INSERT INTO scans VALUES (?, ?)", batch)
+    services = {
+        "22": "ssh",
+        "161": "snmp",
+        "445": "smb",
+        "80": "http",
+        "53": "dns"
+    }
 
+    # Initialize IP sets for each service
+    service_ips = {service: set() for service in services.values()}
+
+    # Parse XML and categorize IPs by open ports
+    for event, elem in ET.iterparse(output_file, events=("end",)):
+        if elem.tag == "host":
+            ip = elem.find("address").get("addr")
+            ports = elem.find("ports")
+            if ports is not None:
+                for port in ports.findall("port"):
+                    port_id = port.get("portid")
+                    if port_id in services:
+                        service_ips[services[port_id]].add(ip)
+            elem.clear()
+
+    # Write IP lists and collect file paths
     service_files = {}
-    for svc in services.values():
-        out = os.path.join(base_lxml_dir, f"{svc}_ips.txt")
-        with open(out, "w") as f:
-            for (ip,) in conn.execute(f"SELECT DISTINCT ip FROM scans WHERE service='{svc}'"):
-                f.write(f"{ip}\n")
-        if os.path.getsize(out) == 0:
-            os.remove(out)
-            service_files[svc] = None
-        else:
-            service_files[svc] = out
-            print(f"Saved {svc} to {out}")
+    for service, ips in service_ips.items():
+        if ips:  # Only create files for services with IPs
+            filename = os.path.join(base_dir, f"{service}_ips.txt")
+            with open(filename, "w") as f:
+                f.writelines(f"{ip}\n" for ip in ips)
 
-    conn.close()
-    return tuple(service_files.get(s) for s in ["snmp", "ssh", "smb", "http", "dns"])
+            print(f"Saved {len(ips)} IP addresses for {service.upper()} in {filename}")
+            service_files[service] = filename
+        else:
+            service_files[service] = None
+
+    return (
+        service_files.get("snmp"),
+        service_files.get("ssh"),
+        service_files.get("smb"),
+        service_files.get("http"),
+        service_files.get("dns")
+    )
 
 
 def ensure_header(output_file: str, mode: str):
@@ -365,7 +360,13 @@ def run_dns_scan(ips_tmp_file: str) -> str:
 
 
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
-    snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
+    # snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
+
+    snmp_ips_file = "targets/icmp/2025-10-18_11-33-47/snmp_ips.txt"
+    ssh_ips_file = "targets/icmp/2025-10-18_11-33-47/ssh_ips.txt"
+    smb_ips_file = "targets/icmp/2025-10-18_11-33-47/smb_ips.txt"
+    http_ips_file = "targets/icmp/2025-10-18_11-33-47/http_ips.txt"
+    dns_ips_file = "targets/icmp/2025-10-18_11-33-47/dns_ips.txt"
 
     go_file = os.path.join(os.path.dirname(__file__), "main.go")
     executable = os.path.join(os.path.dirname(__file__), "scanner")
