@@ -372,6 +372,12 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
     executable = os.path.join(os.path.dirname(__file__), "scanner")
     subprocess.run(["go", "build", "-o", executable, go_file], check=True, cwd=os.path.dirname(__file__))
 
+    snmp_result_file = run_scanner(executable, "snmp", snmp_ips_file)
+    ssh_result_file = run_scanner(executable, "ssh", ssh_ips_file)
+    smb_result_file = run_scanner(executable, "smb", smb_ips_file)
+    http_result_file = run_http_scan(http_ips_file)
+    dns_result_file = run_dns_scan(dns_ips_file)
+
     con = duckdb.connect()
     query = f"""
     COPY (
@@ -398,11 +404,11 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
             COALESCE(http.HTTP_OS_INFO, '')   AS HTTP_OS_INFO,
             COALESCE(dns.DNS_OS_INFO, '')     AS DNS_OS_INFO
 
-        FROM read_csv_auto('{snmp_ips_file}', ignore_errors=True) snmp
-        FULL OUTER JOIN read_csv_auto('{ssh_ips_file}') ssh USING (IP)
-        FULL OUTER JOIN read_csv_auto('{smb_ips_file}') smb USING (IP)
-        FULL OUTER JOIN read_csv_auto('{http_ips_file}') http USING (IP)
-        FULL OUTER JOIN read_csv_auto('{dns_ips_file}') dns USING (IP)
+        FROM read_csv_auto('{snmp_result_file}', ignore_errors=True) snmp
+        FULL OUTER JOIN read_csv_auto('{ssh_result_file}') ssh USING (IP)
+        FULL OUTER JOIN read_csv_auto('{smb_result_file}') smb USING (IP)
+        FULL OUTER JOIN read_csv_auto('{http_result_file}') http USING (IP)
+        FULL OUTER JOIN read_csv_auto('{dns_result_file}') dns USING (IP)
     ) TO '{targets_os_file}' (FORMAT CSV, COMPRESSION ZSTD, HEADER);
     """
     con.execute(query)
