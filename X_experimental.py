@@ -4,7 +4,9 @@ import ipaddress
 import json
 import os
 import pickle
+import random
 import shutil
+import string
 import sys
 import tempfile
 from datetime import datetime
@@ -19,7 +21,8 @@ import zstandard as zstd
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
-from core.classifier import pattern_generation_map, chi2_test, autocorr, dir_switch_count, AUTOCORR_MAX_LAG, Pattern
+from core.classifier import pattern_generation_map, chi2_test, Pattern, \
+    get_clusters, MULTI_GLOBAL_CLUSTER_MAX_INC, MAX_IP_ID
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
     analyze_sequence_stable_lens_natural
@@ -68,6 +71,10 @@ def print_usage():
     print(f"    python {filename} 16 <msm_path>")
     print("  17 - Plot pattern distribution:")
     print(f"    python {filename} 17 <msm_path> <name>")
+    print("  18 - Plot time between requests:")
+    print(f"    python {filename} 18 <msm_path>")
+    print("  19 - Plot random IP-ID sequence classified as specific pattern:")
+    print(f"    python {filename} 19 <msm_path> <pattern_name>")
     sys.exit(1)
 
 
@@ -265,9 +272,7 @@ def main():
         sequence_length = int(sys.argv[2])
         sequence_count_per_pattern = 10000
 
-        chi2_result: dict[str, tuple[float, float]] = {}
-        dir_switch_result: dict[str, tuple[int, int]] = {}
-        autocorr_result: dict[str, tuple[float, float]] = {}
+        chi2_inc_result: dict[str, tuple[float, float]] = {}
 
         def update_range(d: dict, key: str, value_min: float, value_max: float) -> None:
             if key in d:
@@ -283,13 +288,10 @@ def main():
             for _ in range(sequence_count_per_pattern):
                 seq = generator(sequence_length)
 
-                p_chi2 = chi2_test(seq)
-                turns = dir_switch_count(seq)
-                autocorrs = [autocorr(seq, lag) for lag in range(1, AUTOCORR_MAX_LAG + 1)]
+                p_chi2_even_inc = chi2_test(seq.even.increments)
+                p_chi2_odd_inc = chi2_test(seq.odd.increments)
 
-                update_range(chi2_result, pattern.value, p_chi2, p_chi2)
-                update_range(dir_switch_result, pattern.value, turns, turns)
-                update_range(autocorr_result, pattern.value, min(autocorrs), max(autocorrs))
+                update_range(chi2_inc_result, pattern.value, p_chi2_even_inc, p_chi2_odd_inc)
 
         def print_results(title: str, results: dict[str, tuple[float, float]]):
             print(f"{title}:")
@@ -297,9 +299,7 @@ def main():
                 print(f"{pattern}: {_min}...{_max}")
             print()
 
-        print_results("Chi2 Result", chi2_result)
-        print_results("Dir-Switch Result", dir_switch_result)
-        print_results("Autocorr Result", autocorr_result)
+        print_results("Chi2 Inc Result", chi2_inc_result)
     elif mode == 11:
         if len(sys.argv) < 4:
             print_usage()
@@ -541,8 +541,76 @@ def main():
             return
 
         plot_time_between_requests_acm_style(str(sys.argv[2]))
+    elif mode == 19:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        msm_path = str(sys.argv[2])
+        pattern_name = str(sys.argv[3])
+        plot_random_ipid_sequence(msm_path, pattern_name)
     else:
         print_usage()
+
+
+def plot_random_ipid_sequence(msm_path: str, pattern_name: str, count: int = 10):
+    probing_path = os.path.join(msm_path, "probing.csv.zst")
+    eval_path = os.path.join(msm_path, "eval.csv.zst")
+
+    con = duckdb.connect()
+    con.execute(f"""
+        CREATE TEMP TABLE eval AS 
+        SELECT * FROM read_csv_auto('{eval_path}', compression='zstd');
+        CREATE TEMP TABLE probing AS 
+        SELECT * FROM read_csv_auto('{probing_path}', compression='zstd');
+    """)
+
+    for i in range(count):
+        # Seed zwischen -1.0 und 1.0 (DuckDB akzeptiert nur diesen Bereich)
+        seed = random.uniform(-1.0, 1.0)
+        con.execute(f"SELECT setseed({seed});")
+
+        row = con.execute(f"""
+            SELECT IP 
+            FROM eval 
+            WHERE TRIM(IP_ID_PATTERN) = '{pattern_name}'
+            ORDER BY RANDOM()
+            LIMIT 1
+        """).fetchone()
+
+        if not row:
+            print(f"No entries found for pattern '{pattern_name}'")
+            return
+
+        ip = row[0]
+        seq_row = con.execute(f"""
+            SELECT IP_ID_SEQUENCE 
+            FROM probing 
+            WHERE IP = '{ip}'
+        """).fetchone()
+
+        if not seq_row or not seq_row[0]:
+            print(f"No IPID sequence found for IP {ip}")
+            continue
+
+        seq = seq_row[0]
+        y = list(map(int, seq.split(',')))
+
+        # neuer Plot pro IP
+        plt.figure()
+        plt.plot(range(1, len(y) + 1), y, marker='o')
+        plt.xlabel("Index")
+        plt.ylabel("IPID Value")
+        plt.title(f"{pattern_name} – {ip}")
+        plt.grid(True)
+
+        print(f"{ip} : {seq}")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        suffix = ''.join(random.choices(string.ascii_lowercase, k=3))
+        fn = f"plot_{pattern_name.replace(' ', '_')}_{timestamp}_{suffix}.png"
+        plt.savefig(fn, dpi=200, bbox_inches="tight")
+        plt.close()
+        print(f"Plot saved as {fn}")
 
 
 def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], str]]):

@@ -9,7 +9,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 from core import TEST_RESULTS
-from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
+from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map, chi2_test
 
 FORCE_CREATE_DATASET = True
 
@@ -219,15 +219,24 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
 
 class ClassifierTests(unittest.TestCase):
     def test_classifier(self):
-        # raw_seq = [49361, 58284, 55906, 63338, 31769, 58315, 58323, 55952, 49393, 55972, 55986, 31823, 49433, 55996,
-        #            45652, 31871, 56009, 56023, 31893, 56044, 45678, 31929, 49522, 58455, 58465, 58483, 56074, 47116,
-        #            31981, 47130, 49558, 47136, 56124, 32023, 47154, 56148, 58554, 32052, 49596, 32067, 47174, 61691,
-        #            32090, 56190, 45734, 49687, 61722, 58615, 32141, 49712, 49734, 47235, 49747, 49757, 47262, 47266,
-        #            61767, 32197, 61782, 32215, 32221, 47297, 45825, 32245, 61808, 49893, 49908, 63565, 47410, 32319,
-        #            49949, 49961, 61881, 63587, 49988, 32351, 45891, 50033, 50041, 50063, 50088, 47495, 32411, 61939,
-        #            45936, 47517, 32435, 61957, 50137, 63658, 61972, 63668, 47550, 63670, 47564, 50198, 61998, 47580,
-        #            32536, 63692]
+        # raw_seq = [5792, 44723, 18963, 20717, 58444, 13978, 19507, 55507, 58988, 7239, 32934, 48768, 6880, 24762, 46105,
+        #            756, 20051, 42029, 59532, 18023, 33478, 59552, 7168, 35546, 20595, 11284, 60076, 22068, 47193, 39591,
+        #            60620, 15585, 34310, 56858, 8256, 50375, 21683, 26113, 61164, 43636, 8800, 19630, 48281, 36897,
+        #            22227, 12891, 61452, 54420, 35398, 6152, 48825, 65204, 22771, 41198, 35942, 10453, 49369, 27720,
+        #            62540, 45243, 36486, 38504, 10432, 49288, 23603, 1276, 37030, 18543, 50201, 29327, 24147, 46594,
+        #            50745, 16105, 38118, 57378, 11808, 50895, 64716, 37417, 12352, 6672, 25779, 58985, 12896, 52246, 13,
+        #            45763, 52921, 15018, 40038, 8279, 27155, 43069, 40582, 60592, 54009, 53853, 1645, 64637]
         # seq = IPIDSequence(raw_seq)
+        #
+        # print(f"Even Inc: {chi2_test(seq.even.increments)}")
+        # print(f"Odd Inc: {chi2_test(seq.odd.increments)}")
+        # clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
+        # for i, cluster in enumerate(clusters):
+        #     if len(cluster) < 20:
+        #         continue
+        #     cluster_sequence = np.array(list(cluster.values()))
+        #     print(f"Cluster {i}: {chi2_test(cluster_sequence)}")
+
         # print(get_pattern(seq, is_mass_scan=True).value)
         # seq_raw = "[  233 26180  6417 56642 48544 46343 33530 24928 24847 20023]"
         # seq_array = np.fromstring(seq_raw.strip("[]"), sep=" ")
@@ -244,12 +253,12 @@ class ClassifierTests(unittest.TestCase):
         # print(seq.even.has_uniform_increments())
         # print(seq.odd.has_uniform_increments())
 
-        sequence_length = 100
+        sequence_length = 80
         sequence_count_per_pattern = 100000
 
         self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
-        # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
-        # self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
 
 
 # class ConfigTests(unittest.TestCase):

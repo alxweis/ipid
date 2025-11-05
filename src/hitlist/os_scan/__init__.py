@@ -360,13 +360,7 @@ def run_dns_scan(ips_tmp_file: str) -> str:
 
 
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
-    # snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
-
-    snmp_ips_file = "targets/icmp/2025-10-18_11-33-47/snmp_ips.txt"
-    ssh_ips_file = "targets/icmp/2025-10-18_11-33-47/ssh_ips.txt"
-    smb_ips_file = "targets/icmp/2025-10-18_11-33-47/smb_ips.txt"
-    http_ips_file = "targets/icmp/2025-10-18_11-33-47/http_ips.txt"
-    dns_ips_file = "targets/icmp/2025-10-18_11-33-47/dns_ips.txt"
+    snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
 
     go_file = os.path.join(os.path.dirname(__file__), "main.go")
     executable = os.path.join(os.path.dirname(__file__), "scanner")
@@ -427,10 +421,10 @@ def run_os_scan(ips_tmp_file: str, targets_os_file: str):
 
 def start(targets_path: str):
     start_time = time.time()
-    # ips_tmp_file = setup(targets_path)
+    ips_tmp_file = setup(targets_path)
     targets_os_file = os.path.join(targets_path, "targets_os.csv.zst")
-    run_os_scan('', targets_os_file)
-    # os.remove(ips_tmp_file)
+    run_os_scan(ips_tmp_file, targets_os_file)
+    os.remove(ips_tmp_file)
     print(f"OS-Scan finished: {runtime(start_time)} result=[{targets_os_file}]")
 
 

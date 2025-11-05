@@ -3,7 +3,6 @@ import random
 from enum import Enum
 
 import numpy as np
-from pytimeparse.timeparse import timeparse
 from scipy.stats import chisquare
 
 from core.utils import config
@@ -15,16 +14,10 @@ MAX_INC = math.ceil((MAX_IP_ID + 1) / MIN_STEPS_BEFORE_WRAPAROUND) - 1
 GLOBAL_MAX_INC = MAX_INC
 GLOBAL_MAX_INC_TOLERANCE = 0.5
 
-LOCAL_GE1_MAX_INC = int(timeparse(config.min_rtt) * 1000)
+LOCAL_GE1_MAX_INC = 2000
 
-MULTI_GLOBAL_CLUSTER_MAX_INC = 500
-MULTI_GLOBAL_MAX_CLUSTERS = 10
-
-CHI2_TEST_MAX = 1e-5
-DIR_SWITCH_MIN = 0.4625
-DIR_SWITCH_MAX = 0.8375
-AUTOCORR_MIN = 0.49
-AUTOCORR_MAX_LAG = 10
+MULTI_GLOBAL_CLUSTER_MAX_INC = 800
+MULTI_GLOBAL_MAX_CLUSTERS = 16
 
 
 class IPIDSubsequence:
@@ -65,6 +58,8 @@ def nrm_entropy(values: np.ndarray) -> float:
     probabilities = counts / counts.sum()
     entropy = -np.sum(probabilities * np.log2(probabilities))
     max_entropy = np.log2(len(unique_values))  # Max Entropy based on unique values
+    if max_entropy == 0:
+        return 0
     return entropy / max_entropy
 
 
@@ -149,67 +144,51 @@ def is_global(seq: IPIDSequence) -> bool:
 def is_multi_global(seq: IPIDSequence) -> bool:
     clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
 
-    def check(sequence: list[np.int32]) -> bool:
-        _seq = sequence.copy()
-        counter = 0
-        segments = []
+    # def check(sequence: list[np.int32]) -> bool:
+    #     _seq = sequence.copy()
+    #     single_count = 0
+    #
+    #     while _seq:
+    #         inc = [_seq[0]]
+    #         for x in _seq[1:]:
+    #             if x > inc[-1]:
+    #                 inc.append(x)
+    #         _seq = [x for x in _seq if x not in inc]
+    #
+    #         if len(inc) == 1:
+    #             single_count += 1
+    #             if single_count > 1:
+    #                 return False
+    #     return True
 
-        while _seq:
-            inc = [_seq[0]]
-            for x in _seq[1:]:
-                if x > inc[-1]:
-                    inc.append(x)
-            for x in inc:
-                _seq.remove(x)
-            segments.append(inc)
-            if len(inc) == 1:
-                counter += 1
-                if counter > 1:
-                    return False
-        return True
-
-    for cluster in clusters:
-        cluster_sequence = list(cluster.values())
-        if not check(cluster_sequence):
-            return False
+    # for cluster in clusters:
+    #     cluster_sequence = list(cluster.values())
+    #     if not check(cluster_sequence):
+    #         return False
 
     return 1 < len(clusters) <= MULTI_GLOBAL_MAX_CLUSTERS
 
 
-def chi2_test(seq: IPIDSequence) -> float:
-    bins = 16
-    hist, _ = np.histogram(seq.full.sequence, bins=bins, range=(0, MAX_IP_ID + 1))
+def chi2_test(seq: np.ndarray) -> float:
+    bins = 10
+    hist, _ = np.histogram(seq, bins=bins, range=(0, MAX_IP_ID + 1))
     chi2, p_chi2 = chisquare(hist)
     return p_chi2
 
 
-def dir_switch_count(seq: IPIDSequence) -> int:
-    diff = np.diff(seq.full.sequence)
-    signs = np.sign(diff)
-    return np.count_nonzero(signs[1:] != signs[:-1]) + 1
-
-
-def autocorr(seq: IPIDSequence, lag: int) -> float:
-    if is_constant(seq):
-        return 0
-    corr = np.corrcoef(seq.full.sequence[:-lag], seq.full.sequence[lag:])[0, 1]
-    return float(abs(corr))
-
-
 def is_random(seq: IPIDSequence) -> bool:
-    # 1) Chi²-Test
-    if chi2_test(seq) < CHI2_TEST_MAX:
-        return False  # Filters REFLECTION, CONSTANT, LOCAL(=1)
+    if (chi2_test(seq.even.increments) < 1e-9 or
+            chi2_test(seq.odd.increments) < 1e-9):
+        return False  # Filters REFLECTION, CONSTANT, GLOBAL, LOCAL(=1), LOCAL(>=1)
 
-    # 2) Direction-Change
-    runs = dir_switch_count(seq)
-    if runs < len(seq) * DIR_SWITCH_MIN or runs > len(seq) * DIR_SWITCH_MAX:
-        return False  # Filters GLOBAL
-
-    # 3) Autocorrelation
-    for lag in range(1, AUTOCORR_MAX_LAG + 1):
-        if autocorr(seq, lag) > AUTOCORR_MIN:
-            return False
+    # clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
+    # for cluster in clusters:
+    #     if len(cluster) < 20:
+    #         continue
+    #     cluster_sequence = np.array(list(cluster.values()))
+    #
+    #     if chi2_test(cluster_sequence) < 1e-8:
+    #         return False  # Filters MULTI GLOBAL
 
     return True
 
