@@ -141,8 +141,8 @@ def is_global(seq: IPIDSequence) -> bool:
     return seq.full.is_increasing(min_inc=1, max_inc=MAX_INC)
 
 
-def is_multi_global(seq: IPIDSequence) -> bool:
-    clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
+def is_multi_global(seq: IPIDSequence, max_clusters=MULTI_GLOBAL_MAX_CLUSTERS, max_inc=MULTI_GLOBAL_CLUSTER_MAX_INC) -> bool:
+    clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=max_inc)
 
     # def check(sequence: list[np.int32]) -> bool:
     #     _seq = sequence.copy()
@@ -166,7 +166,7 @@ def is_multi_global(seq: IPIDSequence) -> bool:
     #     if not check(cluster_sequence):
     #         return False
 
-    return 1 < len(clusters) <= MULTI_GLOBAL_MAX_CLUSTERS
+    return 1 < len(clusters) <= max_clusters
 
 
 def chi2_test(seq: np.ndarray) -> float:
@@ -301,16 +301,16 @@ def global_ip_id_sequence(length: int, max_inc: int = GLOBAL_MAX_INC) -> IPIDSeq
     return IPIDSequence(seq)
 
 
-def multi_global_ip_id_sequence(length: int) -> IPIDSequence:
+def multi_global_ip_id_sequence(length: int, max_clusters=MULTI_GLOBAL_MAX_CLUSTERS, max_inc=MULTI_GLOBAL_CLUSTER_MAX_INC) -> IPIDSequence:
     seq = []
-    cluster_count = random.randint(2, MULTI_GLOBAL_MAX_CLUSTERS)
+    cluster_count = random.randint(2, max_clusters)
 
     sizes = [length // cluster_count] * cluster_count
     for i in range(length % cluster_count):
         sizes[i] += 1
 
     cluster_seqs = {
-        i: global_ip_id_sequence(length=sizes[i], max_inc=MULTI_GLOBAL_CLUSTER_MAX_INC).full.sequence.astype(
+        i: global_ip_id_sequence(length=sizes[i], max_inc=max_inc).full.sequence.astype(
             int).tolist()
         for i in range(cluster_count)
     }

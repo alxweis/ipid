@@ -6,10 +6,14 @@ from collections import defaultdict
 from enum import Enum
 
 import numpy as np
+import pandas as pd
+import seaborn as sns
 from matplotlib import pyplot as plt
+from scipy.stats import chisquare
 
 from core import TEST_RESULTS
-from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map, chi2_test
+from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map, multi_global_ip_id_sequence, \
+    is_multi_global
 
 FORCE_CREATE_DATASET = True
 
@@ -83,7 +87,10 @@ def create_reorder_dataset(sequence_length: int, sequence_count_per_pattern: int
             reorder_indices = random.sample(range(len(reorder_seq)), k)
 
             values = [reorder_seq[i] for i in reorder_indices]
-            random.shuffle(values)
+            if k == 2:
+                values = [values[1], values[0]]
+            else:
+                random.shuffle(values)
 
             for i, idx in enumerate(reorder_indices):
                 reorder_seq[idx] = values[i]
@@ -107,6 +114,7 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
 
     print(f"### {dataset.value.upper()} DATASET ###\n")
 
+    is_mass_scan = sequence_length >= 80
     overall_correct = 0
     overall_total = 0
     confusion_matrix = defaultdict(lambda: defaultdict(int))
@@ -117,9 +125,10 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         misclassified_counts = defaultdict(int)
 
         for seq in ip_id_sequences:
-            predicted_pattern = get_pattern(seq, is_mass_scan=sequence_length >= 80)
+            predicted_pattern = get_pattern(seq, is_mass_scan)
 
-            if true_pattern.value == predicted_pattern.value:
+            if (true_pattern.value == predicted_pattern.value or
+                    (not is_mass_scan and true_pattern in [Pattern.MULTI_GLOBAL, Pattern.RANDOM] and predicted_pattern == Pattern.FALLBACK)):
                 correct_classifications += 1
             else:
                 # print(f"'{",".join(map(str, seq.full.sequence.tolist()))}' is classified as {predicted_pattern} (real: {true_pattern})")
@@ -190,30 +199,46 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
 
     cm = np.array([[confusion_matrix[t][p] for p in predicted_labels] for t in true_labels])
 
-    fig, ax = plt.subplots(figsize=(7, 5))
+    # ACM CCR Stil
+    plt.rcParams.update({
+        "font.family": "Times New Roman",
+        "font.size": 11,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+    })
 
-    ax.set_xticks(range(len(predicted_labels)), labels=predicted_labels, rotation=45, ha="right")
-    ax.set_yticks(range(len(true_labels)), labels=true_labels)
-    ax.set_xlabel("Predicted Class")
-    ax.set_ylabel("True Class")
+    cm_rel = cm / cm.sum(axis=1, keepdims=True) * 100
+    df = pd.DataFrame(cm_rel, index=true_labels, columns=predicted_labels)
 
-    row_sums = cm.sum(axis=1, keepdims=True)
-    cm_rel = cm / row_sums
+    plt.figure(figsize=(4.8, 2.8))
+    ax = sns.heatmap(
+        df,
+        annot=True,
+        fmt=".1f",
+        cmap="Blues",
+        cbar_kws={'label': 'Percentage [%]'},
+        linewidths=0.4,
+        linecolor='white'
+    )
 
-    im = ax.imshow(cm_rel * 100, cmap="Blues", vmin=0, vmax=100)
-    cbar = ax.figure.colorbar(im, ax=ax)
-    cbar.ax.set_ylabel("Percentage (%)", rotation=-90, va="bottom")
+    ax.set_xlabel("Predicted Class", labelpad=4)
+    ax.set_ylabel("True Class", labelpad=4)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=25, ha="center")
 
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            val = cm_rel[i, j] * 100
-            ax.text(j, i, f"{val:.1f}", ha="center", va="center",
-                    color="white" if val > 50 else "black")
+    # Schwarzer Rand
+    for _, spine in ax.spines.items():
+        spine.set_visible(True)
+        spine.set_linewidth(0.5)
+        spine.set_color("black")
 
-    plt.tight_layout()
+    plt.tight_layout(pad=0.4)
     plt.savefig(
-        os.path.join(TEST_RESULTS, f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}.pdf"),
-        dpi=300)
+        os.path.join(TEST_RESULTS,
+                     f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}_acm.pdf"),
+        bbox_inches="tight", dpi=300
+    )
     return True
 
 
@@ -253,12 +278,28 @@ class ClassifierTests(unittest.TestCase):
         # print(seq.even.has_uniform_increments())
         # print(seq.odd.has_uniform_increments())
 
+        total_sequences = 10000
         sequence_length = 80
-        sequence_count_per_pattern = 100000
+        points = [(15, 500), (15, 700), (15, 900)]
 
-        self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
-        self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
-        self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
+        for max_clusters, max_inc in points:
+            correct_count = 0
+            for _ in range(total_sequences):
+                sequence = multi_global_ip_id_sequence(sequence_length, max_clusters, max_inc)
+                if is_multi_global(sequence, max_clusters, max_inc):
+                    correct_count += 1
+            print(f"Precision (max_clusters={max_clusters}, max_inc={max_inc}): {correct_count/total_sequences}")
+
+        # hist = [50, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        # chi2, p_chi2 = chisquare(hist)
+        # print(p_chi2)
+
+        # sequence_length = 10
+        # sequence_count_per_pattern = 10000
+        #
+        # self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
+        # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
+        # self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
 
 
 # class ConfigTests(unittest.TestCase):

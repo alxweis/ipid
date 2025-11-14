@@ -12,6 +12,9 @@ from functools import partial
 
 import duckdb
 import geoip2.database
+import matplotlib
+
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -323,7 +326,7 @@ def intersect_classifications(eval_csv_seq: str, eval_csv_b2b: str):
     con.close()
 
     conf_matrix = pd.crosstab(df['pattern1'], df['pattern2'], normalize='index') * 100
-    abs_matrix = pd.crosstab(df['pattern1'], df['pattern2'])  # absolute counts
+    abs_matrix = pd.crosstab(df['pattern1'], df['pattern2'])
 
     order = [p.value for p in Pattern]
     rows = [p for p in order if p in conf_matrix.index]
@@ -331,28 +334,54 @@ def intersect_classifications(eval_csv_seq: str, eval_csv_b2b: str):
     conf_matrix = conf_matrix.reindex(index=rows, columns=cols)
     abs_matrix = abs_matrix.reindex(index=rows, columns=cols)
 
-    # Save confusion matrix as .pkl
+    # Save confusion matrix
     out_dir = os.path.join(EXP_INTERSECTIONS, "seq_vs_b2b")
     os.makedirs(out_dir, exist_ok=True)
     with open(os.path.join(out_dir, "conf_matrix.pkl"), "wb") as f:
         pickle.dump(conf_matrix, f)
 
-    # Save metadata to info.txt
     with open(os.path.join(out_dir, "info.txt"), "w", encoding="utf-8") as f:
-        f.write("Absolute counts:\n")
+        f.write("=== Absolute counts ===\n")
         f.write(abs_matrix.to_string())
-        f.write("\n\nPercentage distribution (%):\n")
+        f.write("\n\n=== Percentage distribution [%] ===\n")
         f.write(conf_matrix.round(2).to_string())
-        f.write(f"\n\nNumber of matching IPs: {len(df)}")
+        f.write(f"\n\nTotal matching IPs: {len(df)}")
 
-    # Plot
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(conf_matrix, annot=True, fmt='.2f', cmap='Blues', cbar_kws={'label': 'Percentage (%)'},
-                annot_kws={"fontsize": 12})
-    plt.xlabel('Back-To-Back', fontsize=14)
-    plt.ylabel('Sequential', fontsize=14)
-    plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "plot.pdf"), bbox_inches="tight")
+    # --- ACM CCR Plot Style ---
+    plt.rcParams.update({
+        "font.family": "Times New Roman",
+        "font.size": 11,
+        "axes.titlesize": 12,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+    })
+
+    plt.figure(figsize=(5.2, 3.0))
+    ax = sns.heatmap(
+        conf_matrix,
+        annot=True,
+        fmt=".1f",
+        cmap="Blues",
+        cbar_kws={'label': 'Percentage [%]'},
+        linewidths=0.4,
+        linecolor='white'
+    )
+
+    ax.set_xlabel("Back-to-Back Classification", labelpad=4)
+    ax.set_ylabel("Sequential Classification", labelpad=4)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=25, ha="center")
+
+    # Schwarzer Rand
+    for _, spine in ax.spines.items():
+        spine.set_visible(True)
+        spine.set_linewidth(0.5)
+        spine.set_color("black")
+
+    plt.tight_layout(pad=0.4)
+    plt.savefig(os.path.join(out_dir, "plot.pdf"), bbox_inches="tight", dpi=300)
+    plt.close()
+    print(f"Saved ACM-style intersection heatmap to {out_dir}")
 
 
 class ProcessingParams:
@@ -709,7 +738,7 @@ def plot_avg_rtt_per_continent(params: ProcessingParams):
     continents = {}
     for continent, rtts in continent_to_rtts.items():
         arr = np.array(rtts, dtype=np.float32)
-        q = np.percentile(arr, 99)
+        q = np.percentile(arr, 99.9)
         arr_cut = arr[arr <= q]
 
         rtt_count = len(arr_cut)
@@ -760,7 +789,7 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
         if pattern in {Pattern.LOCAL_EQ1, Pattern.LOCAL_GE1}:
             results.append(np.concatenate([ip_id_sequence.even.increments, ip_id_sequence.odd.increments]))
         elif pattern == Pattern.MULTI_GLOBAL:
-            clusters = get_clusters(ip_id_sequence.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
+            clusters: list[dict[int, np.int32]] = get_clusters(ip_id_sequence.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
             increments = np.array([], dtype=np.int32)
             for cluster in clusters:
                 arr = np.array(list(cluster.values()), dtype=np.int32)
@@ -834,7 +863,7 @@ def plot_increment_distribution(params: ProcessingParams, pattern: Pattern):
         return
     print(f"Plotting Increment Distribution for {pattern.value}...")
     increments_numpy = np.array(increments, dtype=np.int32)
-    q = np.percentile(increments_numpy, 99)
+    q = np.percentile(increments_numpy, 99.9)
     increments_cut = increments_numpy[increments_numpy <= q]
 
     plt.figure(figsize=(10, 6))

@@ -21,8 +21,7 @@ import zstandard as zstd
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
-from core.classifier import pattern_generation_map, chi2_test, Pattern, \
-    get_clusters, MULTI_GLOBAL_CLUSTER_MAX_INC, MAX_IP_ID
+from core.classifier import pattern_generation_map, chi2_test, Pattern
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
     analyze_sequence_stable_lens_natural
@@ -530,17 +529,20 @@ def main():
         #                 [ubuntu_debian, rhel, windows, centos, freebsd, fedora, openbsd])
         # plot_os_heatmap(msm_path, "network_os_devices", [huawei, zyxel, cisco, draytek, mikrotik])
     elif mode == 17:
-        if len(sys.argv) < 4:
+        if len(sys.argv) < 5:
             print_usage()
             return
 
-        plot_pattern_distribution(str(sys.argv[2]), str(sys.argv[3]))
+        plot_pattern_distribution(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
     elif mode == 18:
         if len(sys.argv) < 3:
             print_usage()
             return
 
-        plot_time_between_requests_acm_style(str(sys.argv[2]))
+        # plot_time_between_requests_acm_style(str(sys.argv[2]))
+        # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
+        # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.LOCAL_GE1])
+        plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
             print_usage()
@@ -773,56 +775,131 @@ def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
     print("Done.")
 
 
-def plot_pattern_distribution(msm_path: str, name: str):
-    # --- Load data ---
-    data_path = os.path.join(msm_path, "analysis", "pattern_distribution", "data.pkl")
+def plot_pattern_distribution(msm_path_1: str, msm_path_2: str, name: str):
+    def load_data(msm_path):
+        data_path = os.path.join(msm_path, "analysis", "pattern_distribution", "data.pkl")
+        with open(Path(data_path), "rb") as f:
+            data = pickle.load(f)
+        if isinstance(data, pd.DataFrame):
+            data = dict(zip(data["class"], data["relative"]))
+        return data
 
-    with open(Path(data_path), "rb") as f:
-        data = pickle.load(f)
+    # --- Load both datasets ---
+    data1 = load_data(msm_path_1)
+    data2 = load_data(msm_path_2)
 
-    # --- Handle DataFrame input ---
-    if isinstance(data, pd.DataFrame):
-        data = dict(zip(data["class"], data["relative"]))
-
-    # --- Sort classes nach deiner Pattern-Enum ---
+    # --- Sort classes nach Pattern Enum ---
     all_classes = sorted(
-        data.keys(),
+        set(data1.keys()).union(data2.keys()),
         key=lambda c: [p.value for p in Pattern].index(c)
         if c in [p.value for p in Pattern] else 999
     )
 
-    values = [float(data.get(c, 0.0)) for c in all_classes]
+    values1 = [float(data1.get(c, 0.0)) for c in all_classes]
+    values2 = [float(data2.get(c, 0.0)) for c in all_classes]
+
+    # --- Farbzuordnung ---
+    color_map = {
+        "Reflection": "#FFE866",  # Helles Gelb
+        "Constant": "#6FB8FF",  # Helles Blau
+        "Global": "#FF8080",  # Helles Rot
+        "Local (=1)": "#B580FF",  # Helles Violett
+        "Local (≥1)": "#6EE66E",  # Helles Grün
+        "Multi Global": "#66E0E0",  # Helles Türkis
+        "Random": "#FFB266",  # Helles Orange
+        "Fallback": "#A0A0A0"  # Helles Grau
+    }
 
     # --- ACM Plot style ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
-        "font.size": 8,
-        "axes.linewidth": 0.6,
-        "axes.labelsize": 8,
-        "xtick.labelsize": 7,
-        "ytick.labelsize": 7,
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 8.5,
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(2.35, 1.6))
+    fig, ax = plt.subplots(figsize=(5.5, 2.0))
 
-    x = np.arange(len(all_classes)) * 0.7
-    width = 0.4
+    # --- Zwei Balken (y=1 und y=0) ---
+    y_positions = [1, 0]
+    datasets = [values1, values2]
+    labels = ["1", "2"]
+    bars = []
+    fallback_start = 0
+    fallback_end = 0
 
-    ax.bar(x, values, width, color="#1f77b4", edgecolor="none")
+    width = 0.45
+    for y, values, label in zip(y_positions, datasets, labels):
+        left = 0
+        current_bars = []
+        for cls, val in zip(all_classes, values):
+            color = color_map.get(cls, "#CCCCCC")
+            bar = ax.barh(y, val, left=left, height=width, edgecolor="none", color=color)
+            current_bars.append(bar)
 
-    # --- Percentage labels ---
-    for i, cls in enumerate(all_classes):
-        val = "<0.1" if 0 < values[i] < 0.1 else f"{values[i]:.1f}" if values[i] > 0 else "0.0"
-        ax.text(x[i], values[i] + 0.5, val, ha='center', va='bottom', fontsize=6.5)
+            # Prozentbeschriftung ab 5 %
+            if val >= 5:
+                # text_color = "black" if color.lower() not in ["#696969", "#8a2be2", "#1e90ff", "#ff4c4c",
+                #                                               "#00ced1"] else "white"
+                ax.text(left + val / 2, y, f"{val:.1f}", ha="center", va="center", color="black", fontsize=8)
 
-    # --- Labels and grid ---
-    ax.set_ylabel("Percentage [%]", labelpad=0.5)
-    ax.set_xticks(x)
-    ax.set_xticklabels(all_classes, rotation=35, ha='right')
-    ax.set_ylim(0, max(values) * 1.18)
-    ax.grid(axis='y', linestyle='--', linewidth=0.4, alpha=0.5)
+            left += val
+
+            if y == 1 and cls == "Fallback":
+                fallback_start = left - val
+                fallback_end = left
+
+        # Beschriftung (1. / 2.) links neben den Balken
+        ax.text(-1, y, label, ha="right", va="center", fontsize=10)
+        bars = current_bars  # für Legende speichern
+
+    # --- Gestrichelte Linien und Fläche ---
+    ax.plot([fallback_start, 0],
+            [(1 - width) + width * 0.5, width * 0.5],
+            color='gray', linestyle='--', linewidth=0.8, zorder=4, alpha=0.5)
+
+    ax.plot([fallback_end, 100],
+            [(1 - width) + width * 0.5, width * 0.5],
+            color='gray', linestyle='--', linewidth=0.8, zorder=4, alpha=0.5)
+
+    ax.fill_betweenx(
+        [(1 - width) + width * 0.5, width * 0.5],
+        [fallback_start, 0],
+        [fallback_end, 100],
+        color='lightgray',
+        alpha=0.5,
+        zorder=3
+    )
+
+    # --- Achsen und Layout ---
+    ax.set_xlim(0, 100)
+    ax.set_ylim(-0.5, 1.5)
+    ax.set_xlabel("Percentage [%]", labelpad=2)
+    fig.text(
+        0.01, 0.5, "Measurement No.",
+        va="center", ha="center", rotation="vertical", fontsize=10
+    )
+    ax.set_yticks([])
+    ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
+
+    # --- Legende horizontal über dem Plot ---
+    ax.legend(
+        [b[0] for b in bars],
+        all_classes,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.0),  # Position über dem Plot
+        ncol=4,  # 4 Spalten, für kompakte Darstellung
+        frameon=False,
+        # columnspacing=0.8,  # horizontaler Abstand zwischen Einträgen
+        handletextpad=0.4,  # Abstand zwischen Farbfeld und Text
+        # handlelength=1.2,  # Länge des Farbfelds
+        borderaxespad=0.2  # Abstand zwischen Plot und Legende
+    )
 
     plt.tight_layout()
 
@@ -830,7 +907,7 @@ def plot_pattern_distribution(msm_path: str, name: str):
     path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_pattern_distribution.pdf")
     plt.savefig(path, format="pdf", bbox_inches="tight")
     plt.close(fig)
-    print(f"[+] ACM-style single-group figure saved to {path}")
+    print(f"[+] Combined horizontal stacked bar plot saved to {path}")
 
 
 def plot_os_distribution(msm_path: str, oses: list[str], ident: str):
@@ -1136,13 +1213,12 @@ def plot_transit_endhost_distribution(msm_path: str, name: str):
 
 
 def plot_time_between_requests_acm_style(msm_path: str):
-    # --- Load data ---
-    data_path = os.path.join(msm_path, "analysis", "time_between_requests", "data.pkl")
+    # --- Load data (.npy) ---
+    data_path = os.path.join(msm_path, "analysis", "time_between_requests", "data.npy")
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"Data file not found: {data_path}")
 
-    with open(Path(data_path), "rb") as f:
-        deltas = pickle.load(f)
+    deltas = np.load(data_path)
 
     # --- Cut extremes (99.9 percentile) ---
     q = np.percentile(deltas, 99.9)
@@ -1162,15 +1238,28 @@ def plot_time_between_requests_acm_style(msm_path: str):
 
     fig, ax = plt.subplots(figsize=(2.35, 1.6))
 
-    sns.histplot(deltas, bins=80, stat="percent", color="#1f77b4", ax=ax)
+    sns.histplot(
+        deltas,
+        bins=50,
+        stat="percent",
+        color="#1f77b4",
+        ax=ax,
+        linewidth=0.2,
+        edgecolor="white"
+    )
 
     # --- Labels and layout ---
-    ax.set_xlabel("Time between Requests (ms)")
-    ax.set_ylabel("Relative Frequency (%)")
+    ax.set_xlabel("Time between Requests [ms]")
+    ax.set_ylabel("Relative Frequency [%]")
     ax.set_xlim(left=0)
     ax.set_ylim(bottom=0)
     ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
     ax.tick_params(width=0.4, length=2)
+
+    # --- Frame and style tweaks for ACM look ---
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.5)
+        spine.set_color("black")
 
     plt.tight_layout(pad=0.2)
 
@@ -1181,7 +1270,162 @@ def plot_time_between_requests_acm_style(msm_path: str):
 
     plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=600)
     plt.close(fig)
+
     print(f"[+] ACM-style compact figure saved to {output_file}")
+
+
+def plot_avg_rtt_per_continent_acm_style(msm_path: str):
+    # --- Load data ---
+    data_path = os.path.join(msm_path, "analysis", "rtt_per_continent", "data.pkl")
+    if not os.path.exists(data_path):
+        raise FileNotFoundError(f"Data file not found: {data_path}")
+
+    df = pd.read_pickle(data_path)
+
+    # --- Compute order by sample count ---
+    df_counts = df["continent"].value_counts()
+    order = df_counts.index.tolist()
+
+    # --- ACM CCR Plot style ---
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.size": 8,
+        "axes.linewidth": 0.6,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "pdf.fonttype": 42,
+    })
+
+    fig, ax = plt.subplots(figsize=(2.9, 1.9))
+
+    sns.violinplot(
+        data=df,
+        x="continent",
+        y="rtts",
+        order=order,
+        inner="quartile",
+        density_norm="width",  # <- ersetzt 'scale="width"'
+        linewidth=0.45,
+        cut=0,
+        color="#1f77b4",
+        ax=ax
+    )
+
+    # --- Labels and layout ---
+    ax.set_xlabel("")
+    ax.set_ylabel("Average RTT [ms]")
+    ax.set_ylim(bottom=0)
+
+    # Ticks klarer setzen (fixiert -> verhindert Warning)
+    ax.set_xticks(range(len(order)))
+    ax.set_xticklabels(order, rotation=25, ha="center")
+
+    # --- Grid & style ---
+    ax.grid(True, axis="y", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.tick_params(width=0.4, length=2)
+
+    # Schwarzer Rand um Plot
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.5)
+        spine.set_color("black")
+
+    plt.tight_layout(pad=0.3)
+
+    # --- Save ---
+    output_dir = os.path.join(msm_path, "analysis", "rtt_per_continent")
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "plot_acm_style.pdf")
+
+    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=600)
+    plt.close(fig)
+
+    print(f"[+] ACM-style RTT violin plot saved to {output_file}")
+
+
+def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.size": 8,
+        "axes.linewidth": 0.6,
+        "axes.labelsize": 8,
+        "xtick.labelsize": 7,
+        "ytick.labelsize": 7,
+        "pdf.fonttype": 42,
+    })
+
+    # leicht breiter, flacher – ideal für Paper
+    fig, ax = plt.subplots(figsize=(2.8, 1.45))
+    colors = plt.cm.tab10.colors
+
+    for i, pattern in enumerate(patterns):
+        data_path = os.path.join(
+            msm_path,
+            "analysis",
+            "inc_distribution",
+            pattern.value.lower().replace(" ", ""),
+            "data.npy"
+        )
+        if not os.path.exists(data_path):
+            print(f"[!] Skipping {pattern}: no data file found.")
+            continue
+
+        increments = np.load(data_path)
+        if len(increments) == 0:
+            print(f"[!] Skipping {pattern}: empty data.")
+            continue
+
+        # 99.9%-Cut für Ausreißer
+        q = np.percentile(increments, 99.9)
+        increments = increments[increments <= q]
+
+        # CDF
+        sorted_vals = np.sort(increments)
+        cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
+
+        ax.step(
+            sorted_vals,
+            cdf,
+            where="post",
+            label=pattern.value,
+            linewidth=0.6,
+            color=colors[i % len(colors)]
+        )
+
+    # --- Achsen & Layout ---
+    ax.set_xscale("log")
+    ax.set_xlim(left=1)
+    ax.set_ylim(0, 103)
+    ax.set_xlabel("IP-ID Increment")
+    ax.set_ylabel("Cumulative Percentage [%]")
+
+    # kompaktere Ticks
+    ax.tick_params(axis='x', which='major', length=3, width=0.4)
+    ax.tick_params(axis='x', which='minor', length=1.5, width=0.3)
+    ax.tick_params(axis='y', which='major', length=3, width=0.4)
+    ax.tick_params(axis='y', which='minor', length=1.5, width=0.3)
+
+    ax.grid(True, linestyle="--", linewidth=0.35, alpha=0.5)
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.45)
+        spine.set_color("black")
+
+    # kleine, saubere Legende
+    ax.legend(frameon=False, fontsize=6, loc="lower right", handlelength=1.3, borderpad=0.2)
+
+    plt.tight_layout(pad=0.15)
+
+    output_dir = os.path.join(msm_path, "analysis", "inc_distribution")
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "plot_cdf_multi_acm_style.pdf")
+
+    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=600)
+    plt.close(fig)
+
+    print(f"[+] Multi-pattern ACM-style CDF saved to {output_file}")
 
 
 if __name__ == "__main__":
