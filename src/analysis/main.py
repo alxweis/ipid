@@ -302,19 +302,19 @@ def calc_intersections(target_csvs: list[str], on: str):
         print(f"\n❌ Error writing to file {output_file}: {e}")
 
 
-def intersect_classifications(eval_csv_seq: str, eval_csv_b2b: str):
+def intersect_classifications(msm_path_seq: str, msm_path_b2b: str):
     con = duckdb.connect()
 
     con.execute(f"""
         CREATE TABLE t1 AS 
         SELECT {config.ip_col_name}, {config.ip_id_pattern_col_name} AS pattern1 
-        FROM read_csv_auto('{eval_csv_seq}', compression='zstd')
+        FROM read_csv_auto('{os.path.join(msm_path_seq, "eval.csv.zst")}', compression='zstd')
     """)
 
     con.execute(f"""
         CREATE TABLE t2 AS 
         SELECT {config.ip_col_name}, {config.ip_id_pattern_col_name} AS pattern2 
-        FROM read_csv_auto('{eval_csv_b2b}', compression='zstd')
+        FROM read_csv_auto('{os.path.join(msm_path_b2b, "eval.csv.zst")}', compression='zstd')
     """)
 
     df = con.execute(f"""
@@ -322,8 +322,6 @@ def intersect_classifications(eval_csv_seq: str, eval_csv_b2b: str):
         FROM t1
         INNER JOIN t2 USING ({config.ip_col_name})
     """).fetchdf()
-
-    con.close()
 
     conf_matrix = pd.crosstab(df['pattern1'], df['pattern2'], normalize='index') * 100
     abs_matrix = pd.crosstab(df['pattern1'], df['pattern2'])
@@ -382,6 +380,107 @@ def intersect_classifications(eval_csv_seq: str, eval_csv_b2b: str):
     plt.savefig(os.path.join(out_dir, "plot.pdf"), bbox_inches="tight", dpi=300)
     plt.close()
     print(f"Saved ACM-style intersection heatmap to {out_dir}")
+
+    df_intersect = con.execute(f"""
+        WITH joined AS (
+            SELECT 
+                t1.{config.ip_col_name} AS IP,
+                seq_seq.IP_ID_SEQUENCE AS IP_ID_SEQUENCE_SEQ,
+                b2b_seq.IP_ID_SEQUENCE AS IP_ID_SEQUENCE_B2B,
+                t1.pattern1 AS IP_ID_PATTERN_SEQ,
+                t2.pattern2 AS IP_ID_PATTERN_B2B
+            FROM t1
+            INNER JOIN t2 USING ({config.ip_col_name})
+            INNER JOIN read_csv_auto('{os.path.join(msm_path_seq, "probing.csv.zst")}', compression='zstd') AS seq_seq
+                ON seq_seq.{config.ip_col_name} = t1.{config.ip_col_name}
+            INNER JOIN read_csv_auto('{os.path.join(msm_path_b2b, "probing.csv.zst")}', compression='zstd') AS b2b_seq
+                ON b2b_seq.{config.ip_col_name} = t1.{config.ip_col_name}
+        )
+    
+        SELECT
+            IP,
+    
+            CASE
+                WHEN IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
+                    THEN IP_ID_SEQUENCE_SEQ
+                WHEN IP_ID_PATTERN_SEQ = 'Fallback'
+                    THEN IP_ID_SEQUENCE_B2B
+                WHEN IP_ID_PATTERN_B2B = 'Fallback'
+                    THEN IP_ID_SEQUENCE_SEQ
+                ELSE NULL
+            END AS IP_ID_SEQUENCE,
+    
+            CASE
+                WHEN IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
+                    THEN IP_ID_PATTERN_SEQ
+                WHEN IP_ID_PATTERN_SEQ = 'Fallback'
+                    THEN IP_ID_PATTERN_B2B
+                WHEN IP_ID_PATTERN_B2B = 'Fallback'
+                    THEN IP_ID_PATTERN_SEQ
+                ELSE NULL
+            END AS IP_ID_PATTERN
+    
+        FROM joined
+        WHERE
+            IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
+            OR IP_ID_PATTERN_SEQ = 'Fallback'
+            OR IP_ID_PATTERN_B2B = 'Fallback'
+    """).fetchdf()
+
+    con.close()
+
+    out_dir = os.path.join(EXP_INTERSECTIONS, "seq_vs_b2b")
+    os.makedirs(out_dir, exist_ok=True)
+
+    df_intersect.to_csv(
+        os.path.join(out_dir, "intersect.csv.zst"),
+        index=False,
+        compression="zstd"
+    )
+    print(f"Created {os.path.join(out_dir, "intersect.csv.zst")}")
+
+    build_gt_base_round_robin(
+        intersect_path=os.path.join(out_dir, "intersect.csv.zst"),
+        out_path=os.path.join(out_dir, "gt_base.csv.zst")
+    )
+
+
+def build_gt_base_round_robin(intersect_path: str, out_path: str):
+    con = duckdb.connect()
+
+    df = con.execute(f"""
+        SELECT *
+        FROM read_csv_auto('{intersect_path}', compression='zstd')
+    """).fetchdf()
+
+    con.close()
+
+    order = ["Reflection", "Constant", "Local (=1)", "Global", "Local (≥1)", "Multi Global", "Random", "Fallback"]
+
+    df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+    groups = {
+        p: df[df["IP_ID_PATTERN"] == p].head(3000).reset_index(drop=True)
+        for p in order
+    }
+
+    idx = {p: 0 for p in order}
+
+    result = []
+    remaining = True
+
+    while remaining:
+        remaining = False
+        for p in order:
+            i = idx[p]
+            if i < len(groups[p]):
+                result.append(groups[p].iloc[i])
+                idx[p] += 1
+                remaining = True
+
+    out = pd.DataFrame(result)
+    out.to_csv(out_path, index=False, compression="zstd")
+
+    print("gt_base.csv.zst erzeugt")
 
 
 class ProcessingParams:
@@ -789,7 +888,8 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
         if pattern in {Pattern.LOCAL_EQ1, Pattern.LOCAL_GE1}:
             results.append(np.concatenate([ip_id_sequence.even.increments, ip_id_sequence.odd.increments]))
         elif pattern == Pattern.MULTI_GLOBAL:
-            clusters: list[dict[int, np.int32]] = get_clusters(ip_id_sequence.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
+            clusters: list[dict[int, np.int32]] = get_clusters(ip_id_sequence.full.sequence,
+                                                               max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
             increments = np.array([], dtype=np.int32)
             for cluster in clusters:
                 arr = np.array(list(cluster.values()), dtype=np.int32)

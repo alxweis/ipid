@@ -43,8 +43,8 @@ class IPIDSequence:
 class Pattern(Enum):
     REFLECTION = "Reflection"
     CONSTANT = "Constant"
-    GLOBAL = "Global"
     LOCAL_EQ1 = "Local (=1)"  # per-destination/ per-connection counter
+    GLOBAL = "Global"
     LOCAL_GE1 = "Local (≥1)"  # per-bucket counter
     MULTI_GLOBAL = "Multi Global"  # per-cpu counter when >1 cpu
     RANDOM = "Random"
