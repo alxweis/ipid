@@ -9,11 +9,10 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
-from scipy.stats import chisquare
 
 from core import TEST_RESULTS
-from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map, multi_global_ip_id_sequence, \
-    is_multi_global
+from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map, is_reflection, \
+    multi_global_ip_id_sequence, is_multi_global
 
 FORCE_CREATE_DATASET = True
 
@@ -278,28 +277,28 @@ class ClassifierTests(unittest.TestCase):
         # print(seq.even.has_uniform_increments())
         # print(seq.odd.has_uniform_increments())
 
-        total_sequences = 10000
-        sequence_length = 80
-        points = [(15, 500), (15, 700), (15, 900)]
-
-        for max_clusters, max_inc in points:
-            correct_count = 0
-            for _ in range(total_sequences):
-                sequence = multi_global_ip_id_sequence(sequence_length, max_clusters, max_inc)
-                if is_multi_global(sequence, max_clusters, max_inc):
-                    correct_count += 1
-            print(f"Precision (max_clusters={max_clusters}, max_inc={max_inc}): {correct_count/total_sequences}")
+        # total_sequences = 10000
+        # sequence_length = 80
+        # points = [(15, 300), (15, 500), (15, 700), (15, 900)]
+        #
+        # for max_clusters, max_inc in points:
+        #     correct_count = 0
+        #     for _ in range(total_sequences):
+        #         sequence = multi_global_ip_id_sequence(sequence_length, max_clusters, max_inc)
+        #         if is_multi_global(sequence, max_clusters, max_inc):
+        #             correct_count += 1
+        #     print(f"Precision (max_clusters={max_clusters}, max_inc={max_inc}): {correct_count/total_sequences}")
 
         # hist = [50, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         # chi2, p_chi2 = chisquare(hist)
         # print(p_chi2)
 
-        # sequence_length = 10
-        # sequence_count_per_pattern = 10000
-        #
-        # self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
-        # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
-        # self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
+        sequence_length = 10
+        sequence_count_per_pattern = 100_000
+
+        self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
 
 
 # class ConfigTests(unittest.TestCase):

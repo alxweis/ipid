@@ -401,6 +401,8 @@ def intersect_classifications(msm_path_seq: str, msm_path_b2b: str):
             IP,
     
             CASE
+                WHEN IP_ID_PATTERN_SEQ = 'Fallback' AND IP_ID_PATTERN_B2B = 'Fallback'
+                    THEN IP_ID_SEQUENCE_B2B
                 WHEN IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
                     THEN IP_ID_SEQUENCE_SEQ
                 WHEN IP_ID_PATTERN_SEQ = 'Fallback'
@@ -459,7 +461,7 @@ def build_gt_base_round_robin(intersect_path: str, out_path: str):
 
     df = df.sample(frac=1, random_state=42).reset_index(drop=True)
     groups = {
-        p: df[df["IP_ID_PATTERN"] == p].head(3000).reset_index(drop=True)
+        p: df[df["IP_ID_PATTERN"] == p].reset_index(drop=True)
         for p in order
     }
 

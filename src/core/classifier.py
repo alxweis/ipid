@@ -12,7 +12,6 @@ MIN_STEPS_BEFORE_WRAPAROUND = 3
 MAX_INC = math.ceil((MAX_IP_ID + 1) / MIN_STEPS_BEFORE_WRAPAROUND) - 1
 
 GLOBAL_MAX_INC = MAX_INC
-GLOBAL_MAX_INC_TOLERANCE = 0.5
 
 LOCAL_GE1_MAX_INC = 2000
 
@@ -43,8 +42,8 @@ class IPIDSequence:
 class Pattern(Enum):
     REFLECTION = "Reflection"
     CONSTANT = "Constant"
-    LOCAL_EQ1 = "Local (=1)"  # per-destination/ per-connection counter
     GLOBAL = "Global"
+    LOCAL_EQ1 = "Local (=1)"  # per-destination/ per-connection counter
     LOCAL_GE1 = "Local (≥1)"  # per-bucket counter
     MULTI_GLOBAL = "Multi Global"  # per-cpu counter when >1 cpu
     RANDOM = "Random"
@@ -119,8 +118,21 @@ def is_uniform(values: np.ndarray, start_point: int, stop_point: int, alpha: flo
 
 
 def is_reflection(seq: IPIDSequence) -> bool:
-    return all(ip_id == config.reflection_send_ip_ids[i % len(config.reflection_send_ip_ids)]
-               for i, ip_id in enumerate(seq.full.sequence.tolist()))
+    recv = seq.full.sequence.tolist()
+    sent = config.reflection_send_ip_ids
+    m = len(sent)
+
+    if not recv:
+        return False
+
+    first_offset = (recv[0] - sent[0]) % (MAX_IP_ID + 1)
+
+    for i, ip_id in enumerate(recv):
+        expected = (sent[i % m] + first_offset) % (MAX_IP_ID + 1)
+        if ip_id != expected:
+            return False
+
+    return True
 
 
 def is_constant(seq: IPIDSequence) -> bool:
@@ -141,7 +153,8 @@ def is_global(seq: IPIDSequence) -> bool:
     return seq.full.is_increasing(min_inc=1, max_inc=MAX_INC)
 
 
-def is_multi_global(seq: IPIDSequence, max_clusters=MULTI_GLOBAL_MAX_CLUSTERS, max_inc=MULTI_GLOBAL_CLUSTER_MAX_INC) -> bool:
+def is_multi_global(seq: IPIDSequence, max_clusters=MULTI_GLOBAL_MAX_CLUSTERS,
+                    max_inc=MULTI_GLOBAL_CLUSTER_MAX_INC) -> bool:
     clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=max_inc)
 
     # def check(sequence: list[np.int32]) -> bool:
@@ -291,9 +304,8 @@ def local_ge1_ip_id_sequence(length: int) -> IPIDSequence:
 def global_ip_id_sequence(length: int, max_inc: int = GLOBAL_MAX_INC) -> IPIDSequence:
     seq = []
     s = random_ip_id()
-    tolerance = GLOBAL_MAX_INC_TOLERANCE - 0.1
-    avg_inc = random.randint(1, int((1 - tolerance) * max_inc))  # correlated with avg pps of device
-    dev_inc = max(int(tolerance * avg_inc), 1)  # correlated with deviation of pps of device
+    avg_inc = random.randint(1, max_inc)  # correlated with avg pps of device
+    dev_inc = max(int(random.random() * (max_inc - avg_inc)), 1)  # correlated with deviation of pps of device
 
     for i in range(length):
         s = increment_ip_id(s, clamp(avg_inc + random.randint(-dev_inc, dev_inc), 1, max_inc))
@@ -301,7 +313,8 @@ def global_ip_id_sequence(length: int, max_inc: int = GLOBAL_MAX_INC) -> IPIDSeq
     return IPIDSequence(seq)
 
 
-def multi_global_ip_id_sequence(length: int, max_clusters=MULTI_GLOBAL_MAX_CLUSTERS, max_inc=MULTI_GLOBAL_CLUSTER_MAX_INC) -> IPIDSequence:
+def multi_global_ip_id_sequence(length: int, max_clusters=MULTI_GLOBAL_MAX_CLUSTERS,
+                                max_inc=MULTI_GLOBAL_CLUSTER_MAX_INC) -> IPIDSequence:
     seq = []
     cluster_count = random.randint(2, max_clusters)
 

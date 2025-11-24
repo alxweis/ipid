@@ -2,6 +2,7 @@ import bz2
 import csv
 import ipaddress
 import json
+import math
 import os
 import pickle
 import random
@@ -18,6 +19,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import zstandard as zstd
+from matplotlib.ticker import MultipleLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
@@ -74,6 +76,8 @@ def print_usage():
     print(f"    python {filename} 18 <msm_path>")
     print("  19 - Plot random IP-ID sequence classified as specific pattern:")
     print(f"    python {filename} 19 <msm_path> <pattern_name>")
+    print("  20 - Plot CAIDA OS distribution:")
+    print(f"    python {filename} 20 <caida_itdk_path> <msm_path>")
     sys.exit(1)
 
 
@@ -492,7 +496,7 @@ def main():
             print_usage()
             return
 
-        plot_transit_endhost_distribution(str(sys.argv[2]), str(sys.argv[3]))
+        plot_transit_endhost_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]))
     elif mode == 16:
         if len(sys.argv) < 3:
             print_usage()
@@ -521,8 +525,8 @@ def main():
 
         # TCP/80
         plot_os_heatmap(msm_path, "general_purpose_os_devices",
-                        [ubuntu_debian, windows, rhel, centos, freebsd, fedora, openbsd])
-        plot_os_heatmap(msm_path, "network_os_devices", [cisco, sonicos, huawei, zyxel, draytek, mikrotik])
+                        [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+        plot_os_heatmap(msm_path, "network_os_devices", [cisco, huawei, mikrotik, sonicos, zyxel, draytek])
 
         # UDP/53
         # plot_os_heatmap(msm_path, "general_purpose_os_devices",
@@ -533,7 +537,7 @@ def main():
             print_usage()
             return
 
-        plot_pattern_distribution(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
+        plot_pattern_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
     elif mode == 18:
         if len(sys.argv) < 3:
             print_usage()
@@ -551,8 +555,196 @@ def main():
         msm_path = str(sys.argv[2])
         pattern_name = str(sys.argv[3])
         plot_random_ipid_sequence(msm_path, pattern_name)
+    elif mode == 20:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        plot_caida_os_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]))
     else:
         print_usage()
+
+
+def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
+    import duckdb
+    import math
+    import os
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
+
+    TABLEAU_50 = [
+        "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
+        "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#9467BD",
+        "#FF7F0E", "#17becf", "#D62728", "#2CA02C", "#8c564b",
+        "#ff7f00", "#1F77B4", "#e377c2", "#31a354", "#7b4173",
+        "#FFBB78", "#98DF8A", "#FF9896", "#C5B0D5", "#3182bd",
+        "#fd8d3c", "#9edae5", "#ff9da7", "#843c39", "#c49c94",
+        "#6baed6", "#bcbd22", "#f7b6d2", "#c7c7c7", "#bab0ac",
+        "#756bb1", "#e6550d", "#9ecae1", "#dbdb8d", "#bdbdbd",
+        "#393b79", "#637939", "#8c6d31", "#636363", "#969696",
+        "#D62728", "#FF9896", "#C5B0D5", "#dd1c77", "#7f7f7f"
+    ]
+
+    OS_COLOR_MAP = {
+        os_name: TABLEAU_50[i % len(TABLEAU_50)]
+        for i, os_name in enumerate(oses)
+    }
+
+    # ------------------------------
+    # 1. JOIN CAIDA + OS DATA
+    # ------------------------------
+    ip_to_node_file = os.path.join(caida_itdk_path, "ip_to_node.csv.zst")
+
+    targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
+    targets_os_file = os.path.join(targets_base_path, "targets_os.csv.zst")
+
+    con = duckdb.connect(database=":memory:")
+
+    con.execute(f"""
+        CREATE VIEW ip_to_node AS
+        SELECT IP, T, D
+        FROM read_csv_auto('{ip_to_node_file}', compression='zstd');
+    """)
+
+    con.execute(f"""
+        CREATE VIEW targets_os AS
+        SELECT IP, OS
+        FROM read_csv_auto('{targets_os_file}', compression='zstd');
+    """)
+
+    df_joined = con.execute("""
+        SELECT n.IP, n.T, n.D, t.OS
+        FROM ip_to_node n
+        LEFT JOIN targets_os t ON n.IP = t.IP
+    """).fetch_df()
+
+    # remove IPs without OS
+    df_joined = df_joined[df_joined["OS"].notna()]
+
+    # lowercase OS always
+    df_joined["OS"] = df_joined["OS"].astype(str).str.lower()
+
+    # ------------------------------
+    # save caida_os.csv.zst
+    # ------------------------------
+    out_dir = os.path.join(msm_path, "analysis", "caida_os_distribution")
+    os.makedirs(out_dir, exist_ok=True)
+
+    df_joined.to_csv(os.path.join(out_dir, "caida_os.csv.zst"), index=False, compression="zstd")
+
+    # ------------------------------
+    # 2. Aggregate distributions
+    # ------------------------------
+    all_os = sorted(df_joined["OS"].unique())
+
+    transit = df_joined[df_joined["T"] > 0]
+    endhost = df_joined[df_joined["T"] == 0]
+
+    transit_dist = (transit["OS"].value_counts(normalize=True) * 100)
+    endhost_dist = (endhost["OS"].value_counts(normalize=True) * 100)
+
+    transit_values = [transit_dist.get(os, 0.0) for os in all_os]
+    endhost_values = [endhost_dist.get(os, 0.0) for os in all_os]
+
+    # ------------------------------
+    # FILTER: Nur OS behalten, die >1% in Transit ODER Endhost haben
+    # ------------------------------
+    filtered_os = []
+    filtered_transit_vals = []
+    filtered_endhost_vals = []
+
+    for os_name, t_val, e_val in zip(all_os, transit_values, endhost_values):
+        if t_val > 1 or e_val > 1:
+            filtered_os.append(os_name)
+            filtered_transit_vals.append(t_val)
+            filtered_endhost_vals.append(e_val)
+
+    # Ersetze all_os + values durch gefilterte Listen
+    all_os = filtered_os
+    transit_values = filtered_transit_vals
+    endhost_values = filtered_endhost_vals
+
+    # ------------------------------
+    # 3. Tableau 50 Color Palette (deterministic modulo)
+    # ------------------------------
+    color_map = {
+        os_name: OS_COLOR_MAP[os_name]
+        for os_name in all_os
+    }
+
+    # ------------------------------
+    # 4. ACM CCR Style Plot
+    # ------------------------------
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 8.5,
+        "pdf.fonttype": 42,
+    })
+
+    fig, ax = plt.subplots(figsize=(6.5, 2.3))
+
+    y_positions = [1, 0]
+    data_sets = [transit_values, endhost_values]
+    labels = ["Transit-hops", "End-hosts"]
+    width = 0.45
+
+    for y, values, ylabel in zip(y_positions, data_sets, labels):
+        left = 0
+
+        for os_name, val in zip(all_os, values):
+            color = color_map[os_name]
+
+            ax.barh(
+                y, val, left=left, height=width,
+                edgecolor="none", color=color
+            )
+
+            if val >= 1:
+                ax.text(
+                    left + val / 2, y,
+                    str(int(math.floor(val + 0.5))),
+                    ha="center", va="center",
+                    fontsize=8, color="black"
+                )
+
+            left += val
+
+        ax.text(-1, y, ylabel, ha="right", va="center", fontsize=10)
+
+    ax.set_xlim(0, 100)
+    ax.set_ylim(-0.5, 1.5)
+    ax.set_xlabel("OS Distribution [%]")
+
+    ax.xaxis.set_minor_locator(MultipleLocator(5))
+    ax.tick_params(axis="x", which="minor", length=2, width=0.5)
+
+    ax.set_yticks([])
+    ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
+
+    ax.legend(
+        [plt.Line2D([0], [0], color=color_map[o], lw=4) for o in all_os],
+        all_os,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.0),
+        ncol=6,
+        frameon=False,
+        handletextpad=0.4,
+        borderaxespad=0.2
+    )
+
+    plt.tight_layout()
+
+    out_file = os.path.join(out_dir, "os_distribution_acm_style.pdf")
+    plt.savefig(out_file, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+
+    print(f"[+] CAIDA OS distribution saved to {out_file}")
 
 
 def plot_random_ipid_sequence(msm_path: str, pattern_name: str, count: int = 10):
@@ -649,7 +841,16 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
 
     # Absolute Summen pro OS
     pivot_table["Total"] = pivot_table.sum(axis=1)
-    pivot_table = pivot_table.sort_values("Total", ascending=False)
+    # pivot_table = pivot_table.sort_values("Total", ascending=False)
+
+    # Reihenfolge gemäß os_groups erzwingen
+    desired_order = []
+    for os_list, label in os_groups:
+        if label in pivot_table.index:
+            desired_order.append(label)
+
+    # Nur OS-Gruppen behalten, die vorkommen
+    pivot_table = pivot_table.loc[desired_order]
 
     # Sortierung der Spalten
     pattern_order = [p.value for p in Pattern if p.value in pivot_table.columns]
@@ -681,7 +882,22 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     )
 
     # OS Labels mit Total Count
-    os_labels = [f"{os_name}" for os_name, total in zip(pivot_table.index, pivot_table["Total"])]
+    # os_labels = [f"{os_name}" for os_name, total in zip(pivot_table.index, pivot_table["Total"])]
+    def fmt_count(n):
+        if n >= 1_000_000:
+            return f"{n / 1_000_000:.1f}M"
+        if n >= 100_000:
+            return f"{int(n / 1000)}k"
+        if n >= 10_000:
+            return f"{int(n / 1000)}k"
+        if n >= 1000:
+            return f"{n / 1000:.1f}k"
+        return str(int(n))
+
+    os_labels = [
+        f"{os_name} ({fmt_count(total)})"
+        for os_name, total in zip(pivot_table.index, pivot_table["Total"])
+    ]
     ax.set_yticklabels(os_labels, rotation=0)
 
     # Achsenbeschriftungen
@@ -775,7 +991,7 @@ def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
     print("Done.")
 
 
-def plot_pattern_distribution(msm_path_1: str, msm_path_2: str, name: str):
+def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: str):
     def load_data(msm_path):
         data_path = os.path.join(msm_path, "analysis", "pattern_distribution", "data.pkl")
         with open(Path(data_path), "rb") as f:
@@ -800,14 +1016,14 @@ def plot_pattern_distribution(msm_path_1: str, msm_path_2: str, name: str):
 
     # --- Farbzuordnung ---
     color_map = {
-        "Reflection": "#FFE866",  # Helles Gelb
-        "Constant": "#6FB8FF",  # Helles Blau
-        "Global": "#FF8080",  # Helles Rot
-        "Local (=1)": "#B580FF",  # Helles Violett
-        "Local (≥1)": "#6EE66E",  # Helles Grün
-        "Multi Global": "#66E0E0",  # Helles Türkis
-        "Random": "#FFB266",  # Helles Orange
-        "Fallback": "#A0A0A0"  # Helles Grau
+        "Reflection": "#FFE866",
+        "Constant": "#6FB8FF",
+        "Global": "#FF8080",
+        "Local (=1)": "#B580FF",
+        "Local (≥1)": "#6EE66E",
+        "Multi Global": "#66E0E0",
+        "Random": "#FFB266",
+        "Fallback": "#A0A0A0"
     }
 
     # --- ACM Plot style ---
@@ -825,28 +1041,31 @@ def plot_pattern_distribution(msm_path_1: str, msm_path_2: str, name: str):
 
     fig, ax = plt.subplots(figsize=(5.5, 2.0))
 
-    # --- Zwei Balken (y=1 und y=0) ---
     y_positions = [1, 0]
     datasets = [values1, values2]
     labels = ["1", "2"]
-    bars = []
-    fallback_start = 0
-    fallback_end = 0
 
+    bars = []
+    fallback_start = fallback_end = 0
     width = 0.45
+
     for y, values, label in zip(y_positions, datasets, labels):
         left = 0
         current_bars = []
         for cls, val in zip(all_classes, values):
             color = color_map.get(cls, "#CCCCCC")
-            bar = ax.barh(y, val, left=left, height=width, edgecolor="none", color=color)
+            bar = ax.barh(y, val, left=left, height=width,
+                          edgecolor="none", color=color)
             current_bars.append(bar)
 
-            # Prozentbeschriftung ab 5 %
-            if val >= 5:
-                # text_color = "black" if color.lower() not in ["#696969", "#8a2be2", "#1e90ff", "#ff4c4c",
-                #                                               "#00ced1"] else "white"
-                ax.text(left + val / 2, y, f"{val:.1f}", ha="center", va="center", color="black", fontsize=8)
+            # --- Prozentwerte ab 5%, ganzzahlig gerundet ---
+            if val >= 1:
+                ax.text(
+                    left + val / 2, y,
+                    f"{int(math.floor(val + 0.5))}",  # <-- ganze Zahl
+                    ha="center", va="center",
+                    color="black", fontsize=8
+                )
 
             left += val
 
@@ -854,56 +1073,54 @@ def plot_pattern_distribution(msm_path_1: str, msm_path_2: str, name: str):
                 fallback_start = left - val
                 fallback_end = left
 
-        # Beschriftung (1. / 2.) links neben den Balken
         ax.text(-1, y, label, ha="right", va="center", fontsize=10)
-        bars = current_bars  # für Legende speichern
+        bars = current_bars
 
-    # --- Gestrichelte Linien und Fläche ---
+    # --- Gestrichelte Linien & Fläche ---
     ax.plot([fallback_start, 0],
             [(1 - width) + width * 0.5, width * 0.5],
-            color='gray', linestyle='--', linewidth=0.8, zorder=4, alpha=0.5)
+            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
 
     ax.plot([fallback_end, 100],
             [(1 - width) + width * 0.5, width * 0.5],
-            color='gray', linestyle='--', linewidth=0.8, zorder=4, alpha=0.5)
+            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
 
     ax.fill_betweenx(
         [(1 - width) + width * 0.5, width * 0.5],
         [fallback_start, 0],
         [fallback_end, 100],
-        color='lightgray',
-        alpha=0.5,
-        zorder=3
+        color='lightgray', alpha=0.5
     )
 
-    # --- Achsen und Layout ---
+    # --- Achsen ---
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.5, 1.5)
-    ax.set_xlabel("Percentage [%]", labelpad=2)
-    fig.text(
-        0.01, 0.5, "Measurement No.",
-        va="center", ha="center", rotation="vertical", fontsize=10
-    )
+    ax.set_xlabel("IP-ID Class Distribution [%]", labelpad=2)
+
+    # --- MINORTICKS aktivieren ---
+    ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
+    ax.tick_params(axis="x", which="minor", length=2, width=0.5)
+
+    fig.text(0.01, 0.5, "Measurement [Index]",
+             va="center", ha="center", rotation="vertical", fontsize=10)
+
     ax.set_yticks([])
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
-    # --- Legende horizontal über dem Plot ---
+    # --- Legende ---
     ax.legend(
         [b[0] for b in bars],
         all_classes,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.0),  # Position über dem Plot
-        ncol=4,  # 4 Spalten, für kompakte Darstellung
+        bbox_to_anchor=(0.5, 1.0),
+        ncol=4,
         frameon=False,
-        # columnspacing=0.8,  # horizontaler Abstand zwischen Einträgen
-        handletextpad=0.4,  # Abstand zwischen Farbfeld und Text
-        # handlelength=1.2,  # Länge des Farbfelds
-        borderaxespad=0.2  # Abstand zwischen Plot und Legende
+        handletextpad=0.4,
+        borderaxespad=0.2
     )
 
     plt.tight_layout()
 
-    # --- Save ---
     path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_pattern_distribution.pdf")
     plt.savefig(path, format="pdf", bbox_inches="tight")
     plt.close(fig)
@@ -1134,7 +1351,7 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
     print(f"Rerun analysis of {out_path} to get merged results!")
 
 
-def plot_transit_endhost_distribution(msm_path: str, name: str):
+def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     # --- Load data ---
     transit_path = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution", "data.pkl")
     endhost_path = os.path.join(msm_path, "analysis", "end-device_pattern_distribution", "data.pkl")
@@ -1144,72 +1361,119 @@ def plot_transit_endhost_distribution(msm_path: str, name: str):
     with open(Path(endhost_path), "rb") as f:
         endhost_data = pickle.load(f)
 
-    # --- Handle DataFrame input ---
+    # --- Normalize DataFrame input ---
     if isinstance(transit_data, pd.DataFrame):
         transit_data = dict(zip(transit_data["class"], transit_data["relative"]))
     if isinstance(endhost_data, pd.DataFrame):
         endhost_data = dict(zip(endhost_data["class"], endhost_data["relative"]))
 
-    # --- Merge all classes ---
-    all_classes = sorted(set(transit_data.keys()) | set(endhost_data.keys()),
-                         key=lambda c: [p.value for p in Pattern].index(c)
-                         if c in [p.value for p in Pattern] else 999)
+    # --- Sort classes ---
+    all_classes = sorted(
+        set(transit_data.keys()).union(endhost_data.keys()),
+        key=lambda c: [p.value for p in Pattern].index(c)
+        if c in [p.value for p in Pattern] else 999
+    )
 
     transit_values = [float(transit_data.get(c, 0.0)) for c in all_classes]
     endhost_values = [float(endhost_data.get(c, 0.0)) for c in all_classes]
 
-    # --- ACM Plot style ---
+    # --- Farbzuordnung (wie bisher) ---
+    color_map = {
+        "Reflection": "#FFE866",
+        "Constant": "#6FB8FF",
+        "Global": "#FF8080",
+        "Local (=1)": "#B580FF",
+        "Local (≥1)": "#6EE66E",
+        "Multi Global": "#66E0E0",
+        "Random": "#FFB266",
+        "Fallback": "#A0A0A0"
+    }
+
+    # --- ACM Style ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
-        "font.size": 8,
-        "axes.linewidth": 0.6,
-        "axes.labelsize": 8,
-        "xtick.labelsize": 7,
-        "ytick.labelsize": 7,
-        "legend.fontsize": 7,
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 8.5,
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(3.35, 1.6))
+    fig, ax = plt.subplots(figsize=(5.5, 2.0))
 
-    x = np.arange(len(all_classes))
-    width = 0.38
+    y_positions = [1, 0]
+    data_sets = [transit_values, endhost_values]
+    labels = ["Transit-hops", "End-hosts"]
 
-    ax.bar(x - width / 2, transit_values, width, label="Transit-hops", color="#1f77b4", edgecolor="none")
-    ax.bar(x + width / 2, endhost_values, width, label="End-hosts", color="#ff7f0e", edgecolor="none")
+    bars = []
+    width = 0.45
 
-    # --- Percentage labels ---
-    for i, cls in enumerate(all_classes):
-        tv = "<0.1" if 0 < transit_values[i] < 0.1 else f"{transit_values[i]:.1f}" if transit_values[i] > 0 else "0.0"
-        ev = "<0.1" if 0 < endhost_values[i] < 0.1 else f"{endhost_values[i]:.1f}" if endhost_values[i] > 0 else "0.0"
-        ax.text(x[i] - width / 2, transit_values[i] + 0.5, tv, ha='center', va='bottom', fontsize=6.5)
-        ax.text(x[i] + width / 2, endhost_values[i] + 0.5, ev, ha='center', va='bottom', fontsize=6.5)
+    for y, values, ylabel in zip(y_positions, data_sets, labels):
+        left = 0
+        current_bars = []
+        for cls, val in zip(all_classes, values):
+            color = color_map.get(cls, "#CCCCCC")
 
-    # --- Labels and grid ---
-    ax.set_ylabel("Percentage [%]", labelpad=1)
-    ax.set_xticks(x)
-    ax.set_xticklabels(all_classes, rotation=25, ha='center')
-    ax.set_ylim(0, max(max(transit_values), max(endhost_values)) * 1.18)
-    ax.grid(axis='y', linestyle='--', linewidth=0.4, alpha=0.5)
+            bar = ax.barh(
+                y, val, left=left, height=width,
+                edgecolor="none", color=color
+            )
+            current_bars.append(bar)
 
-    # --- Legend inside plot ---
+            # Prozentwerte ganzzahlig, ab 1 %
+            if val >= 1:
+                ax.text(
+                    left + val / 2, y,
+                    f"{int(math.floor(val + 0.5))}",
+                    ha="center", va="center",
+                    fontsize=8, color="black"
+                )
+
+            left += val
+
+        ax.text(-1, y, ylabel, ha="right", va="center", fontsize=10)
+        bars = current_bars
+
+    # --- Achsen ---
+    ax.set_xlim(0, 100)
+    ax.set_ylim(-0.5, 1.5)
+    ax.set_xlabel("IP-ID Class Distribution [%]")
+
+    # Minorticks (5 %)
+    ax.xaxis.set_minor_locator(MultipleLocator(5))
+    ax.tick_params(axis="x", which="minor", length=2, width=0.5)
+
+    # fig.text(
+    #     0.01, 0.5, "Category",
+    #     va="center", ha="center",
+    #     rotation="vertical", fontsize=10
+    # )
+
+    ax.set_yticks([])
+    ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
+
+    # --- Legende ---
     ax.legend(
-        loc="best",
-        frameon=True,
-        framealpha=0.8,
-        facecolor="white",
-        handlelength=1.2,
-        handletextpad=0.4
+        [b[0] for b in bars],
+        all_classes,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.0),
+        ncol=4,
+        frameon=False,
+        handletextpad=0.4,
+        borderaxespad=0.2
     )
 
     plt.tight_layout()
 
-    # --- Save ---
-    path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_distribution.pdf")
-    plt.savefig(path, format="pdf", bbox_inches="tight")
+    output_dir = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_transit_endhost_distribution.pdf")
+    plt.savefig(output_dir, format="pdf", bbox_inches="tight")
     plt.close(fig)
-    print(f"[+] ACM-style figure saved to {path}")
+
+    print(f"[+] Transit/Endhost ACM-style distribution saved to {output_dir}")
 
 
 def plot_time_between_requests_acm_style(msm_path: str):
@@ -1221,7 +1485,7 @@ def plot_time_between_requests_acm_style(msm_path: str):
     deltas = np.load(data_path)
 
     # --- Cut extremes (99.9 percentile) ---
-    q = np.percentile(deltas, 99.9)
+    q = np.percentile(deltas, (99.9 / 99.9) * 100)
     deltas = deltas[deltas <= q]
 
     # --- ACM CCR Plot style ---
@@ -1282,6 +1546,15 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
 
     df = pd.read_pickle(data_path)
 
+    df["continent"] = df["continent"].replace({
+        "North America": "N.America",
+        "South America": "S.America",
+    })
+
+    df = df.groupby("continent").apply(
+        lambda g: g[g["rtts"] <= g["rtts"].quantile(0.995 / 0.999)]
+    ).reset_index(drop=True)
+
     # --- Compute order by sample count ---
     df_counts = df["continent"].value_counts()
     order = df_counts.index.tolist()
@@ -1298,7 +1571,7 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(2.9, 1.9))
+    fig, ax = plt.subplots(figsize=(2.6, 1.7))
 
     sns.violinplot(
         data=df,
@@ -1320,7 +1593,7 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
 
     # Ticks klarer setzen (fixiert -> verhindert Warning)
     ax.set_xticks(range(len(order)))
-    ax.set_xticklabels(order, rotation=25, ha="center")
+    ax.set_xticklabels(order, rotation=0, ha="center")
 
     # --- Grid & style ---
     ax.grid(True, axis="y", linestyle="--", linewidth=0.4, alpha=0.5)
@@ -1378,7 +1651,7 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
             continue
 
         # 99.9%-Cut für Ausreißer
-        q = np.percentile(increments, 99.9)
+        q = np.percentile(increments, (99.9 / 99.9) * 100)
         increments = increments[increments <= q]
 
         # CDF
