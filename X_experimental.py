@@ -585,6 +585,9 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         "#D62728", "#FF9896", "#C5B0D5", "#dd1c77", "#7f7f7f"
     ]
 
+    random.seed(42)
+    random.shuffle(TABLEAU_50)
+
     OS_COLOR_MAP = {
         os_name: TABLEAU_50[i % len(TABLEAU_50)]
         for i, os_name in enumerate(oses)
@@ -616,6 +619,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         SELECT n.IP, n.T, n.D, t.OS
         FROM ip_to_node n
         LEFT JOIN targets_os t ON n.IP = t.IP
+        WHERE (n.T = 1 AND n.D = 0) OR (n.T = 0 AND n.D = 1)
     """).fetch_df()
 
     # remove IPs without OS
@@ -637,38 +641,52 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
     # ------------------------------
     all_os = sorted(df_joined["OS"].unique())
 
-    transit = df_joined[df_joined["T"] > 0]
-    endhost = df_joined[df_joined["T"] == 0]
+    transit = df_joined[(df_joined["T"] == 1) & (df_joined["D"] == 0)]
+    endhost = df_joined[(df_joined["T"] == 0) & (df_joined["D"] == 1)]
 
     transit_dist = (transit["OS"].value_counts(normalize=True) * 100)
     endhost_dist = (endhost["OS"].value_counts(normalize=True) * 100)
 
-    transit_values = [transit_dist.get(os, 0.0) for os in all_os]
-    endhost_values = [endhost_dist.get(os, 0.0) for os in all_os]
+    # transit_values = [transit_dist.get(os, 0.0) for os in all_os]
+    # endhost_values = [endhost_dist.get(os, 0.0) for os in all_os]
 
     # ------------------------------
-    # FILTER: Nur OS behalten, die >1% in Transit ODER Endhost haben
+    # FILTER >1% and compute "other"
     # ------------------------------
     filtered_os = []
     filtered_transit_vals = []
     filtered_endhost_vals = []
 
-    for os_name, t_val, e_val in zip(all_os, transit_values, endhost_values):
+    other_transit = 0.0
+    other_endhost = 0.0
+
+    for os_name in all_os:
+        t_val = transit_dist.get(os_name, 0.0)
+        e_val = endhost_dist.get(os_name, 0.0)
+
         if t_val > 1 or e_val > 1:
             filtered_os.append(os_name)
             filtered_transit_vals.append(t_val)
             filtered_endhost_vals.append(e_val)
+        else:
+            other_transit += t_val
+            other_endhost += e_val
 
-    # Ersetze all_os + values durch gefilterte Listen
+    # Add OTHER category
+    filtered_os.append("other")
+    filtered_transit_vals.append(other_transit)
+    filtered_endhost_vals.append(other_endhost)
+
+    # Replace working lists
     all_os = filtered_os
     transit_values = filtered_transit_vals
     endhost_values = filtered_endhost_vals
 
     # ------------------------------
-    # 3. Tableau 50 Color Palette (deterministic modulo)
+    # Color map with fixed grey for other
     # ------------------------------
     color_map = {
-        os_name: OS_COLOR_MAP[os_name]
+        os_name: (OS_COLOR_MAP[os_name] if os_name in OS_COLOR_MAP else "#A0A0A0")
         for os_name in all_os
     }
 
