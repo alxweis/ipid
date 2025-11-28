@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -440,25 +441,63 @@ end_device = ["ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora
               "win", "microsoft", "lanman", "freebsd", "openbsd", "netbsd", "bsd",
               "macos", "darwin", "solaris"]
 
+soft_palette = [
+    "#FFE866",  # soft yellow
+    "#66E0E0",  # aqua
+    "#FF8080",  # soft red
+    "#6FB8FF",  # sky blue
+    "#6EE66E",  # soft green
+    "#B580FF",  # violet
+    "#6EE66E",  # soft green
+    "#FFB266",  # soft orange
+    "#99FFCC",  # pastel turquoise
+    "#FFC19C",  # peach
+    "#FFA6A6",  # light rose
+    "#FFD28A",  # warm sand
+    "#FF99CC",  # pastel pink
+    "#C4A2FF",  # pastel purple
+    "#CFA6FF",  # lavender
+    "#A2C1FF",  # pastel bluish
+    "#A9A9FF",  # purple-blue pastel
+    "#A2FFC1",  # light mint
+    "#99D6FF",  # light blue
+    "#6FD1C8",  # teal pastel
+    "#CCFF99",  # pastel lime
+    "#FFCC99",  # pastel apricot
+    "#99CCFF",  # pastel azure
+    "#CC99FF",  # soft purple-pink
+    "#99FFAA",  # lime mint
+    "#AAFF99",  # yellow-green mint
+    "#FF99AA",  # salmon pastel
+    "#FFAA99"   # coral pastel
+    "#9DE6B8",  # mint
+]
+# random.seed(44)
+# random.shuffle(soft_palette)
+
+
+fallback_color = "#A0A0A0"
+
+
 os_groups = {
-    "Ubuntu/Debian": (["ubuntu", "debian"], "#FF0000"),
-    "CentOS": (["centos"], "#00FF00"),
-    "RHEL": (["redhat", "ret hat", "rhel"], "#0000FF"),
-    "Fedora": (["fedora"], "#FFFF00"),
-    "Windows": (["windows server", "windows", "win", "microsoft", "lanman"], "#FF00FF"),
-    "FreeBSD": (["freebsd"], "#00FFFF"),
-    "OpenBSD": (["openbsd"], "#800000"),
-    "MacOS": (["macos", "darwin"], "#008000"),
-    "Huawei VRP": (["vrp", "huawei"], "#000080"),
-    "Mikrotik RouterOS": (["routeros", "mikrotik"], "#808000"),
-    "Juniper JunOS": (["junos", "juniper"], "#800080"),
-    "Cisco IOS": (["cisco ios", "ios-xe", "ios", "cisco"], "#008080"),
-    "Cisco NX-OS": (["nx-os"], "#FF8000"),
-    "Fortinet FortiOS": (["fortios", "fortinet", "forti"], "#80FF00"),
-    "SonicOS": (["sonicos", "sonicwall", "sonic"], "#00FF80"),
-    "ArubaOS": (["arubaos", "aruba"], "#0080FF"),
-    "DrayOS": (["draytek", "drayos", "vigor", "dray"], "#8000FF"),
-    "ZynOS": (["zynos", "zyxel"], "#FF0080"),
+    "Ubuntu/Debian": (["ubuntu", "debian"], soft_palette[0]),
+    "CentOS": (["centos"], soft_palette[1]),
+    "RHEL": (["redhat", "ret hat", "rhel"], soft_palette[2]),
+    "Fedora": (["fedora"], soft_palette[3]),
+    "Windows": (["windows server", "windows", "win", "microsoft", "lanman"], soft_palette[4]),
+    "FreeBSD": (["freebsd"], soft_palette[5]),
+    "OpenBSD": (["openbsd"], soft_palette[6]),
+    "MacOS": (["macos", "darwin"], soft_palette[7]),
+    "Huawei VRP": (["vrp", "huawei"], soft_palette[8]),
+    "Mikrotik RouterOS": (["routeros", "mikrotik"], soft_palette[9]),
+    "Juniper JunOS": (["junos", "juniper"], soft_palette[10]),
+    "Cisco IOS": (["cisco ios", "ios-xe", "ios", "cisco"], soft_palette[11]),
+    "Cisco NX-OS": (["nx-os"], soft_palette[12]),
+    "Fortinet FortiOS": (["fortios", "fortinet", "forti"], soft_palette[13]),
+    "SonicOS": (["sonicos", "sonicwall", "sonic"], soft_palette[14]),
+    "ArubaOS": (["arubaos", "aruba"], soft_palette[15]),
+    "DrayOS": (["draytek", "drayos", "vigor", "dray"], soft_palette[16]),
+    "ZynOS": (["zynos", "zyxel"], soft_palette[17]),
 }
 
 pretty_oses = {

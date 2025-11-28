@@ -29,7 +29,7 @@ from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_natural
 )
 from hitlist.ip_scan import post_cleanup
-from hitlist.os_scan import oses, router, end_device, pretty_oses, os_groups
+from hitlist.os_scan import oses, router, end_device, pretty_oses, os_groups, fallback_color, soft_palette
 
 filename = os.path.basename(__file__)
 
@@ -582,24 +582,6 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         return os_str
 
     # ------------------------------
-    # Colors für zusätzliche OSes
-    # ------------------------------
-    TABLEAU_50 = [
-        "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
-        "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#9467BD",
-        "#FF7F0E", "#17becf", "#D62728", "#2CA02C", "#8c564b",
-        "#ff7f00", "#1F77B4", "#e377c2", "#31a354", "#7b4173",
-        "#FFBB78", "#98DF8A", "#FF9896", "#C5B0D5", "#3182bd",
-        "#fd8d3c", "#9edae5", "#ff9da7", "#843c39", "#c49c94",
-        "#6baed6", "#bcbd22", "#f7b6d2", "#c7c7c7", "#bab0ac",
-        "#756bb1", "#e6550d", "#9ecae1", "#dbdb8d", "#bdbdbd",
-        "#393b79", "#637939", "#8c6d31", "#636363", "#969696",
-        "#D62728", "#FF9896", "#C5B0D5", "#dd1c77", "#7f7f7f"
-    ]
-
-    color_cycle = itertools.cycle(TABLEAU_50)
-
-    # ------------------------------
     # JOIN CAIDA + OS DATA
     # ------------------------------
     ip_to_node_file = os.path.join(caida_itdk_path, "ip_to_node.csv.zst")
@@ -689,13 +671,24 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
 
     # extra colors
     for lbl in extra_labels:
-        color_map[lbl] = next(color_cycle)
+        color_map[lbl] = soft_palette[hash(lbl) % len(soft_palette)]
 
     # ------------------------------
     # Werte für Plot
     # ------------------------------
     transit_values = [transit_dist.get(lbl, 0) for lbl in ordered_labels]
     endhost_values = [endhost_dist.get(lbl, 0) for lbl in ordered_labels]
+
+    # ------------------------------
+    # Other-Klasse hinzufügen (Rest zu 100%)
+    # ------------------------------
+    transit_other = 100 - sum(transit_values)
+    endhost_other = 100 - sum(endhost_values)
+    ordered_labels.append("Other")
+    color_map["Other"] = fallback_color
+    pretty_oses["Other"] = "Other"
+    transit_values.append(transit_other)
+    endhost_values.append(endhost_other)
 
     # ------------------------------
     # Plot
@@ -753,7 +746,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         legend_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
-        ncol=int(len(legend_labels) / 2) + 1,
+        ncol=int(math.ceil(len(legend_labels) / 2)),
         frameon=False,
         handletextpad=0.4,
         borderaxespad=0.2
