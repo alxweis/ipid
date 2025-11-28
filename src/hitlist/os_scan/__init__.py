@@ -440,6 +440,73 @@ end_device = ["ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora
               "win", "microsoft", "lanman", "freebsd", "openbsd", "netbsd", "bsd",
               "macos", "darwin", "solaris"]
 
+os_groups = {
+    "Ubuntu/Debian": (["ubuntu", "debian"], "#FF0000"),
+    "CentOS": (["centos"], "#00FF00"),
+    "RHEL": (["redhat", "ret hat", "rhel"], "#0000FF"),
+    "Fedora": (["fedora"], "#FFFF00"),
+    "Windows": (["windows server", "windows", "win", "microsoft", "lanman"], "#FF00FF"),
+    "FreeBSD": (["freebsd"], "#00FFFF"),
+    "OpenBSD": (["openbsd"], "#800000"),
+    "MacOS": (["macos", "darwin"], "#008000"),
+    "Huawei VRP": (["vrp", "huawei"], "#000080"),
+    "Mikrotik RouterOS": (["routeros", "mikrotik"], "#808000"),
+    "Juniper JunOS": (["junos", "juniper"], "#800080"),
+    "Cisco IOS": (["cisco ios", "ios-xe", "ios", "cisco"], "#008080"),
+    "Cisco NX-OS": (["nx-os"], "#FF8000"),
+    "Fortinet FortiOS": (["fortios", "fortinet", "forti"], "#80FF00"),
+    "SonicOS": (["sonicos", "sonicwall", "sonic"], "#00FF80"),
+    "ArubaOS": (["arubaos", "aruba"], "#0080FF"),
+    "DrayOS": (["draytek", "drayos", "vigor", "dray"], "#8000FF"),
+    "ZynOS": (["zynos", "zyxel"], "#FF0080"),
+}
+
+pretty_oses = {
+    # Groups
+    **{group: group for group in os_groups},
+
+    # Raw OSes
+    "gentoo": "Gentoo",
+    "opensuse": "OpenSUSE",
+    "euleros": "EulerOS",
+    "zorin": "Zorin",
+    "linux": "Linux",
+    "netbsd": "NetBSD",
+    "bsd": "BSD",
+    "solaris": "Solaris",
+    "fritz": "FritzOS",
+    "rasp": "Raspbian",
+    "openwrt": "OpenWRT",
+    "lede": "LEDE",
+    "dd-wrt": "DD-WRT",
+    "ddwrt": "DD-WRT",
+    "wrt": "WRT",
+    "vyos": "VyOS",
+    "vyatta": "Vyatta",
+    "pfsense": "pfSense",
+    "edgeos": "EdgeOS",
+    "airos": "AirOS",
+    "unifi": "UniFi",
+    "ubiquiti": "Ubiquiti",
+    "aix": "AIX",
+    "hp-ux": "HP-UX",
+    "hpux": "HP-UX",
+    "zos": "z/OS",
+    "openvms": "OpenVMS",
+    "vms": "VMS",
+    "busybox": "BusyBox",
+    "vxworks": "VxWorks",
+    "qnx": "QNX",
+    "freertos": "FreeRTOS",
+    "openembedded": "OpenEmbedded",
+    "yocto": "Yocto",
+    "utm": "UTM",
+    "gaia": "Gaia",
+    "router": "Router tag",
+    "server": "Server tag",
+}
+
+
 oses = [
     "ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo", "opensuse", "euleros", "zorin",
     "linux", "windows server", "windows", "win", "microsoft", "lanman", "freebsd", "openbsd", "netbsd", "bsd", "macos",

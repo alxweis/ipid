@@ -29,7 +29,7 @@ from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_natural
 )
 from hitlist.ip_scan import post_cleanup
-from hitlist.os_scan import oses, router, end_device
+from hitlist.os_scan import oses, router, end_device, pretty_oses, os_groups
 
 filename = os.path.basename(__file__)
 
@@ -567,11 +567,23 @@ def main():
 
 def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
     import duckdb
-    import math
     import os
+    import itertools
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MultipleLocator
 
+    # ------------------------------
+    # Mapping: OS → Gruppe oder OS selbst
+    # ------------------------------
+    def map_os_to_group_or_raw(os_str):
+        for group, (members, _) in os_groups.items():
+            if os_str in members:
+                return group
+        return os_str
+
+    # ------------------------------
+    # Colors für zusätzliche OSes
+    # ------------------------------
     TABLEAU_50 = [
         "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
         "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#9467BD",
@@ -585,19 +597,12 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         "#D62728", "#FF9896", "#C5B0D5", "#dd1c77", "#7f7f7f"
     ]
 
-    random.seed(42)
-    random.shuffle(TABLEAU_50)
-
-    OS_COLOR_MAP = {
-        os_name: TABLEAU_50[i % len(TABLEAU_50)]
-        for i, os_name in enumerate(oses)
-    }
+    color_cycle = itertools.cycle(TABLEAU_50)
 
     # ------------------------------
-    # 1. JOIN CAIDA + OS DATA
+    # JOIN CAIDA + OS DATA
     # ------------------------------
     ip_to_node_file = os.path.join(caida_itdk_path, "ip_to_node.csv.zst")
-
     targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
     targets_os_file = os.path.join(targets_base_path, "targets_os.csv.zst")
 
@@ -622,77 +627,80 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         WHERE (n.T = 1 AND n.D = 0) OR (n.T = 0 AND n.D = 1)
     """).fetch_df()
 
-    # remove IPs without OS
     df_joined = df_joined[df_joined["OS"].notna()]
-
-    # lowercase OS always
     df_joined["OS"] = df_joined["OS"].astype(str).str.lower()
 
+    # group or raw
+    df_joined["LABEL"] = df_joined["OS"].apply(map_os_to_group_or_raw)
+
     # ------------------------------
-    # save caida_os.csv.zst
+    # SAVE CSV
     # ------------------------------
     out_dir = os.path.join(msm_path, "analysis", "caida_os_distribution")
     os.makedirs(out_dir, exist_ok=True)
-
     df_joined.to_csv(os.path.join(out_dir, "caida_os.csv.zst"), index=False, compression="zstd")
 
     # ------------------------------
-    # 2. Aggregate distributions
+    # DISTRIBUTIONS
     # ------------------------------
-    all_os = sorted(df_joined["OS"].unique())
-
     transit = df_joined[(df_joined["T"] == 1) & (df_joined["D"] == 0)]
     endhost = df_joined[(df_joined["T"] == 0) & (df_joined["D"] == 1)]
 
-    transit_dist = (transit["OS"].value_counts(normalize=True) * 100)
-    endhost_dist = (endhost["OS"].value_counts(normalize=True) * 100)
-
-    # transit_values = [transit_dist.get(os, 0.0) for os in all_os]
-    # endhost_values = [endhost_dist.get(os, 0.0) for os in all_os]
+    transit_dist = (transit["LABEL"].value_counts(normalize=True) * 100)
+    endhost_dist = (endhost["LABEL"].value_counts(normalize=True) * 100)
 
     # ------------------------------
-    # FILTER >1% and compute "other"
+    # Reihenfolge:
+    # 1) Gruppen
+    # 2) zusätzliche OS > 1%
     # ------------------------------
-    filtered_os = []
-    filtered_transit_vals = []
-    filtered_endhost_vals = []
+    group_labels = list(os_groups.keys())
 
-    other_transit = 0.0
-    other_endhost = 0.0
-
-    for os_name in all_os:
-        t_val = transit_dist.get(os_name, 0.0)
-        e_val = endhost_dist.get(os_name, 0.0)
-
-        if t_val > 1 or e_val > 1:
-            filtered_os.append(os_name)
-            filtered_transit_vals.append(t_val)
-            filtered_endhost_vals.append(e_val)
-        else:
-            other_transit += t_val
-            other_endhost += e_val
-
-    # Add OTHER category
-    filtered_os.append("other")
-    filtered_transit_vals.append(other_transit)
-    filtered_endhost_vals.append(other_endhost)
-
-    # Replace working lists
-    all_os = filtered_os
-    transit_values = filtered_transit_vals
-    endhost_values = filtered_endhost_vals
+    extra_labels = [
+        lbl for lbl in sorted(set(df_joined["LABEL"]))
+        if lbl not in os_groups and (transit_dist.get(lbl, 0) > 1 or endhost_dist.get(lbl, 0) > 1)
+    ]
 
     # ------------------------------
-    # Color map with fixed grey for other
+    # Nur OS Groups / OSes mit >1% aufnehmen
     # ------------------------------
-    color_map = {
-        os_name: (OS_COLOR_MAP[os_name] if os_name in OS_COLOR_MAP else "#A0A0A0")
-        for os_name in all_os
-    }
+    filtered_labels = []
+
+    # zuerst Gruppen in Reihenfolge behalten, aber nur falls >1%
+    for grp in group_labels:
+        if transit_dist.get(grp, 0) > 1 or endhost_dist.get(grp, 0) > 1:
+            filtered_labels.append(grp)
+
+    # dann zusätzliche OSes >1%
+    for lbl in extra_labels:
+        if transit_dist.get(lbl, 0) > 1 or endhost_dist.get(lbl, 0) > 1:
+            filtered_labels.append(lbl)
+
+    ordered_labels = filtered_labels
 
     # ------------------------------
-    # 4. ACM CCR Style Plot
+    # Farben
     # ------------------------------
+    color_map = {}
+
+    # group colors
+    for grp, (_, col) in os_groups.items():
+        color_map[grp] = col
+
+    # extra colors
+    for lbl in extra_labels:
+        color_map[lbl] = next(color_cycle)
+
+    # ------------------------------
+    # Werte für Plot
+    # ------------------------------
+    transit_values = [transit_dist.get(lbl, 0) for lbl in ordered_labels]
+    endhost_values = [endhost_dist.get(lbl, 0) for lbl in ordered_labels]
+
+    # ------------------------------
+    # Plot
+    # ------------------------------
+    # --- ACM Plot style ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
@@ -705,52 +713,47 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(6.5, 2.3))
+    fig, ax = plt.subplots(figsize=(5.5, 2.0))
 
-    y_positions = [1, 0]
-    data_sets = [transit_values, endhost_values]
-    labels = ["Transit-hops", "End-hosts"]
-    width = 0.45
+    datasets = [transit_values, endhost_values]
+    positions = [1, 0]
+    names = ["Transit-hops", "End-hosts"]
 
-    for y, values, ylabel in zip(y_positions, data_sets, labels):
+    for y, values, name in zip(positions, datasets, names):
         left = 0
-
-        for os_name, val in zip(all_os, values):
-            color = color_map[os_name]
-
-            ax.barh(
-                y, val, left=left, height=width,
-                edgecolor="none", color=color
-            )
+        for lbl, val in zip(ordered_labels, values):
+            ax.barh(y, val, left=left, height=0.45, edgecolor="none", color=color_map[lbl])
 
             if val >= 1:
-                ax.text(
-                    left + val / 2, y,
-                    str(int(math.floor(val + 0.5))),
-                    ha="center", va="center",
-                    fontsize=8, color="black"
-                )
+                ax.text(left + val / 2, y, str(int(round(val))), ha="center", va="center", fontsize=8)
 
             left += val
 
-        ax.text(-1, y, ylabel, ha="right", va="center", fontsize=10)
+        ax.text(-1, y, name, ha="right", va="center", fontsize=10)
 
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.5, 1.5)
     ax.set_xlabel("OS Distribution [%]")
 
-    ax.xaxis.set_minor_locator(MultipleLocator(5))
-    ax.tick_params(axis="x", which="minor", length=2, width=0.5)
-
     ax.set_yticks([])
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.xaxis.set_minor_locator(MultipleLocator(5))
+
+    legend_handles = [
+        plt.Line2D([0], [0], color=color_map[lbl], lw=4)
+        for lbl in ordered_labels
+    ]
+    legend_labels = [
+        pretty_oses.get(lbl, lbl)
+        for lbl in ordered_labels
+    ]
 
     ax.legend(
-        [plt.Line2D([0], [0], color=color_map[o], lw=4) for o in all_os],
-        all_os,
+        legend_handles,
+        legend_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
-        ncol=6,
+        ncol=int(len(legend_labels) / 2) + 1,
         frameon=False,
         handletextpad=0.4,
         borderaxespad=0.2
