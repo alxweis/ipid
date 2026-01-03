@@ -66,37 +66,42 @@ def get_clusters(values: np.ndarray, max_diff: int) -> list[dict[int, np.int32]]
     if not values.size:
         return []
 
-    idx_to_val = {i: np.int32(val) for i, val in enumerate(values)}
-    idx_to_val = dict(sorted(idx_to_val.items(), key=lambda item: item[1]))
+    # Erstelle Liste von (original_index, value) Paaren, sortiert nach Wert
+    indexed_values = [(i, np.int32(val)) for i, val in enumerate(values)]
+    indexed_values.sort(key=lambda x: x[1])
 
+    # Finde Cluster-Grenzen
     breaks = []
-    val_count = len(idx_to_val)
+    val_count = len(indexed_values)
 
     for i in range(val_count):
-        _, current_val = list(idx_to_val.items())[i]
-        _, next_val = list(idx_to_val.items())[(i + 1) % val_count]
+        current_val = indexed_values[i][1]
+        next_val = indexed_values[(i + 1) % val_count][1]
 
         diff = (next_val - current_val + (MAX_IP_ID + 1)) % (MAX_IP_ID + 1)
 
         if diff > max_diff:
             breaks.append((i + 1) % val_count)
 
+    # Keine Breaks = alle Werte in einem Cluster
     if not breaks:
-        return [dict(sorted(idx_to_val.items()))]
+        return [{idx: val for idx, val in indexed_values}]
 
+    # Erstelle Cluster
     final_clusters = []
     start_idx = breaks[-1] if breaks else 0
 
     for break_idx in breaks:
         cluster = {}
         current_idx = start_idx
+
         while current_idx != break_idx:
-            idx, val = list(idx_to_val.items())[current_idx]
+            idx, val = indexed_values[current_idx]
             cluster[idx] = val
             current_idx = (current_idx + 1) % val_count
 
         if cluster:
-            final_clusters.append(dict(sorted(cluster.items())))
+            final_clusters.append(cluster)
 
         start_idx = break_idx
 
