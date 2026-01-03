@@ -85,7 +85,7 @@ def get_clusters(values: np.ndarray, max_diff: int) -> list[dict[int, np.int32]]
 
     # Keine Breaks = alle Werte in einem Cluster
     if not breaks:
-        return [{idx: val for idx, val in indexed_values}]
+        return [dict(sorted([(idx, val) for idx, val in indexed_values]))]
 
     # Erstelle Cluster
     final_clusters = []
@@ -101,7 +101,7 @@ def get_clusters(values: np.ndarray, max_diff: int) -> list[dict[int, np.int32]]
             current_idx = (current_idx + 1) % val_count
 
         if cluster:
-            final_clusters.append(cluster)
+            final_clusters.append(dict(sorted(cluster.items())))
 
         start_idx = break_idx
 
