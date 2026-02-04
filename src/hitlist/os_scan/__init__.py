@@ -448,27 +448,27 @@ soft_palette = [
     "#6FB8FF",  # sky blue
     "#6EE66E",  # soft green
     "#B580FF",  # violet
-    "#6EE66E",  # soft green
     "#FFB266",  # soft orange
+    "#99CCFF",  # pastel azure
     "#99FFCC",  # pastel turquoise
     "#FFC19C",  # peach
-    "#FFA6A6",  # light rose
     "#FFD28A",  # warm sand
     "#FF99CC",  # pastel pink
+    "#CCFF99",  # pastel lime
     "#C4A2FF",  # pastel purple
     "#CFA6FF",  # lavender
     "#A2C1FF",  # pastel bluish
     "#A9A9FF",  # purple-blue pastel
     "#A2FFC1",  # light mint
     "#99D6FF",  # light blue
+    "#6EE66E",  # soft green
     "#6FD1C8",  # teal pastel
-    "#CCFF99",  # pastel lime
     "#FFCC99",  # pastel apricot
-    "#99CCFF",  # pastel azure
+    "#FFA6A6",  # light rose
     "#CC99FF",  # soft purple-pink
     "#99FFAA",  # lime mint
-    "#AAFF99",  # yellow-green mint
     "#FF99AA",  # salmon pastel
+    "#AAFF99",  # yellow-green mint
     "#FFAA99"   # coral pastel
     "#9DE6B8",  # mint
 ]
@@ -541,8 +541,8 @@ pretty_oses = {
     "yocto": "Yocto",
     "utm": "UTM",
     "gaia": "Gaia",
-    "router": "Router tag",
-    "server": "Server tag",
+    "router": "Router",
+    "server": "Server",
 }
 
 
