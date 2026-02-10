@@ -48,8 +48,8 @@ def run_port_scan(ips_tmp_file: str) -> tuple:
     output_file = os.path.join(base_dir, "output.jsonl")
     db_file = os.path.join(base_dir, "scan.duckdb")
 
-    # print(f"Starting Port-Scan for {ips_tmp_file}...")
-    #
+    print(f"Starting Port-Scan for {ips_tmp_file}...")
+
     # process = subprocess.Popen(
     #     [
     #         "masscan",
@@ -68,7 +68,7 @@ def run_port_scan(ips_tmp_file: str) -> tuple:
     #     print(line.strip())
     #
     # process.wait()
-    # print(f"Port-Scan finished: result={output_file}")
+    print(f"Port-Scan finished: result={output_file}")
 
     con = duckdb.connect(db_file)
     con.execute("SET memory_limit = '1.5GB'")
