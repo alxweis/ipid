@@ -61,32 +61,32 @@ type SEQ struct {
 func (pm *SEQ) probingVars() *ProbingVars { return pm.ProbingVars }
 
 type Config struct {
-	Targets                   string         `yaml:"targets"`
-	Protocol                  string         `yaml:"protocol"`
-	RecTraffic                bool           `yaml:"record_traffic"`
-	TcpDstPort                layers.TCPPort `yaml:"tcp_dst_port"`
-	TcpReqFlags               string         `yaml:"tcp_request_flags"`
-	TcpSrcPortOffset          uint16         `yaml:"tcp_src_port_offset"`
-	UdpDstPort                layers.UDPPort `yaml:"udp_dst_port"`
-	UdpSrcPortOffset          uint16         `yaml:"udp_src_port_offset"`
-	B2BReqCount               uint16         `yaml:"b2b_request_count"`
-	B2BReqInterval            time.Duration  `yaml:"b2b_request_interval"`
-	B2BRetryCount             uint16         `yaml:"b2b_retry_count"`
-	SEQReqCount               uint16         `yaml:"seq_request_count"`
-	SEQRetryCount             uint16         `yaml:"seq_retry_count"`
-	MASSReqCount              uint16         `yaml:"mass_request_count"`
-	MASSReqInterval           time.Duration  `yaml:"mass_request_interval"`
-	MASSReplyPortionThreshold float64        `yaml:"mass_reply_portion_threshold"`
-	IfaceA                    Iface          `yaml:"iface_a"`
-	IfaceB                    Iface          `yaml:"iface_b"`
-	MinRtt                    time.Duration  `yaml:"min_rtt"`
-	DefaultSendIpIds          []uint16       `yaml:"default_send_ip_ids"`
-	DetectReflectedIpIds      bool           `yaml:"detect_reflected_ip_ids"`
-	ReflectionSendIpIds       []uint16       `yaml:"reflection_send_ip_ids"`
-	IpColName                 string         `yaml:"ip_col_name"`
-	IpIdSeqColName            string         `yaml:"ip_id_seq_col_name"`
-	SentTsColName             string         `yaml:"sent_ts_seq_col_name"`
-	RecvTsColName             string         `yaml:"received_ts_seq_col_name"`
+	Targets     string         `yaml:"targets"`
+	Protocol    string         `yaml:"protocol"`
+	RecTraffic  bool           `yaml:"record_traffic"`
+	TcpDstPort  layers.TCPPort `yaml:"tcp_dst_port"`
+	TcpReqFlags string         `yaml:"tcp_request_flags"`
+	//TcpSrcPortOffset          uint16         `yaml:"tcp_src_port_offset"`
+	UdpDstPort layers.UDPPort `yaml:"udp_dst_port"`
+	//UdpSrcPortOffset          uint16         `yaml:"udp_src_port_offset"`
+	B2BReqCount               uint16        `yaml:"b2b_request_count"`
+	B2BReqInterval            time.Duration `yaml:"b2b_request_interval"`
+	B2BRetryCount             uint16        `yaml:"b2b_retry_count"`
+	SEQReqCount               uint16        `yaml:"seq_request_count"`
+	SEQRetryCount             uint16        `yaml:"seq_retry_count"`
+	MASSReqCount              uint16        `yaml:"mass_request_count"`
+	MASSReqInterval           time.Duration `yaml:"mass_request_interval"`
+	MASSReplyPortionThreshold float64       `yaml:"mass_reply_portion_threshold"`
+	IfaceA                    Iface         `yaml:"iface_a"`
+	IfaceB                    Iface         `yaml:"iface_b"`
+	MinRtt                    time.Duration `yaml:"min_rtt"`
+	DefaultSendIpIds          []uint16      `yaml:"default_send_ip_ids"`
+	DetectReflectedIpIds      bool          `yaml:"detect_reflected_ip_ids"`
+	ReflectionSendIpIds       []uint16      `yaml:"reflection_send_ip_ids"`
+	IpColName                 string        `yaml:"ip_col_name"`
+	IpIdSeqColName            string        `yaml:"ip_id_seq_col_name"`
+	SentTsColName             string        `yaml:"sent_ts_seq_col_name"`
+	RecvTsColName             string        `yaml:"received_ts_seq_col_name"`
 }
 
 type Iface struct {
@@ -115,7 +115,7 @@ type Protocol struct {
 	Id          string
 	Filter      string
 	IpLayer     layers.IPProtocol
-	CreateLayer func(seq uint16) []gopacket.SerializableLayer
+	CreateLayer func(seq uint16, srcPrt uint16) []gopacket.SerializableLayer
 	SetChecksum func(packet []byte)
 	GetSeq      func(replyInfo *ReplyInfo) (uint16, bool)
 }
@@ -783,7 +783,7 @@ func (pm *SEQ) processPacket(replyInfo *ReplyInfo, expSrc net.IP, expDst net.IP,
 		sender, _ := getSender(seq)
 		tcp, _ := replyInfo.Packet.Layer(layers.LayerTypeTCP).(*layers.TCP)
 		if tcp.SYN && tcp.ACK {
-			rstPacket := buildRST(seq, dst, src, tcp.Ack)
+			rstPacket := buildRST(seq, dst, src, tcp.Ack, tcp.DstPort)
 			sender.Send(rstPacket)
 			//log.Printf("Sent RST packet %.3f ms after SYN-ACK", float64(time.Now().UnixMicro()-replyInfo.Time)/1000)
 		}
@@ -1109,15 +1109,32 @@ func loadProbingMode(mode string) {
 
 // Build
 func createPrebuildPackets() {
-	packetList := make([][]byte, pm.probingVars().requestCount)
+	requestCount := pm.probingVars().requestCount
+	packetList := make([][]byte, requestCount)
 	packetBuf := gopacket.NewSerializeBuffer()
+	r1Prt := uint16(rand.Intn(int(65535-1024-requestCount-1)) + 1024) // Min=1024, Max=65535-rc-1
+	r2Prt := r1Prt + requestCount                                     // Min=1024+rc, Max=65535-rc-1+rc
 
-	for seq := uint16(0); seq < pm.probingVars().requestCount; seq++ {
-		_, srcIP := getSender(seq)
+	for seq := uint16(0); seq < requestCount; seq++ {
+		//_, srcIP := getSender(seq)
 
 		id := config.DefaultSendIpIds[int(seq)%len(config.DefaultSendIpIds)]
 		if config.DetectReflectedIpIds {
 			id = config.ReflectionSendIpIds[int(seq)%len(config.ReflectionSendIpIds)]
+		}
+
+		srcIP := net.IP{}
+		srcPrt := uint16(0)
+		if seq%3 == 0 {
+			z := (seq / 3) % 2
+			_, srcIP = getSender(z)
+			srcPrt = r1Prt + seq
+		} else if seq%3 == 1 {
+			srcIP = srcAIp
+			srcPrt = r2Prt
+		} else if seq%3 == 2 {
+			srcIP = srcBIp
+			srcPrt = r2Prt + 1
 		}
 
 		ipLayer := &layers.IPv4{
@@ -1130,7 +1147,7 @@ func createPrebuildPackets() {
 			DstIP:    net.IPv4(0, 0, 0, 0),
 		}
 
-		protoLayer := proto.CreateLayer(seq)
+		protoLayer := proto.CreateLayer(seq, srcPrt)
 
 		err := packetBuf.Clear()
 		if err != nil {
@@ -1213,7 +1230,7 @@ func checkIPLayer(replyInfo *ReplyInfo) (net.IP, net.IP, uint16, bool) {
 }
 
 // ICMP
-func createICMPLayer(seq uint16) []gopacket.SerializableLayer {
+func createICMPLayer(seq uint16, srcPrt uint16) []gopacket.SerializableLayer {
 	icmpLayer := &layers.ICMPv4{
 		TypeCode: layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoRequest, 0),
 		Seq:      seq,
@@ -1243,9 +1260,9 @@ func getICMPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 }
 
 // TCP
-func createTCPLayer(seq uint16) []gopacket.SerializableLayer {
+func createTCPLayer(seq uint16, srcPrt uint16) []gopacket.SerializableLayer {
 	tcpLayer := &layers.TCP{
-		SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
+		SrcPort: layers.TCPPort(srcPrt),
 		DstPort: config.TcpDstPort,
 		Seq:     tcpSeqBase + uint32(seq),
 		SYN:     strings.Contains(config.TcpReqFlags, "S"),
@@ -1288,10 +1305,10 @@ func getTCPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 			return 0, false
 		}
 
-		if tcp.DstPort != layers.TCPPort(seq+config.TcpSrcPortOffset) {
-			log.Println("DstPort is invalid")
-			return 0, false
-		}
+		//if tcp.DstPort != layers.TCPPort(seq+config.TcpSrcPortOffset) {
+		//	log.Println("DstPort is invalid")
+		//	return 0, false
+		//}
 
 		if !((tcp.SYN && tcp.ACK) || (tcp.RST && tcp.ACK) || tcp.RST) {
 			flags := ""
@@ -1346,7 +1363,7 @@ func setRSTDrop(enable bool) (changed bool, err error) {
 	}
 }
 
-func buildRST(seq uint16, srcIP net.IP, dstIP net.IP, ack uint32) []byte {
+func buildRST(seq uint16, srcIP net.IP, dstIP net.IP, ack uint32, srcPrt layers.TCPPort) []byte {
 	ipLayer := &layers.IPv4{
 		Version:  ipv4.Version,
 		TTL:      64,
@@ -1357,7 +1374,7 @@ func buildRST(seq uint16, srcIP net.IP, dstIP net.IP, ack uint32) []byte {
 	}
 
 	tcpLayer := &layers.TCP{
-		SrcPort: layers.TCPPort(seq + config.TcpSrcPortOffset),
+		SrcPort: srcPrt,
 		DstPort: config.TcpDstPort,
 		Seq:     ack,
 		RST:     true,
@@ -1380,9 +1397,9 @@ func buildRST(seq uint16, srcIP net.IP, dstIP net.IP, ack uint32) []byte {
 }
 
 // UDP
-func createUDPLayer(seq uint16) []gopacket.SerializableLayer {
+func createUDPLayer(seq uint16, srcPrt uint16) []gopacket.SerializableLayer {
 	udpLayer := &layers.UDP{
-		SrcPort: layers.UDPPort(seq + config.UdpSrcPortOffset),
+		SrcPort: layers.UDPPort(srcPrt),
 		DstPort: config.UdpDstPort,
 	}
 

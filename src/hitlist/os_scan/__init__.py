@@ -2,12 +2,10 @@ import csv
 import io
 import json
 import os
-import random
 import re
 import subprocess
 import sys
 import time
-import xml.etree.ElementTree as ET
 
 import duckdb
 import zstandard as zstd
@@ -45,9 +43,10 @@ def extract_os_name(expression: str) -> str | None:
     return None
 
 
-def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
+def run_port_scan(ips_tmp_file: str) -> tuple:
     base_dir = os.path.dirname(ips_tmp_file)
-    output_file = os.path.join(base_dir, "output.xml")
+    output_file = os.path.join(base_dir, "output.jsonl")
+    db_file = os.path.join(base_dir, "scan.duckdb")
 
     print(f"Starting Port-Scan for {ips_tmp_file}...")
 
@@ -56,7 +55,7 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
         "-iL", ips_tmp_file,
         "-p22,161,445,80,53",
         "--rate", "30000",
-        "-oX", output_file
+        "-oJ", output_file
     ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
 
     while True:
@@ -64,46 +63,65 @@ def run_port_scan(ips_tmp_file: str) -> (str, str, str, str, str):
         if output == '' and process.poll() is not None:
             break
         if output:
-            line = output.strip()
-            print(line)  # Live output
+            print(output.strip())
 
     print(f"Port-Scan finished: result={output_file}")
 
+    con = duckdb.connect(db_file)
+    con.execute("SET memory_limit = '1.5GB'")
+    con.execute("SET temp_directory = ?", [base_dir])
+
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS scan_results (
+            ip VARCHAR,
+            port INTEGER
+        )
+    """)
+
+    con.execute("""
+        INSERT INTO scan_results
+        SELECT 
+            ip,
+            CAST(p.port AS INTEGER) as port
+        FROM read_json(
+            ?,
+            columns = {ip: 'VARCHAR', ports: 'STRUCT(port INTEGER)[]'},
+            format = 'newline_delimited',
+            ignore_errors = true
+        ),
+        UNNEST(ports) AS t(p)
+    """, [output_file])
+
+    con.execute("CREATE INDEX IF NOT EXISTS idx_port ON scan_results(port)")
+
     services = {
-        "22": "ssh",
-        "161": "snmp",
-        "445": "smb",
-        "80": "http",
-        "53": "dns"
+        22: "ssh",
+        161: "snmp",
+        445: "smb",
+        80: "http",
+        53: "dns"
     }
 
-    # Initialize IP sets for each service
-    service_ips = {service: set() for service in services.values()}
-
-    # Parse XML and categorize IPs by open ports
-    for event, elem in ET.iterparse(output_file, events=("end",)):
-        if elem.tag == "host":
-            ip = elem.find("address").get("addr")
-            ports = elem.find("ports")
-            if ports is not None:
-                for port in ports.findall("port"):
-                    port_id = port.get("portid")
-                    if port_id in services:
-                        service_ips[services[port_id]].add(ip)
-            elem.clear()
-
-    # Write IP lists and collect file paths
     service_files = {}
-    for service, ips in service_ips.items():
-        if ips:  # Only create files for services with IPs
-            filename = os.path.join(base_dir, f"{service}_ips.txt")
-            with open(filename, "w") as f:
-                f.writelines(f"{ip}\n" for ip in ips)
 
-            print(f"Saved {len(ips)} IP addresses for {service.upper()} in {filename}")
+    for port, service in services.items():
+        filename = os.path.join(base_dir, f"{service}_ips.txt")
+
+        row_count = con.execute("""
+            SELECT COUNT(DISTINCT ip) FROM scan_results WHERE port = ?
+        """, [port]).fetchone()[0]
+
+        if row_count > 0:
+            con.execute("""
+                COPY (SELECT DISTINCT ip FROM scan_results WHERE port = ?)
+                TO ? (FORMAT CSV, HEADER false)
+            """, [port, filename])
+            print(f"Saved {row_count} IP addresses for {service.upper()} in {filename}")
             service_files[service] = filename
         else:
             service_files[service] = None
+
+    con.close()
 
     return (
         service_files.get("snmp"),
@@ -469,7 +487,7 @@ soft_palette = [
     "#99FFAA",  # lime mint
     "#FF99AA",  # salmon pastel
     "#AAFF99",  # yellow-green mint
-    "#FFAA99"   # coral pastel
+    "#FFAA99"  # coral pastel
     "#9DE6B8",  # mint
 ]
 # random.seed(44)
@@ -477,7 +495,6 @@ soft_palette = [
 
 
 fallback_color = "#A0A0A0"
-
 
 os_groups = {
     "Ubuntu/Debian": (["ubuntu", "debian"], soft_palette[0]),
@@ -544,7 +561,6 @@ pretty_oses = {
     "router": "Router",
     "server": "Server",
 }
-
 
 oses = [
     "ubuntu", "centos", "debian", "redhat", "ret hat", "rhel", "fedora", "gentoo", "opensuse", "euleros", "zorin",

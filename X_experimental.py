@@ -20,6 +20,7 @@ import pandas as pd
 import seaborn as sns
 import zstandard as zstd
 from matplotlib.ticker import MultipleLocator
+from tqdm import tqdm
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
@@ -58,7 +59,7 @@ def print_usage():
     print(f"    python {filename} 9 <eval_path> <class_filter>")
     print("  10 - Compute value ranges for random class metrics:")
     print(f"    python {filename} 10 <sequence_length>")
-    print("  11 - Merge SEQ and MASS measurement into SEQ and delete MASS:")
+    print("  11 - Merge SEQ and MASS measurement:")
     print(f"    python {filename} 11 <seq_msm_path> <mass_msm_path>")
     print("  12 - Crosscheck all interfaces per node should have same IP-ID pattern:")
     print(f"    python {filename} 12 <caida_itdk_path> <msm_path>")
@@ -504,9 +505,9 @@ def main():
 
         msm_path = str(sys.argv[2])
 
-        plot_os_distribution(msm_path, oses, "all")
-        plot_os_distribution(msm_path, router, "router")
-        plot_os_distribution(msm_path, end_device, "end_device")
+        # plot_os_distribution(msm_path, oses, "all")
+        # plot_os_distribution(msm_path, router, "router")
+        # plot_os_distribution(msm_path, end_device, "end_device")
 
         rhel = (["redhat"], "RHEL")
         ubuntu_debian = (["ubuntu", "debian"], "Ubuntu/Debian")
@@ -516,22 +517,30 @@ def main():
         freebsd = (["freebsd"], "FreeBSD")
         openbsd = (["openbsd"], "OpenBSD")
 
-        huawei = (["huawei"], "Huawei VRP")
-        zyxel = (["zyxel"], "Zyxel ZLD")
-        cisco = (["cisco"], "Cisco IOS")
-        draytek = (["draytek"], "DrayOS")
-        mikrotik = (["mikrotik"], "MikroTik RouterOS")
+        huawei_vrp = (["huawei"], "Huawei VRP")
+        zynos = (["zyxel"], "ZynOS")
+        cisco_ios = (["cisco"], "Cisco IOS")
+        drayos = (["draytek"], "DrayOS")
+        mikrotik_routeros = (["mikrotik"], "MikroTik RouterOS")
         sonicos = (["sonicwall"], "SonicOS")
 
+        # ICMP
+        # plot_os_heatmap(msm_path, "general_purpose_os_devices",
+        #                 [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+        # plot_os_heatmap(msm_path, "network_os_devices",
+        #                 [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos, drayos])
+
         # TCP/80
-        plot_os_heatmap(msm_path, "general_purpose_os_devices",
-                        [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
-        plot_os_heatmap(msm_path, "network_os_devices", [cisco, huawei, mikrotik, sonicos, zyxel, draytek])
+        # plot_os_heatmap(msm_path, "general_purpose_os_devices",
+        #                 [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+        # plot_os_heatmap(msm_path, "network_os_devices",
+        #                 [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos, drayos])
 
         # UDP/53
-        # plot_os_heatmap(msm_path, "general_purpose_os_devices",
-        #                 [ubuntu_debian, rhel, windows, centos, freebsd, fedora, openbsd])
-        # plot_os_heatmap(msm_path, "network_os_devices", [huawei, zyxel, cisco, draytek, mikrotik])
+        plot_os_heatmap(msm_path, "general_purpose_os_devices",
+                        [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+        plot_os_heatmap(msm_path, "network_os_devices",
+                        [cisco_ios, huawei_vrp, mikrotik_routeros, zynos, drayos])
     elif mode == 17:
         if len(sys.argv) < 5:
             print_usage()
@@ -545,8 +554,8 @@ def main():
 
         # plot_time_between_requests_acm_style(str(sys.argv[2]))
         # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
-        # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.LOCAL_GE1])
-        plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
+        plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.LOCAL_GE1])
+        # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
             print_usage()
@@ -561,14 +570,54 @@ def main():
             return
 
         plot_caida_os_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]))
+    elif mode == 21:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+        print_constant_pattern_distribution(str(sys.argv[2]))
+    elif mode == 22:
+        plot_pattern()
     else:
         print_usage()
+
+
+def print_constant_pattern_distribution(msm_path: str):
+    probing_path = os.path.join(msm_path, "probing.csv.zst")
+    eval_path = os.path.join(msm_path, "eval.csv.zst")
+
+    con = duckdb.connect()
+    con.execute(f"""
+        CREATE TEMP TABLE eval AS 
+        SELECT * FROM read_csv_auto('{eval_path}', compression='zstd');
+        CREATE TEMP TABLE probing AS 
+        SELECT * FROM read_csv_auto('{probing_path}', compression='zstd');
+    """)
+
+    rows = con.execute("""
+        SELECT p.IP_ID_SEQUENCE
+        FROM eval e
+        JOIN probing p USING (IP)
+        WHERE TRIM(e.IP_ID_PATTERN) = 'Constant'
+          AND p.IP_ID_SEQUENCE IS NOT NULL
+    """).fetchall()
+
+    dist = {}
+
+    for (seq,) in rows:
+        vals = list(map(int, seq.split(',')))
+        if len(set(vals)) == 1:
+            v = vals[0]
+            dist[v] = dist.get(v, 0) + 1
+
+    print("Constant IPID group distribution:")
+    s = sum(dist.values())
+    for k, v in sorted(dist.items(), key=lambda x: x[1], reverse=True)[:10]:
+        print(f"{k}: {v} ({v / s * 100:.6f}%)")
 
 
 def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
     import duckdb
     import os
-    import itertools
     import matplotlib.pyplot as plt
     from matplotlib.ticker import MultipleLocator
 
@@ -628,6 +677,15 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
     transit = df_joined[(df_joined["T"] == 1) & (df_joined["D"] == 0)]
     endhost = df_joined[(df_joined["T"] == 0) & (df_joined["D"] == 1)]
 
+    print("\n[Transit-Hop IP, OS] (erste 100):")
+    for ip, os_ in (
+            transit[["IP", "LABEL"]]
+                    .drop_duplicates()
+                    .head(100)
+                    .itertuples(index=False)
+    ):
+        print(f"[{ip}, {os_}]")
+
     transit_dist = (transit["LABEL"].value_counts(normalize=True) * 100)
     endhost_dist = (endhost["LABEL"].value_counts(normalize=True) * 100)
 
@@ -670,8 +728,16 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         color_map[grp] = col
 
     # extra colors
+    import hashlib
+
+    def stable_index(name, mod):
+        h = hashlib.sha1(name.encode("utf-8")).hexdigest()
+        x = int(h[:8], 16) % mod
+        print(f"{name} : {x}")
+        return x
+
     for lbl in extra_labels:
-        color_map[lbl] = soft_palette[hash(lbl) % len(soft_palette)]
+        color_map[lbl] = soft_palette[stable_index(lbl, len(soft_palette))]
 
     # ------------------------------
     # Werte für Plot
@@ -760,6 +826,43 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
 
     print(f"[+] CAIDA OS distribution saved to {out_file}")
 
+    # ------------------------------
+    # METADATA EXPORT
+    # ------------------------------
+
+    info_path = os.path.join(out_dir, "info.txt")
+
+    with open(info_path, "w") as f:
+        f.write("CAIDA OS Distribution Metadata\n")
+        f.write("=====================================\n\n")
+
+        f.write(f"Total Transit-hops: {len(transit)}\n")
+        f.write(f"Total End-hosts:    {len(endhost)}\n\n")
+
+        f.write("Per-OS Statistics (absolute and percentage)\n")
+        f.write("--------------------------------------------------\n")
+
+        # absolute counts
+        transit_abs = transit["LABEL"].value_counts()
+        endhost_abs = endhost["LABEL"].value_counts()
+
+        for lbl in ordered_labels:
+            abs_t = transit_abs.get(lbl, 0)
+            abs_e = endhost_abs.get(lbl, 0)
+
+            pct_t = transit_dist.get(lbl, 0)
+            pct_e = endhost_dist.get(lbl, 0)
+
+            if lbl == "Other":
+                pct_t = transit_other
+                pct_e = endhost_other
+
+            f.write(
+                f"{lbl}:\n"
+                f"  Transit:  {abs_t}  ({pct_t:.2f}%)\n"
+                f"  End-host: {abs_e}  ({pct_e:.2f}%)\n\n"
+            )
+
 
 def plot_random_ipid_sequence(msm_path: str, pattern_name: str, count: int = 10):
     probing_path = os.path.join(msm_path, "probing.csv.zst")
@@ -835,7 +938,7 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     os_conditions = []
     for os_list, label in os_groups:
         for name in os_list:
-            os_conditions.append(f"WHEN lower(t.OS) LIKE '%{name.lower()}%' THEN '{label}'")
+            os_conditions.append(f"WHEN lower(t.OS) = '{name.lower()}' THEN '{label}'")
     os_case = " ".join(os_conditions)
 
     query = f"""
@@ -847,7 +950,7 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     """
 
     df = con.execute(query).fetch_df()
-    df = df[df["os_group"] != "Other"]
+    # df = df[df["os_group"] != "Other"]
 
     pivot = df.value_counts().reset_index()
     pivot.columns = ["class", "os_group", "count"]
@@ -862,6 +965,10 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     for os_list, label in os_groups:
         if label in pivot_table.index:
             desired_order.append(label)
+
+    # Other immer ans Ende hängen, falls vorhanden
+    if "Other" in pivot_table.index:
+        desired_order.append("Other")
 
     # Nur OS-Gruppen behalten, die vorkommen
     pivot_table = pivot_table.loc[desired_order]
@@ -916,8 +1023,8 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
 
     # Achsenbeschriftungen
     plt.xlabel("Class", labelpad=4)
-    plt.ylabel("OS Group", labelpad=4)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=25, ha="center")
+    plt.ylabel("OS Group (#IP Addr.)", labelpad=4)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=25, ha="right")
 
     # Rand um Heatmap
     for _, spine in ax.spines.items():
@@ -1003,6 +1110,79 @@ def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
     plt.close()
     con.close()
     print("Done.")
+
+
+def plot_pattern():
+    patterns = ["Global Ctr.", "Per-Dest. Ctr.", "Per-Conn. Ctr.", "Per-Bucket Ctr.", "PRNG-based"]
+    counts = [19, 6, 7, 9, 1]
+
+    dist = {
+        "Global Ctr.": (4, 14, 7),
+        "Per-Bucket Ctr.": (0, 7, 3),
+        "Per-Conn. Ctr.": (0, 5, 2),
+        "Per-Dest. Ctr.": (0, 3, 4),
+        "PRNG-based": (0, 0, 1),
+    }
+
+    # --- Sortieren nach counts (absteigend) ---
+    data = list(zip(patterns, counts))
+    data.sort(key=lambda x: x[1], reverse=True)
+    patterns, counts = zip(*data)
+
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 8.5,
+        "pdf.fonttype": 42,
+    })
+
+    plt.figure(figsize=(4.0, 2.0))
+    plt.gca().invert_yaxis()
+
+    left = np.zeros(len(counts))
+    colors = ["tab:red", "tab:green", "tab:blue"]
+    labels = ["ICMP", "TCP", "UDP"]
+
+    for i, proto in enumerate(labels):
+        values = [counts[j] * dist[patterns[j]][i] / sum(dist[patterns[j]]) for j in range(len(patterns))]
+        bars = plt.barh(patterns, values, left=left, color=colors[i], label=proto)
+
+        for y, (bar, pattern) in enumerate(zip(bars, patterns)):
+            val = dist[pattern][i]
+            if val > 0:
+                plt.text(
+                    left[y] + bar.get_width() / 2,
+                    bar.get_y() + bar.get_height() / 2,
+                    f"{val}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="white"
+                )
+
+        left += values
+
+    # --- Gesamtzahl rechts ---
+    for y, c in enumerate(counts):
+        plt.text(c + 0.2, y, f"{c}", va="center", fontsize=9)
+
+    plt.xlabel("#Papers exploiting the IP-ID method")
+    plt.ylabel("IP-ID method")
+    plt.legend(frameon=False, ncol=3, loc="lower right")
+
+    # ax = plt.gca()
+    # ax.xaxis.set_minor_locator(AutoMinorLocator())
+    # ax.tick_params(axis="x", which="major", length=6)
+    # ax.tick_params(axis="x", which="minor", length=3)
+
+    plt.margins(x=0.15)
+    plt.tight_layout()
+    plt.savefig("ipid_papers.pdf", bbox_inches="tight")
 
 
 def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: str):
@@ -1239,7 +1419,7 @@ def analyze_traceroute_device_behavior(caida_itdk_path: str, msm_path: str, t: i
     """).df()
 
     # merge fallback classes if msm_path does not contain "mass"
-    if "mass" not in msm_path.lower():
+    if "seq" in msm_path.lower():
         merged = {}
         for _, row in df_plot.iterrows():
             cls = row["class"]
@@ -1316,7 +1496,7 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
         for col in cols:
             if fname == "eval.csv.zst" and col == "IP_ID_PATTERN":
                 select_cols.append("""
-                    CASE 
+                    CASE
                       WHEN t.IP IS NOT NULL AND b.IP IS NULL THEN 'Fallback'
                       ELSE COALESCE(b.IP_ID_PATTERN, a.IP_ID_PATTERN)
                     END AS IP_ID_PATTERN
@@ -1333,7 +1513,7 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
                 FROM read_csv_auto('{path_a}/{fname}', compression='zstd')
               ) a
               LEFT JOIN (
-                SELECT * 
+                SELECT *
                 FROM read_csv_auto('{path_b}/{fname}', compression='zstd')
                 SEMI JOIN targets USING(IP)
               ) b USING(IP)
@@ -1353,8 +1533,8 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
     # targets.csv.zst von A übernehmen (Symlink oder Datei)
     src = os.path.join(path_a, "targets.csv.zst")
     dst = os.path.join(out_path, "targets.csv.zst")
-    if os.path.lexists(dst):
-        os.remove(dst)
+    # if os.path.lexists(dst):
+    #     os.remove(dst)
     if os.path.islink(src):
         target = os.readlink(src)
         os.symlink(target, dst)
@@ -1643,8 +1823,8 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
         "pdf.fonttype": 42,
     })
 
-    # leicht breiter, flacher – ideal für Paper
-    fig, ax = plt.subplots(figsize=(2.8, 1.45))
+    # kompakteres Format: etwas breiter, weniger hoch
+    fig, ax = plt.subplots(figsize=(2.45, 1.25))
     colors = plt.cm.tab10.colors
 
     for i, pattern in enumerate(patterns):
@@ -1668,7 +1848,6 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
         q = np.percentile(increments, (99.9 / 99.9) * 100)
         increments = increments[increments <= q]
 
-        # CDF
         sorted_vals = np.sort(increments)
         cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
 
@@ -1677,33 +1856,40 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
             cdf,
             where="post",
             label=pattern.value,
-            linewidth=0.6,
+            linewidth=0.55,
             color=colors[i % len(colors)]
         )
 
-    # --- Achsen & Layout ---
+    # --- Achsen / Layout ---
     ax.set_xscale("log")
     ax.set_xlim(left=1)
-    ax.set_ylim(0, 103)
+    ax.set_ylim(0, 102)
+    ax.yaxis.set_minor_locator(plt.MultipleLocator(25))
     ax.set_xlabel("IP-ID Increment")
-    ax.set_ylabel("Cumulative Percentage [%]")
+    ax.set_ylabel("Cum. Percentage [%]")
 
-    # kompaktere Ticks
-    ax.tick_params(axis='x', which='major', length=3, width=0.4)
-    ax.tick_params(axis='x', which='minor', length=1.5, width=0.3)
-    ax.tick_params(axis='y', which='major', length=3, width=0.4)
-    ax.tick_params(axis='y', which='minor', length=1.5, width=0.3)
+    # kompaktere Achsen-Ticks
+    ax.tick_params(axis='x', which='major', length=2.5, width=0.35)
+    ax.tick_params(axis='x', which='minor', length=1.2, width=0.3)
+    ax.tick_params(axis='y', which='major', length=2.5, width=0.35)
+    ax.tick_params(axis='y', which='minor', length=1.2, width=0.3)
 
-    ax.grid(True, linestyle="--", linewidth=0.35, alpha=0.5)
+    ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.45)
 
     for spine in ax.spines.values():
         spine.set_linewidth(0.45)
-        spine.set_color("black")
 
-    # kleine, saubere Legende
-    ax.legend(frameon=False, fontsize=6, loc="lower right", handlelength=1.3, borderpad=0.2)
+    # Sehr kompakte Legende
+    ax.legend(
+        frameon=False,
+        fontsize=6,
+        loc="lower right",
+        handlelength=1.05,
+        borderpad=0.15,
+        labelspacing=0.1
+    )
 
-    plt.tight_layout(pad=0.15)
+    plt.tight_layout(pad=0.1)
 
     output_dir = os.path.join(msm_path, "analysis", "inc_distribution")
     os.makedirs(output_dir, exist_ok=True)
