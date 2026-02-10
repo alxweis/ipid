@@ -457,7 +457,8 @@ def build_gt_base_round_robin(intersect_path: str, out_path: str):
 
     con.close()
 
-    order = ["Reflection", "Constant", "Local (=1)", "Global", "Local (≥1)", "Multi Global", "Random", "Fallback"]
+    # order = ["Reflection", "Constant", "Local (=1)", "Global", "Local (≥1)", "Multi Global", "Random", "Fallback"]
+    order = ["Mirror", "Constant", "Single", "Per-Dst", "Per-Con", "Per-Bucket", "Per-CPU", "Random", "Fallback"]
 
     df = df.sample(frac=1, random_state=42).reset_index(drop=True)
     groups = {
@@ -583,7 +584,7 @@ def plot_pattern_distribution(params: ProcessingParams):
     if "seq" in params.result_dir:
         merged_counter = Counter()
         for k, v in pattern_counter.items():
-            if k in [Pattern.RANDOM.value, Pattern.MULTI_GLOBAL.value, Pattern.FALLBACK.value]:
+            if k in [Pattern.RANDOM.value, Pattern.PER_CPU.value, Pattern.FALLBACK.value]:
                 merged_counter[Pattern.FALLBACK.value] += v
             else:
                 merged_counter[k] += v
@@ -887,10 +888,12 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
 
     for row_data in rows_batch:
         ip_id_sequence = IPIDSequence(row_data)
-        if pattern in {Pattern.LOCAL_EQ1, Pattern.LOCAL_GE1}:
-            results.append(np.concatenate([ip_id_sequence.even.increments, ip_id_sequence.odd.increments]))
-        elif pattern == Pattern.MULTI_GLOBAL:
-            clusters: list[dict[int, np.int32]] = get_clusters(ip_id_sequence.full.sequence,
+        if pattern in {Pattern.PER_DST}:
+            results.append(np.concatenate([ip_id_sequence.a.increments, ip_id_sequence.b.increments]))
+        elif pattern in {Pattern.PER_CON, Pattern.PER_BUCKET}:
+            results.append(np.concatenate([ip_id_sequence.ap.increments, ip_id_sequence.bp.increments]))
+        elif pattern == Pattern.PER_CPU:
+            clusters: list[dict[int, np.int32]] = get_clusters(ip_id_sequence.s.sequence,
                                                                max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
             increments = np.array([], dtype=np.int32)
             for cluster in clusters:
@@ -901,7 +904,7 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
             # if np.any(ip_id_sequence.full.increments < 700):
             #     print(
             #         f"seq={ip_id_sequence.full.sequence} incs={ip_id_sequence.full.increments} ==> p_value={p_value(ip_id_sequence.full.increments, start_point=0, stop_point=MAX_IP_ID + 1)} > 0.01 ==> is_random is True")
-            results.append(ip_id_sequence.full.increments)
+            results.append(ip_id_sequence.s.increments)
 
     return results
 
@@ -1114,8 +1117,8 @@ def start(result_dir: str):
         plot_time_between_requests(params)
         plot_avg_rtt_per_continent(params)
         plot_increment_distribution(params, Pattern.GLOBAL)
-        plot_increment_distribution(params, Pattern.LOCAL_GE1)
+        plot_increment_distribution(params, Pattern.PER_BUCKET)
         plot_increment_distribution(params, Pattern.RANDOM)
-        plot_increment_distribution(params, Pattern.MULTI_GLOBAL)
+        plot_increment_distribution(params, Pattern.PER_CPU)
 
         print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")

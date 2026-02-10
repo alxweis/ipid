@@ -31,21 +31,24 @@ class IPIDSubsequence:
 class IPIDSequence:
     def __init__(self, sequence: list[int] | tuple[int, ...] | np.ndarray):
         arr = np.array(sequence, dtype=np.int32)
-        self.full = IPIDSubsequence(arr)
-        self.even = IPIDSubsequence(arr[0::2])
-        self.odd = IPIDSubsequence(arr[1::2])
+        self.s = IPIDSubsequence(arr)
+        self.a = IPIDSubsequence(arr[np.isin(np.arange(len(arr)) % 6, [0, 1, 4])])
+        self.b = IPIDSubsequence(arr[np.isin(np.arange(len(arr)) % 6, [2, 3, 5])])
+        self.ap = IPIDSubsequence(arr[np.isin(np.arange(len(arr)) % 6, [1, 4])])
+        self.bp = IPIDSubsequence(arr[np.isin(np.arange(len(arr)) % 6, [2, 5])])
 
     def __len__(self):
-        return len(self.full.sequence)
+        return len(self.s.sequence)
 
 
 class Pattern(Enum):
-    REFLECTION = "Reflection"
+    REFLECTION = "Mirror"
     CONSTANT = "Constant"
-    GLOBAL = "Global"
-    LOCAL_EQ1 = "Local (=1)"  # per-destination/ per-connection counter
-    LOCAL_GE1 = "Local (≥1)"  # per-bucket counter
-    MULTI_GLOBAL = "Multi Global"  # per-cpu counter when >1 cpu
+    GLOBAL = "Single"
+    PER_DST = "Per-Dst"  # per-destination/ per-connection counter
+    PER_CON = "Per-Con"  # per-connection counter
+    PER_BUCKET = "Per-Bucket"  # per-bucket counter
+    PER_CPU = "Per-CPU"  # per-cpu counter when >1 cpu
     RANDOM = "Random"
     FALLBACK = "Fallback"
     NONE = "None"
@@ -123,7 +126,7 @@ def is_uniform(values: np.ndarray, start_point: int, stop_point: int, alpha: flo
 
 
 def is_reflection(seq: IPIDSequence) -> bool:
-    recv = seq.full.sequence.tolist()
+    recv = seq.s.sequence.tolist()
     sent = config.reflection_send_ip_ids
     m = len(sent)
 
@@ -141,26 +144,31 @@ def is_reflection(seq: IPIDSequence) -> bool:
 
 
 def is_constant(seq: IPIDSequence) -> bool:
-    return np.all(seq.full.increments == 0)
+    return np.all(seq.s.increments == 0)
 
 
-def is_local_eq1(seq: IPIDSequence) -> bool:
-    return (seq.even.is_increasing(min_inc=1, max_inc=1) and
-            seq.odd.is_increasing(min_inc=1, max_inc=1))
+def is_per_dst(seq: IPIDSequence) -> bool:
+    return (seq.a.is_increasing(min_inc=1, max_inc=1) and
+            seq.b.is_increasing(min_inc=1, max_inc=1))
 
 
-def is_local_ge1(seq: IPIDSequence) -> bool:
-    return (seq.even.is_increasing(min_inc=1, max_inc=MAX_INC) and
-            seq.odd.is_increasing(min_inc=1, max_inc=MAX_INC))
+def is_per_con(seq: IPIDSequence) -> bool:
+    return (seq.ap.is_increasing(min_inc=1, max_inc=1) and
+            seq.bp.is_increasing(min_inc=1, max_inc=1))
+
+
+def is_per_bucket(seq: IPIDSequence) -> bool:
+    return (seq.ap.is_increasing(min_inc=1, max_inc=MAX_INC) and
+            seq.bp.is_increasing(min_inc=1, max_inc=MAX_INC))
 
 
 def is_global(seq: IPIDSequence) -> bool:
-    return seq.full.is_increasing(min_inc=1, max_inc=MAX_INC)
+    return seq.s.is_increasing(min_inc=1, max_inc=MAX_INC)
 
 
 def is_multi_global(seq: IPIDSequence, max_clusters=MULTI_GLOBAL_MAX_CLUSTERS,
                     max_inc=MULTI_GLOBAL_CLUSTER_MAX_INC) -> bool:
-    clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=max_inc)
+    clusters: list[dict[int, np.int32]] = get_clusters(seq.s.sequence, max_diff=max_inc)
 
     # def check(sequence: list[np.int32]) -> bool:
     #     _seq = sequence.copy()
@@ -195,8 +203,8 @@ def chi2_test(seq: np.ndarray) -> float:
 
 
 def is_random(seq: IPIDSequence) -> bool:
-    if (chi2_test(seq.even.increments) < 1e-9 or
-            chi2_test(seq.odd.increments) < 1e-9):
+    if (chi2_test(seq.a.increments) < 1e-9 or
+            chi2_test(seq.b.increments) < 1e-9):
         return False  # Filters REFLECTION, CONSTANT, GLOBAL, LOCAL(=1), LOCAL(>=1)
 
     # clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
@@ -216,7 +224,7 @@ def is_anomalous(seq: IPIDSequence, is_mass_scan: bool) -> bool:
 
 
 def has_pattern(seq: IPIDSequence, is_mass_scan: bool) -> bool:
-    checks = (is_constant, is_local_eq1, is_local_ge1, is_global)
+    checks = (is_constant, is_per_dst, is_per_con, is_per_bucket, is_global)
     if is_mass_scan:
         checks += (is_multi_global, is_random)
     return any(fn(seq) for fn in checks)
@@ -228,16 +236,17 @@ def get_pattern(seq: IPIDSequence, is_mass_scan: bool, get_all=False) -> list[Pa
         result.append(Pattern.REFLECTION)
     if is_constant(seq):
         result.append(Pattern.CONSTANT)
+    if is_per_con(seq):
+        result.append(Pattern.PER_DST)
+    if is_per_dst(seq):
+        result.append(Pattern.PER_DST)
     if is_global(seq):
         result.append(Pattern.GLOBAL)
-    if is_local_eq1(seq):
-        result.append(Pattern.LOCAL_EQ1)
-    if is_local_ge1(seq):
-        result.append(Pattern.LOCAL_GE1)
-
+    if is_per_bucket(seq):
+        result.append(Pattern.PER_BUCKET)
     if is_mass_scan:
         if is_multi_global(seq):
-            result.append(Pattern.MULTI_GLOBAL)
+            result.append(Pattern.PER_CPU)
         if is_random(seq):
             result.append(Pattern.RANDOM)
 
@@ -249,6 +258,8 @@ def get_pattern(seq: IPIDSequence, is_mass_scan: bool, get_all=False) -> list[Pa
 
 # endregion
 
+
+# TODO: Update Sequence Generation
 
 # region Sequence Generation
 def random_ip_id() -> int:
@@ -278,7 +289,7 @@ def constant_ip_id_sequence(length: int) -> IPIDSequence:
     return IPIDSequence(seq)
 
 
-def local_eq1_ip_id_sequence(length: int) -> IPIDSequence:
+def per_dst_ip_id_sequence(length: int) -> IPIDSequence:
     seq = []
     a = random_ip_id()
     b = random_ip_id()
@@ -292,7 +303,21 @@ def local_eq1_ip_id_sequence(length: int) -> IPIDSequence:
     return IPIDSequence(seq)
 
 
-def local_ge1_ip_id_sequence(length: int) -> IPIDSequence:
+def per_con_ip_id_sequence(length: int) -> IPIDSequence:
+    seq = []
+    a = random_ip_id()
+    b = random_ip_id()
+    for i in range(length):
+        if i % 2 == 0:
+            a = increment_ip_id(a, 1)
+            seq.append(a)
+        else:
+            b = increment_ip_id(b, 1)
+            seq.append(b)
+    return IPIDSequence(seq)
+
+
+def per_bucket_ip_id_sequence(length: int) -> IPIDSequence:
     seq = []
     a = random_ip_id()
     b = random_ip_id()
@@ -328,7 +353,7 @@ def multi_global_ip_id_sequence(length: int, max_clusters=MULTI_GLOBAL_MAX_CLUST
         sizes[i] += 1
 
     cluster_seqs = {
-        i: global_ip_id_sequence(length=sizes[i], max_inc=max_inc).full.sequence.astype(
+        i: global_ip_id_sequence(length=sizes[i], max_inc=max_inc).s.sequence.astype(
             int).tolist()
         for i in range(cluster_count)
     }
@@ -351,8 +376,9 @@ def fallback_ip_id_sequence(length: int) -> IPIDSequence:
     gen_map = {
         Pattern.CONSTANT: (constant_ip_id_sequence, is_constant),
         Pattern.GLOBAL: (global_ip_id_sequence, is_global),
-        Pattern.LOCAL_EQ1: (local_eq1_ip_id_sequence, is_local_eq1),
-        Pattern.LOCAL_GE1: (local_ge1_ip_id_sequence, is_local_ge1)
+        Pattern.PER_DST: (per_dst_ip_id_sequence, is_per_dst),
+        Pattern.PER_CON: (per_con_ip_id_sequence, is_per_con),
+        Pattern.PER_BUCKET: (per_bucket_ip_id_sequence, is_per_bucket)
     }
 
     pattern, (generator, check) = random.choice(list(gen_map.items()))
@@ -389,9 +415,10 @@ pattern_generation_map = {
     Pattern.REFLECTION: reflection_ip_id_sequence,
     Pattern.CONSTANT: constant_ip_id_sequence,
     Pattern.GLOBAL: global_ip_id_sequence,
-    Pattern.LOCAL_EQ1: local_eq1_ip_id_sequence,
-    Pattern.LOCAL_GE1: local_ge1_ip_id_sequence,
-    Pattern.MULTI_GLOBAL: multi_global_ip_id_sequence,
+    Pattern.PER_DST: per_dst_ip_id_sequence,
+    Pattern.PER_CON: per_con_ip_id_sequence,
+    Pattern.PER_BUCKET: per_bucket_ip_id_sequence,
+    Pattern.PER_CPU: multi_global_ip_id_sequence,
     Pattern.RANDOM: random_ip_id_sequence,
     Pattern.FALLBACK: None,
 }

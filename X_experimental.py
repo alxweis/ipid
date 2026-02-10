@@ -1210,12 +1210,13 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
 
     # --- Farbzuordnung ---
     color_map = {
-        "Reflection": "#FFE866",
+        "Mirror": "#FFE866",
         "Constant": "#6FB8FF",
-        "Global": "#FF8080",
-        "Local (=1)": "#B580FF",
-        "Local (≥1)": "#6EE66E",
-        "Multi Global": "#66E0E0",
+        "Single": "#FF8080",
+        "Per-Dst": "#B580FF",
+        "Per-Con": "#B550FF",
+        "Per-Bucket": "#6EE66E",
+        "Per-CPU": "#66E0E0",
         "Random": "#FFB266",
         "Fallback": "#A0A0A0"
     }
@@ -1423,7 +1424,7 @@ def analyze_traceroute_device_behavior(caida_itdk_path: str, msm_path: str, t: i
         merged = {}
         for _, row in df_plot.iterrows():
             cls = row["class"]
-            if cls in [Pattern.MULTI_GLOBAL.value, Pattern.RANDOM.value, Pattern.FALLBACK.value]:
+            if cls in [Pattern.PER_CPU.value, Pattern.RANDOM.value, Pattern.FALLBACK.value]:
                 merged[Pattern.FALLBACK.value] = merged.get(Pattern.FALLBACK.value, 0) + row["absolute"]
             else:
                 merged[cls] = merged.get(cls, 0) + row["absolute"]
@@ -1573,12 +1574,12 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
     # --- Farbzuordnung (wie bisher) ---
     color_map = {
-        "Reflection": "#FFE866",
+        "Mirror": "#FFE866",
         "Constant": "#6FB8FF",
-        "Global": "#FF8080",
-        "Local (=1)": "#B580FF",
-        "Local (≥1)": "#6EE66E",
-        "Multi Global": "#66E0E0",
+        "Single": "#FF8080",
+        "Per-Dst": "#B580FF",
+        "Per-Bucket": "#6EE66E",
+        "Per-CPU": "#66E0E0",
         "Random": "#FFB266",
         "Fallback": "#A0A0A0"
     }

@@ -127,7 +127,7 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
             predicted_pattern = get_pattern(seq, is_mass_scan)
 
             if (true_pattern.value == predicted_pattern.value or
-                    (not is_mass_scan and true_pattern in [Pattern.MULTI_GLOBAL, Pattern.RANDOM] and predicted_pattern == Pattern.FALLBACK)):
+                    (not is_mass_scan and true_pattern in [Pattern.PER_CPU, Pattern.RANDOM] and predicted_pattern == Pattern.FALLBACK)):
                 correct_classifications += 1
             else:
                 # print(f"'{",".join(map(str, seq.full.sequence.tolist()))}' is classified as {predicted_pattern} (real: {true_pattern})")
