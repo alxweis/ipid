@@ -48,28 +48,31 @@ def run_port_scan(ips_tmp_file: str) -> tuple:
     output_file = os.path.join(base_dir, "output.jsonl")
     db_file = os.path.join(base_dir, "scan.duckdb")
 
-    print(f"Starting Port-Scan for {ips_tmp_file}...")
-
-    process = subprocess.Popen([
-        "masscan",
-        "-iL", ips_tmp_file,
-        "-p22,161,445,80,53",
-        "--rate", "30000",
-        "-oJ", output_file
-    ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True, bufsize=1)
-
-    while True:
-        output = process.stdout.readline()
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            print(output.strip())
-
-    print(f"Port-Scan finished: result={output_file}")
+    # print(f"Starting Port-Scan for {ips_tmp_file}...")
+    #
+    # process = subprocess.Popen(
+    #     [
+    #         "masscan",
+    #         "-iL", ips_tmp_file,
+    #         "-p22,161,445,80,53",
+    #         "--rate", "30000",
+    #         "-oJ", output_file
+    #     ],
+    #     stdout=subprocess.PIPE,
+    #     stderr=subprocess.STDOUT,
+    #     universal_newlines=True,
+    #     bufsize=1
+    # )
+    #
+    # for line in process.stdout:
+    #     print(line.strip())
+    #
+    # process.wait()
+    # print(f"Port-Scan finished: result={output_file}")
 
     con = duckdb.connect(db_file)
     con.execute("SET memory_limit = '1.5GB'")
-    con.execute("SET temp_directory = ?", [base_dir])
+    con.execute(f"SET temp_directory = '{base_dir}'")
 
     con.execute("""
         CREATE TABLE IF NOT EXISTS scan_results (
@@ -78,19 +81,19 @@ def run_port_scan(ips_tmp_file: str) -> tuple:
         )
     """)
 
-    con.execute("""
+    con.execute(f"""
         INSERT INTO scan_results
-        SELECT 
+        SELECT
             ip,
-            CAST(p.port AS INTEGER) as port
+            CAST(p.port AS INTEGER) AS port
         FROM read_json(
-            ?,
-            columns = {ip: 'VARCHAR', ports: 'STRUCT(port INTEGER)[]'},
+            '{output_file}',
+            columns = {{ip: 'VARCHAR', ports: 'STRUCT(port INTEGER)[]'}},
             format = 'newline_delimited',
             ignore_errors = true
         ),
         UNNEST(ports) AS t(p)
-    """, [output_file])
+    """)
 
     con.execute("CREATE INDEX IF NOT EXISTS idx_port ON scan_results(port)")
 
@@ -107,16 +110,20 @@ def run_port_scan(ips_tmp_file: str) -> tuple:
     for port, service in services.items():
         filename = os.path.join(base_dir, f"{service}_ips.txt")
 
-        row_count = con.execute("""
-            SELECT COUNT(DISTINCT ip) FROM scan_results WHERE port = ?
-        """, [port]).fetchone()[0]
+        row_count = con.execute(
+            f"SELECT COUNT(DISTINCT ip) FROM scan_results WHERE port = {port}"
+        ).fetchone()[0]
 
         if row_count > 0:
-            con.execute("""
-                COPY (SELECT DISTINCT ip FROM scan_results WHERE port = ?)
-                TO ? (FORMAT CSV, HEADER false)
-            """, [port, filename])
-            print(f"Saved {row_count} IP addresses for {service.upper()} in {filename}")
+            con.execute(f"""
+                COPY (
+                    SELECT DISTINCT ip
+                    FROM scan_results
+                    WHERE port = {port}
+                )
+                TO '{filename}' (FORMAT CSV, HEADER false)
+            """)
+            print(f"Saved {row_count} IPs for {service.upper()} -> {filename}")
             service_files[service] = filename
         else:
             service_files[service] = None
@@ -124,11 +131,11 @@ def run_port_scan(ips_tmp_file: str) -> tuple:
     con.close()
 
     return (
-        service_files.get("snmp"),
-        service_files.get("ssh"),
-        service_files.get("smb"),
-        service_files.get("http"),
-        service_files.get("dns")
+        service_files["snmp"],
+        service_files["ssh"],
+        service_files["smb"],
+        service_files["http"],
+        service_files["dns"]
     )
 
 

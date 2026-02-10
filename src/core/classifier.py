@@ -32,10 +32,11 @@ class IPIDSequence:
     def __init__(self, sequence: list[int] | tuple[int, ...] | np.ndarray):
         arr = np.array(sequence, dtype=np.int32)
         self.s = IPIDSubsequence(arr)
-        self.a = IPIDSubsequence(arr[np.isin(np.arange(len(arr)) % 6, [0, 1, 4])])
-        self.b = IPIDSubsequence(arr[np.isin(np.arange(len(arr)) % 6, [2, 3, 5])])
-        self.ap = IPIDSubsequence(arr[np.isin(np.arange(len(arr)) % 6, [1, 4])])
-        self.bp = IPIDSubsequence(arr[np.isin(np.arange(len(arr)) % 6, [2, 5])])
+        idx = np.arange(len(arr)) % 6
+        self.a = IPIDSubsequence(arr[np.isin(idx, [0, 1, 4])])
+        self.b = IPIDSubsequence(arr[np.isin(idx, [2, 3, 5])])
+        self.ap = IPIDSubsequence(arr[np.isin(idx, [1, 4])])
+        self.bp = IPIDSubsequence(arr[np.isin(idx, [2, 5])])
 
     def __len__(self):
         return len(self.s.sequence)
@@ -259,7 +260,7 @@ def get_pattern(seq: IPIDSequence, is_mass_scan: bool, get_all=False) -> list[Pa
 # endregion
 
 
-# TODO: Update Sequence Generation, is_random, multi global
+# TODO: Update is_random, multi global
 
 # region Sequence Generation
 def random_ip_id() -> int:
@@ -294,10 +295,10 @@ def per_dst_ip_id_sequence(length: int) -> IPIDSequence:
     a = random_ip_id()
     b = random_ip_id()
     for i in range(length):
-        if i % 2 == 0:
+        if i % 6 in [0, 1, 4]:
             a = increment_ip_id(a, 1)
             seq.append(a)
-        else:
+        elif i % 6 in [2, 3, 5]:
             b = increment_ip_id(b, 1)
             seq.append(b)
     return IPIDSequence(seq)
@@ -308,12 +309,15 @@ def per_con_ip_id_sequence(length: int) -> IPIDSequence:
     a = random_ip_id()
     b = random_ip_id()
     for i in range(length):
-        if i % 2 == 0:
+        if i % 6 in [1, 4]:
             a = increment_ip_id(a, 1)
             seq.append(a)
-        else:
+        elif i % 6 in [2, 5]:
             b = increment_ip_id(b, 1)
             seq.append(b)
+        else:
+            r = random_ip_id()
+            seq.append(r)
     return IPIDSequence(seq)
 
 
@@ -322,12 +326,15 @@ def per_bucket_ip_id_sequence(length: int) -> IPIDSequence:
     a = random_ip_id()
     b = random_ip_id()
     for i in range(length):
-        if i % 2 == 0:
+        if i % 6 in [1, 4]:
             a = increment_ip_id(a, random.randint(1, LOCAL_GE1_MAX_INC))
             seq.append(a)
-        else:
+        elif i % 6 in [2, 5]:
             b = increment_ip_id(b, random.randint(1, LOCAL_GE1_MAX_INC))
             seq.append(b)
+        else:
+            r = random_ip_id()
+            seq.append(r)
     return IPIDSequence(seq)
 
 
@@ -382,7 +389,7 @@ def fallback_ip_id_sequence(length: int) -> IPIDSequence:
     }
 
     pattern, (generator, check) = random.choice(list(gen_map.items()))
-    sequence = generator(length).full.sequence.copy()
+    sequence = generator(length).s.sequence.copy()
 
     n = max(1, length // 10)  # 10% of the length, minimum 1
 
