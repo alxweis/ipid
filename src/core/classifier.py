@@ -237,7 +237,7 @@ def get_pattern(seq: IPIDSequence, is_mass_scan: bool, get_all=False) -> list[Pa
     if is_constant(seq):
         result.append(Pattern.CONSTANT)
     if is_per_con(seq):
-        result.append(Pattern.PER_DST)
+        result.append(Pattern.PER_CON)
     if is_per_dst(seq):
         result.append(Pattern.PER_DST)
     if is_global(seq):
@@ -259,7 +259,7 @@ def get_pattern(seq: IPIDSequence, is_mass_scan: bool, get_all=False) -> list[Pa
 # endregion
 
 
-# TODO: Update Sequence Generation
+# TODO: Update Sequence Generation, is_random, multi global
 
 # region Sequence Generation
 def random_ip_id() -> int:
