@@ -1128,7 +1128,7 @@ func createPrebuildPackets() {
 		if seq%3 == 0 {
 			z := (seq / 3) % 2
 			_, srcIP = getSender(z)
-			srcPrt = r1Prt + seq
+			srcPrt = r1Prt + (seq / 3)
 		} else if seq%3 == 1 {
 			srcIP = srcAIp
 			srcPrt = r2Prt
