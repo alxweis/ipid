@@ -628,11 +628,29 @@ func (l2 *Sender) Send(packet []byte) {
 }
 
 func getSender(seq uint16) (*Sender, net.IP) {
-	if seq%2 == 0 {
+	if seq%3 == 0 {
+		if (seq/3)%2 == 0 {
+			return senderA, srcAIp
+		} else {
+			return senderB, srcBIp
+		}
+	} else if seq%3 == 1 {
 		return senderA, srcAIp
-	} else {
+	} else if seq%3 == 2 {
 		return senderB, srcBIp
 	}
+	panic("invalid sequence number")
+}
+
+func getSrcPrt(seq uint16, r1Prt uint16, r2Prt uint16) uint16 {
+	if seq%3 == 0 {
+		return r1Prt + (seq / 3)
+	} else if seq%3 == 1 {
+		return r2Prt
+	} else if seq%3 == 2 {
+		return r2Prt + 1
+	}
+	panic("invalid sequence number")
 }
 
 func sendPacket(sender *Sender, packet []byte, seq uint16, probe *Probe, sentByteCount *int, sentPacketCount *int) {
@@ -1116,25 +1134,12 @@ func createPrebuildPackets() {
 	r2Prt := r1Prt + requestCount                                     // Min=1024+rc, Max=65535-rc-1+rc
 
 	for seq := uint16(0); seq < requestCount; seq++ {
-		//_, srcIP := getSender(seq)
+		_, srcIP := getSender(seq)
+		srcPrt := getSrcPrt(seq, r1Prt, r2Prt)
 
 		id := config.DefaultSendIpIds[int(seq)%len(config.DefaultSendIpIds)]
 		if config.DetectReflectedIpIds {
 			id = config.ReflectionSendIpIds[int(seq)%len(config.ReflectionSendIpIds)]
-		}
-
-		srcIP := net.IP{}
-		srcPrt := uint16(0)
-		if seq%3 == 0 {
-			z := (seq / 3) % 2
-			_, srcIP = getSender(z)
-			srcPrt = r1Prt + (seq / 3)
-		} else if seq%3 == 1 {
-			srcIP = srcAIp
-			srcPrt = r2Prt
-		} else if seq%3 == 2 {
-			srcIP = srcBIp
-			srcPrt = r2Prt + 1
 		}
 
 		ipLayer := &layers.IPv4{

@@ -386,23 +386,23 @@ def run_dns_scan(ips_tmp_file: str) -> str:
 
 
 def run_os_scan(ips_tmp_file: str, targets_os_file: str):
-    # snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
+    snmp_ips_file, ssh_ips_file, smb_ips_file, http_ips_file, dns_ips_file = run_port_scan(ips_tmp_file)
 
-    # go_file = os.path.join(os.path.dirname(__file__), "main.go")
-    # executable = os.path.join(os.path.dirname(__file__), "scanner")
-    # subprocess.run(["go", "build", "-o", executable, go_file], check=True, cwd=os.path.dirname(__file__))
+    go_file = os.path.join(os.path.dirname(__file__), "main.go")
+    executable = os.path.join(os.path.dirname(__file__), "scanner")
+    subprocess.run(["go", "build", "-o", executable, go_file], check=True, cwd=os.path.dirname(__file__))
 
-    # snmp_result_file = run_scanner(executable, "snmp", snmp_ips_file)
-    # ssh_result_file = run_scanner(executable, "ssh", ssh_ips_file)
-    # smb_result_file = run_scanner(executable, "smb", smb_ips_file)
-    # http_result_file = run_http_scan(http_ips_file)
-    # dns_result_file = run_dns_scan(dns_ips_file)
+    snmp_result_file = run_scanner(executable, "snmp", snmp_ips_file)
+    ssh_result_file = run_scanner(executable, "ssh", ssh_ips_file)
+    smb_result_file = run_scanner(executable, "smb", smb_ips_file)
+    http_result_file = run_http_scan(http_ips_file)
+    dns_result_file = run_dns_scan(dns_ips_file)
 
-    snmp_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/snmp_os_info.csv.zst"
-    ssh_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/ssh_os_info.csv.zst"
-    smb_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/smb_os_info.csv.zst"
-    http_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/http_os_info.csv.zst"
-    dns_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/dns_os_info.csv.zst"
+    # snmp_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/snmp_os_info.csv.zst"
+    # ssh_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/ssh_os_info.csv.zst"
+    # smb_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/smb_os_info.csv.zst"
+    # http_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/http_os_info.csv.zst"
+    # dns_result_file = "/mnt/data01/ipid/targets/udp/53/2026-02-10_01-22-17/dns_os_info.csv.zst"
 
     con = duckdb.connect()
     query = f"""
