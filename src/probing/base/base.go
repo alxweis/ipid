@@ -115,7 +115,7 @@ type Protocol struct {
 	Id          string
 	Filter      string
 	IpLayer     layers.IPProtocol
-	CreateLayer func(seq uint16, srcPrt uint16) []gopacket.SerializableLayer
+	CreateLayer func(seq uint16) []gopacket.SerializableLayer
 	SetChecksum func(packet []byte)
 	GetSeq      func(replyInfo *ReplyInfo) (uint16, bool)
 }
@@ -1130,12 +1130,9 @@ func createPrebuildPackets() {
 	requestCount := pm.probingVars().requestCount
 	packetList := make([][]byte, requestCount)
 	packetBuf := gopacket.NewSerializeBuffer()
-	r1Prt := uint16(rand.Intn(int(65535-1024-requestCount-1)) + 1024) // Min=1024, Max=65535-rc-1
-	r2Prt := r1Prt + requestCount                                     // Min=1024+rc, Max=65535-rc-1+rc
 
 	for seq := uint16(0); seq < requestCount; seq++ {
 		_, srcIP := getSender(seq)
-		srcPrt := getSrcPrt(seq, r1Prt, r2Prt)
 
 		id := config.DefaultSendIpIds[int(seq)%len(config.DefaultSendIpIds)]
 		if config.DetectReflectedIpIds {
@@ -1152,7 +1149,7 @@ func createPrebuildPackets() {
 			DstIP:    net.IPv4(0, 0, 0, 0),
 		}
 
-		protoLayer := proto.CreateLayer(seq, srcPrt)
+		protoLayer := proto.CreateLayer(seq)
 
 		err := packetBuf.Clear()
 		if err != nil {
@@ -1171,10 +1168,16 @@ func createPrebuildPackets() {
 }
 
 func buildPackets(dstIP net.IP) [][]byte {
-	packetList := make([][]byte, pm.probingVars().requestCount)
+	requestCount := pm.probingVars().requestCount
+
+	packetList := make([][]byte, requestCount)
+
+	r1Prt := uint16(rand.Intn(int(65535-1024-requestCount-1)) + 1024) // Min=1024, Max=65535-rc-1
+	r2Prt := r1Prt + requestCount                                     // Min=1024+rc, Max=65535-rc-1+rc
 
 	for seq := uint16(0); seq < pm.probingVars().requestCount; seq++ {
 		packet := make([]byte, len(prebuildPackets[seq]))
+		srcPrt := getSrcPrt(seq, r1Prt, r2Prt)
 		copy(packet, prebuildPackets[seq])
 
 		// Set IP Destination
@@ -1184,6 +1187,11 @@ func buildPackets(dstIP net.IP) [][]byte {
 		binary.BigEndian.PutUint16(packet[10:12], 0)
 		ipChecksum := calculateChecksum(packet[0:20])
 		binary.BigEndian.PutUint16(packet[10:12], ipChecksum)
+
+		// Set source ports
+		if proto.Id == "udp" || proto.Id == "tcp" {
+			binary.BigEndian.PutUint16(packet[20:22], srcPrt)
+		}
 
 		// Calculate Protocol Checksum
 		proto.SetChecksum(packet)
@@ -1235,7 +1243,7 @@ func checkIPLayer(replyInfo *ReplyInfo) (net.IP, net.IP, uint16, bool) {
 }
 
 // ICMP
-func createICMPLayer(seq uint16, srcPrt uint16) []gopacket.SerializableLayer {
+func createICMPLayer(seq uint16) []gopacket.SerializableLayer {
 	icmpLayer := &layers.ICMPv4{
 		TypeCode: layers.CreateICMPv4TypeCode(layers.ICMPv4TypeEchoRequest, 0),
 		Seq:      seq,
@@ -1265,9 +1273,9 @@ func getICMPSeq(replyInfo *ReplyInfo) (uint16, bool) {
 }
 
 // TCP
-func createTCPLayer(seq uint16, srcPrt uint16) []gopacket.SerializableLayer {
+func createTCPLayer(seq uint16) []gopacket.SerializableLayer {
 	tcpLayer := &layers.TCP{
-		SrcPort: layers.TCPPort(srcPrt),
+		SrcPort: layers.TCPPort(0),
 		DstPort: config.TcpDstPort,
 		Seq:     tcpSeqBase + uint32(seq),
 		SYN:     strings.Contains(config.TcpReqFlags, "S"),
@@ -1402,9 +1410,9 @@ func buildRST(seq uint16, srcIP net.IP, dstIP net.IP, ack uint32, srcPrt layers.
 }
 
 // UDP
-func createUDPLayer(seq uint16, srcPrt uint16) []gopacket.SerializableLayer {
+func createUDPLayer(seq uint16) []gopacket.SerializableLayer {
 	udpLayer := &layers.UDP{
-		SrcPort: layers.UDPPort(srcPrt),
+		SrcPort: layers.UDPPort(0),
 		DstPort: config.UdpDstPort,
 	}
 
