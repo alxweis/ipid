@@ -1476,60 +1476,60 @@ def analyze_traceroute_device_behavior(caida_itdk_path: str, msm_path: str, t: i
 
 def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_count()):
     os.makedirs(out_path, exist_ok=True)
-    # con = duckdb.connect()
-    # con.execute(f"PRAGMA threads={threads};")
+    con = duckdb.connect()
+    con.execute(f"PRAGMA threads={threads};")
 
     # Targets laden (aus B)
-    # con.execute(f"""
-    #     CREATE TABLE targets AS
-    #     SELECT IP FROM read_csv_auto('{path_b}/targets.csv.zst', compression='zstd');
-    # """)
+    con.execute(f"""
+        CREATE TABLE targets AS
+        SELECT IP FROM read_csv_auto('{path_b}/targets.csv.zst', compression='zstd');
+    """)
 
-    # def merge_file(fname: str):
-    #     # Schema von A bestimmen
-    #     cols = [c[0] for c in con.execute(
-    #         f"DESCRIBE SELECT * FROM read_csv_auto('{path_a}/{fname}', compression='zstd')"
-    #     ).fetchall()]
-    #     cols.remove("IP")  # IP fürs Join nutzen
-    #
-    #     # Spaltenliste für SELECT bauen
-    #     select_cols = ["IP"]
-    #     for col in cols:
-    #         if fname == "eval.csv.zst" and col == "IP_ID_PATTERN":
-    #             select_cols.append("""
-    #                 CASE
-    #                   WHEN t.IP IS NOT NULL AND b.IP IS NULL THEN 'Fallback'
-    #                   ELSE COALESCE(b.IP_ID_PATTERN, a.IP_ID_PATTERN)
-    #                 END AS IP_ID_PATTERN
-    #             """)
-    #         else:
-    #             select_cols.append(f"COALESCE(b.{col}, a.{col}) AS {col}")
-    #     select_sql = ", ".join(select_cols)
-    #
-    #     query = f"""
-    #         COPY (
-    #           SELECT {select_sql}
-    #           FROM (
-    #             SELECT row_number() OVER () AS rn, *
-    #             FROM read_csv_auto('{path_a}/{fname}', compression='zstd')
-    #           ) a
-    #           LEFT JOIN (
-    #             SELECT *
-    #             FROM read_csv_auto('{path_b}/{fname}', compression='zstd')
-    #             SEMI JOIN targets USING(IP)
-    #           ) b USING(IP)
-    #           LEFT JOIN targets t USING(IP)
-    #           ORDER BY rn
-    #         )
-    #         TO '{out_path}/{fname}' (FORMAT CSV, COMPRESSION ZSTD);
-    #     """
-    #     con.execute(query)
+    def merge_file(fname: str):
+        # Schema von A bestimmen
+        cols = [c[0] for c in con.execute(
+            f"DESCRIBE SELECT * FROM read_csv_auto('{path_a}/{fname}', compression='zstd')"
+        ).fetchall()]
+        cols.remove("IP")  # IP fürs Join nutzen
+
+        # Spaltenliste für SELECT bauen
+        select_cols = ["IP"]
+        for col in cols:
+            if fname == "eval.csv.zst" and col == "IP_ID_PATTERN":
+                select_cols.append("""
+                    CASE
+                      WHEN t.IP IS NOT NULL AND b.IP IS NULL THEN 'Fallback'
+                      ELSE COALESCE(b.IP_ID_PATTERN, a.IP_ID_PATTERN)
+                    END AS IP_ID_PATTERN
+                """)
+            else:
+                select_cols.append(f"COALESCE(b.{col}, a.{col}) AS {col}")
+        select_sql = ", ".join(select_cols)
+
+        query = f"""
+            COPY (
+              SELECT {select_sql}
+              FROM (
+                SELECT row_number() OVER () AS rn, *
+                FROM read_csv_auto('{path_a}/{fname}', compression='zstd')
+              ) a
+              LEFT JOIN (
+                SELECT *
+                FROM read_csv_auto('{path_b}/{fname}', compression='zstd')
+                SEMI JOIN targets USING(IP)
+              ) b USING(IP)
+              LEFT JOIN targets t USING(IP)
+              ORDER BY rn
+            )
+            TO '{out_path}/{fname}' (FORMAT CSV, COMPRESSION ZSTD);
+        """
+        con.execute(query)
 
     # probing und eval mergen
-    # merge_file("probing.csv.zst")
-    # merge_file("eval.csv.zst")
+    merge_file("probing.csv.zst")
+    merge_file("eval.csv.zst")
 
-    # con.close()
+    con.close()
 
     # targets.csv.zst von A übernehmen (Symlink oder Datei)
     src = os.path.join(path_a, "targets.csv.zst")
