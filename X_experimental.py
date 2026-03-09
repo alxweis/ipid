@@ -819,7 +819,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
             ax.barh(y, val, left=left, height=0.45, edgecolor="none", color=color_map[lbl])
 
             if val >= 1:
-                ax.text(left + val / 2, y, str(int(round(val))), ha="center", va="center", fontsize=8)
+                ax.text(left + val / 2, y, str(int(round(val))), ha="center", va="center", fontsize=9)
 
             left += val
 
@@ -828,6 +828,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.5, 1.5)
     ax.set_xlabel("OS Distribution [%]")
+    ax.set_ylabel("Device Type", labelpad=65)
 
     ax.set_yticks([])
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
