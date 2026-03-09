@@ -796,7 +796,8 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
     # --- ACM Plot style ---
     plt.rcParams.update({
         "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.serif": ["Latin Modern Roman"],
+        "mathtext.fontset": "cm",
         "font.size": 10,
         "axes.linewidth": 0.8,
         "axes.labelsize": 10,
@@ -1165,7 +1166,8 @@ def plot_pattern():
 
     plt.rcParams.update({
         "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "DejaVu Serif"],
+        "font.serif": ["Latin Modern Roman"],
+        "mathtext.fontset": "cm",
         "font.size": 10,
         "axes.linewidth": 0.8,
         "axes.labelsize": 10,
@@ -1258,7 +1260,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
     # --- ACM Plot style ---
     plt.rcParams.update({
         "font.family": "serif",
-        "font.serif": ["Computer Modern Roman"],
+        "font.serif": ["Latin Modern Roman"],
         "mathtext.fontset": "cm",
         "font.size": 10,
         "axes.linewidth": 0.8,
@@ -1623,7 +1625,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     # --- ACM Style ---
     plt.rcParams.update({
         "font.family": "serif",
-        "font.serif": ["Computer Modern Roman"],
+        "font.serif": ["Latin Modern Roman"],
         "mathtext.fontset": "cm",
         "font.size": 10,
         "axes.linewidth": 0.8,
@@ -1723,7 +1725,7 @@ def plot_time_between_requests_acm_style(msm_path: str):
     # --- ACM CCR Plot style ---
     plt.rcParams.update({
         "font.family": "serif",
-        "font.serif": ["Computer Modern Roman"],
+        "font.serif": ["Latin Modern Roman"],
         "mathtext.fontset": "cm",
         "font.size": 8,
         "axes.linewidth": 0.6,
@@ -1795,7 +1797,7 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
     # --- ACM CCR Plot style ---
     plt.rcParams.update({
         "font.family": "serif",
-        "font.serif": ["Computer Modern Roman"],
+        "font.serif": ["Latin Modern Roman"],
         "mathtext.fontset": "cm",
         "font.size": 8,
         "axes.linewidth": 0.6,
@@ -1854,7 +1856,7 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
 def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
     plt.rcParams.update({
         "font.family": "serif",
-        "font.serif": ["Computer Modern Roman"],
+        "font.serif": ["Latin Modern Roman"],
         "mathtext.fontset": "cm",
         "font.size": 8,
         "axes.linewidth": 0.6,
