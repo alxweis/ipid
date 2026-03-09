@@ -1296,7 +1296,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
                     left + val / 2, y,
                     f"{int(math.floor(val + 0.5))}",  # <-- ganze Zahl
                     ha="center", va="center",
-                    color="black", fontsize=8
+                    color="black", fontsize=9
                 )
 
             left += val
@@ -1677,6 +1677,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.5, 1.5)
     ax.set_xlabel("IP-ID Class Distribution [%]")
+    ax.set_ylabel("Device Type", labelpad=25)
 
     # Minorticks (5 %)
     ax.xaxis.set_minor_locator(MultipleLocator(5))
