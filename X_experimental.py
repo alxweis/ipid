@@ -803,7 +803,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         "axes.labelsize": 10,
         "xtick.labelsize": 9,
         "ytick.labelsize": 9,
-        "legend.fontsize": 8.5,
+        "legend.fontsize": 9,
         "pdf.fonttype": 42,
     })
 
@@ -1173,7 +1173,7 @@ def plot_pattern():
         "axes.labelsize": 10,
         "xtick.labelsize": 9,
         "ytick.labelsize": 9,
-        "legend.fontsize": 8.5,
+        "legend.fontsize": 9,
         "pdf.fonttype": 42,
     })
 
@@ -1267,7 +1267,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
         "axes.labelsize": 10,
         "xtick.labelsize": 9,
         "ytick.labelsize": 9,
-        "legend.fontsize": 8.5,
+        "legend.fontsize": 9,
         "pdf.fonttype": 42,
     })
 
@@ -1632,7 +1632,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
         "axes.labelsize": 10,
         "xtick.labelsize": 9,
         "ytick.labelsize": 9,
-        "legend.fontsize": 8.5,
+        "legend.fontsize": 9,
         "pdf.fonttype": 42,
     })
 
@@ -1663,7 +1663,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
                     left + val / 2, y,
                     f"{int(math.floor(val + 0.5))}",
                     ha="center", va="center",
-                    fontsize=8, color="black"
+                    fontsize=9, color="black"
                 )
 
             left += val
