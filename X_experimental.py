@@ -847,11 +847,13 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         legend_handles,
         legend_labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.0),
+        bbox_to_anchor=(0.5, 1.02),
         ncol=int(math.ceil(len(legend_labels) / 2)),
         frameon=False,
-        handletextpad=0.4,
-        borderaxespad=0.2
+        handlelength=1.2,
+        handletextpad=0.3,
+        columnspacing=0.8,
+        borderaxespad=0.2,
     )
 
     plt.tight_layout()
