@@ -1333,7 +1333,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
     ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
     ax.tick_params(axis="x", which="minor", length=2, width=0.5)
 
-    fig.text(0.01, 0.5, "Measurement [Index]",
+    fig.text(0.01, 0.5, "Measurement [No.]",
              va="center", ha="center", rotation="vertical", fontsize=10)
 
     ax.set_yticks([])
@@ -1344,11 +1344,13 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
         [b[0] for b in bars],
         all_classes,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.0),
-        ncol=4,
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=5,
         frameon=False,
-        handletextpad=0.4,
-        borderaxespad=0.2
+        handlelength=1.2,
+        handletextpad=0.3,
+        columnspacing=0.8,
+        borderaxespad=0.2,
     )
 
     plt.tight_layout()
