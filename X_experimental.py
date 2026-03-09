@@ -582,8 +582,8 @@ def main():
     elif mode == 22:
         plot_pattern()
     elif mode == 23:
-        # python3 X_experimental.py 23 caida merge seq mass
-        if len(sys.argv) < 6:
+        # python3 X_experimental.py 23 caida merge seq mass proto
+        if len(sys.argv) < 7:
             print_usage()
             return
 
@@ -591,6 +591,7 @@ def main():
         merge = sys.argv[3]
         seq = sys.argv[4]
         mass = sys.argv[5]
+        proto = sys.argv[6]
 
         script = sys.argv[0]
 
@@ -601,13 +602,9 @@ def main():
         runs = [
             ["13", caida, merge],
             ["14", caida, merge],
-            ["15", merge, "icmp"],
-            ["15", merge, "tcp"],
-            ["15", merge, "udp"],
+            ["15", merge, proto],
             ["16", merge],
-            ["17", seq, mass, "icmp"],
-            ["17", seq, mass, "tcp"],
-            ["17", seq, mass, "udp"],
+            ["17", seq, mass, proto],
             ["20", caida, merge],
             ["21", merge],
         ]
