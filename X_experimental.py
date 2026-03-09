@@ -1694,11 +1694,13 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
         [b[0] for b in bars],
         all_classes,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.0),
-        ncol=4,
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=5,
         frameon=False,
-        handletextpad=0.4,
-        borderaxespad=0.2
+        handlelength=1.2,
+        handletextpad=0.3,
+        columnspacing=0.8,
+        borderaxespad=0.2,
     )
 
     plt.tight_layout()
