@@ -8,6 +8,7 @@ import pickle
 import random
 import shutil
 import string
+import subprocess
 import sys
 import tempfile
 from datetime import datetime
@@ -505,9 +506,9 @@ def main():
 
         msm_path = str(sys.argv[2])
 
-        # plot_os_distribution(msm_path, oses, "all")
-        # plot_os_distribution(msm_path, router, "router")
-        # plot_os_distribution(msm_path, end_device, "end_device")
+        plot_os_distribution(msm_path, oses, "all")
+        plot_os_distribution(msm_path, router, "router")
+        plot_os_distribution(msm_path, end_device, "end_device")
 
         rhel = (["redhat"], "RHEL")
         ubuntu_debian = (["ubuntu", "debian"], "Ubuntu/Debian")
@@ -525,22 +526,25 @@ def main():
         sonicos = (["sonicwall"], "SonicOS")
 
         # ICMP
-        # plot_os_heatmap(msm_path, "general_purpose_os_devices",
-        #                 [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
-        # plot_os_heatmap(msm_path, "network_os_devices",
-        #                 [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos, drayos])
+        if "icmp" in msm_path:
+            plot_os_heatmap(msm_path, "general_purpose_os_devices",
+                            [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+            plot_os_heatmap(msm_path, "network_os_devices",
+                            [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos, drayos])
 
         # TCP/80
-        # plot_os_heatmap(msm_path, "general_purpose_os_devices",
-        #                 [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
-        # plot_os_heatmap(msm_path, "network_os_devices",
-        #                 [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos, drayos])
+        if "tcp" in msm_path:
+            plot_os_heatmap(msm_path, "general_purpose_os_devices",
+                            [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+            plot_os_heatmap(msm_path, "network_os_devices",
+                            [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos, drayos])
 
         # UDP/53
-        plot_os_heatmap(msm_path, "general_purpose_os_devices",
-                        [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
-        plot_os_heatmap(msm_path, "network_os_devices",
-                        [cisco_ios, huawei_vrp, mikrotik_routeros, zynos, drayos])
+        if "udp" in msm_path:
+            plot_os_heatmap(msm_path, "general_purpose_os_devices",
+                            [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+            plot_os_heatmap(msm_path, "network_os_devices",
+                            [cisco_ios, huawei_vrp, mikrotik_routeros, zynos, drayos])
     elif mode == 17:
         if len(sys.argv) < 5:
             print_usage()
@@ -577,6 +581,39 @@ def main():
         print_constant_pattern_distribution(str(sys.argv[2]))
     elif mode == 22:
         plot_pattern()
+    elif mode == 23:
+        # python3 X_experimental.py 23 caida merge seq mass
+        if len(sys.argv) < 6:
+            print_usage()
+            return
+
+        caida = sys.argv[2]
+        merge = sys.argv[3]
+        seq = sys.argv[4]
+        mass = sys.argv[5]
+
+        script = sys.argv[0]
+
+        def run_sequential(params):
+            params = [str(p) for p in params]
+            subprocess.run([sys.executable, script] + params)
+
+        runs = [
+            ["13", caida, merge],
+            ["14", caida, merge],
+            ["15", merge, "icmp"],
+            ["15", merge, "tcp"],
+            ["15", merge, "udp"],
+            ["16", merge],
+            ["17", seq, mass, "icmp"],
+            ["17", seq, mass, "tcp"],
+            ["17", seq, mass, "udp"],
+            ["20", caida, merge],
+            ["21", merge],
+        ]
+
+        for r in runs:
+            run_sequential(r)
     else:
         print_usage()
 
