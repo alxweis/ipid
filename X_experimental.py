@@ -599,7 +599,6 @@ def main():
             subprocess.run([sys.executable, script] + params)
 
         runs = [
-            ["5", caida],
             ["13", caida, merge],
             ["14", caida, merge],
             ["15", merge, "icmp"],
