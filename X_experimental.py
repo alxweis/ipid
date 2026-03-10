@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import zstandard as zstd
-from matplotlib.ticker import MultipleLocator
+from matplotlib.ticker import MultipleLocator, MaxNLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
@@ -1204,7 +1204,7 @@ def plot_pattern():
                     ha="center",
                     va="center",
                     fontsize=9,
-                    color="white"
+                    color="black"
                 )
 
         left += values
@@ -1217,6 +1217,9 @@ def plot_pattern():
     plt.ylabel("IP-ID Class")
     plt.legend(frameon=False, ncol=3, loc="lower right", handlelength=1.2, handletextpad=0.3, columnspacing=0.8,
                borderaxespad=0.2)
+
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
     # ax = plt.gca()
     # ax.xaxis.set_minor_locator(AutoMinorLocator())
