@@ -1184,7 +1184,7 @@ def plot_pattern():
         "pdf.fonttype": 42,
     })
 
-    plt.figure(figsize=(4.0, 2.0))
+    plt.figure(figsize=(5.0, 2.0))
     plt.gca().invert_yaxis()
 
     left = np.zeros(len(counts))
