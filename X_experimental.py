@@ -1155,15 +1155,15 @@ def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
 
 
 def plot_pattern():
-    patterns = ["Global Ctr.", "Per-Dest. Ctr.", "Per-Conn. Ctr.", "Per-Bucket Ctr.", "PRNG-based"]
+    patterns = ["Single", "Per-Dst", "Per-Con", "Per-Bucket", "Random"]
     counts = [19, 6, 7, 9, 1]
 
     dist = {
-        "Global Ctr.": (4, 14, 7),
-        "Per-Bucket Ctr.": (0, 7, 3),
-        "Per-Conn. Ctr.": (0, 5, 2),
-        "Per-Dest. Ctr.": (0, 3, 4),
-        "PRNG-based": (0, 0, 1),
+        "Single": (4, 14, 7),
+        "Per-Bucket": (0, 7, 3),
+        "Per-Con": (0, 5, 2),
+        "Per-Dst": (0, 3, 4),
+        "Random": (0, 0, 1),
     }
 
     # --- Sortieren nach counts (absteigend) ---
@@ -1188,7 +1188,7 @@ def plot_pattern():
     plt.gca().invert_yaxis()
 
     left = np.zeros(len(counts))
-    colors = ["tab:red", "tab:green", "tab:blue"]
+    colors = ["#E8A2A2", "#9EC9B9", "#9DB7D5"]
     labels = ["ICMP", "TCP", "UDP"]
 
     for i, proto in enumerate(labels):
@@ -1214,8 +1214,8 @@ def plot_pattern():
     for y, c in enumerate(counts):
         plt.text(c + 0.2, y, f"{c}", va="center", fontsize=9)
 
-    plt.xlabel("#Papers exploiting the IP-ID method")
-    plt.ylabel("IP-ID method")
+    plt.xlabel("Papers Exploiting IP-ID Class [#]")
+    plt.ylabel("IP-ID Class")
     plt.legend(frameon=False, ncol=3, loc="lower right")
 
     # ax = plt.gca()
