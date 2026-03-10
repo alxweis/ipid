@@ -21,7 +21,6 @@ import pandas as pd
 import seaborn as sns
 import zstandard as zstd
 from matplotlib.ticker import MultipleLocator
-from tqdm import tqdm
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
@@ -1204,7 +1203,7 @@ def plot_pattern():
                     f"{val}",
                     ha="center",
                     va="center",
-                    fontsize=8,
+                    fontsize=9,
                     color="white"
                 )
 
@@ -1216,7 +1215,8 @@ def plot_pattern():
 
     plt.xlabel("Papers Exploiting IP-ID Class [#]")
     plt.ylabel("IP-ID Class")
-    plt.legend(frameon=False, ncol=3, loc="lower right")
+    plt.legend(frameon=False, ncol=3, loc="lower right", handlelength=1.2, handletextpad=0.3, columnspacing=0.8,
+               borderaxespad=0.2)
 
     # ax = plt.gca()
     # ax.xaxis.set_minor_locator(AutoMinorLocator())
