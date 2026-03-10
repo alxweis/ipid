@@ -1021,12 +1021,16 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
 
     # ACM CCR Stil mit etwas größerer Schrift
     plt.rcParams.update({
-        "font.family": "Times New Roman",
-        "font.size": 11,
-        "axes.titlesize": 12,
-        "axes.labelsize": 11,
+        "font.family": "serif",
+        "font.serif": ["Latin Modern Roman"],
+        "mathtext.fontset": "cm",
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
         "xtick.labelsize": 10,
         "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "pdf.fonttype": 42,
     })
 
     plt.figure(figsize=(5.0, 2.5))
@@ -1060,7 +1064,7 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     ax.set_yticklabels(os_labels, rotation=0)
 
     # Achsenbeschriftungen
-    plt.xlabel("Class", labelpad=4)
+    plt.xlabel("IP-ID Class", labelpad=4)
     plt.ylabel("OS Group (#IP Addr.)", labelpad=4)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=25, ha="right")
 
