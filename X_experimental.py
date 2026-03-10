@@ -1066,7 +1066,7 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     # Achsenbeschriftungen
     plt.xlabel("IP-ID Class", labelpad=4)
     plt.ylabel("OS Group (#IP Addr.)", labelpad=4)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=25, ha="right")
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
     # Rand um Heatmap
     for _, spine in ax.spines.items():
