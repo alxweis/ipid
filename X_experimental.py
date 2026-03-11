@@ -906,58 +906,48 @@ def plot_random_ipid_sequence(msm_path: str, pattern_name: str, count: int = 10)
     eval_path = os.path.join(msm_path, "eval.csv.zst")
 
     con = duckdb.connect()
-    con.execute(f"""
-        CREATE TEMP TABLE eval AS 
-        SELECT * FROM read_csv_auto('{eval_path}', compression='zstd');
-        CREATE TEMP TABLE probing AS 
-        SELECT * FROM read_csv_auto('{probing_path}', compression='zstd');
-    """)
 
-    for i in range(count):
-        # Seed zwischen -1.0 und 1.0 (DuckDB akzeptiert nur diesen Bereich)
-        seed = random.uniform(-1.0, 1.0)
-        con.execute(f"SELECT setseed({seed});")
-
-        row = con.execute(f"""
-            SELECT IP 
-            FROM eval 
+    rows = con.execute(f"""
+        WITH eval AS (
+            SELECT IP
+            FROM read_csv_auto('{eval_path}', compression='zstd')
             WHERE TRIM(IP_ID_PATTERN) = '{pattern_name}'
             ORDER BY RANDOM()
-            LIMIT 1
-        """).fetchone()
+            LIMIT {count}
+        )
+        SELECT e.IP, p.IP_ID_SEQUENCE
+        FROM eval e
+        JOIN read_csv_auto('{probing_path}', compression='zstd') p
+        ON e.IP = p.IP
+    """).fetchall()
 
-        if not row:
-            print(f"No entries found for pattern '{pattern_name}'")
-            return
+    if not rows:
+        print(f"No entries found for pattern '{pattern_name}'")
+        return
 
-        ip = row[0]
-        seq_row = con.execute(f"""
-            SELECT IP_ID_SEQUENCE 
-            FROM probing 
-            WHERE IP = '{ip}'
-        """).fetchone()
-
-        if not seq_row or not seq_row[0]:
+    for ip, seq in rows:
+        if not seq:
             print(f"No IPID sequence found for IP {ip}")
             continue
 
-        seq = seq_row[0]
         y = list(map(int, seq.split(',')))
 
-        # neuer Plot pro IP
         plt.figure()
-        plt.plot(range(1, len(y) + 1), y, marker='o')
+        plt.plot(range(1, len(y)+1), y, marker="o")
         plt.xlabel("Index")
         plt.ylabel("IPID Value")
         plt.title(f"{pattern_name} – {ip}")
         plt.grid(True)
 
         print(f"{ip} : {seq}")
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = ''.join(random.choices(string.ascii_lowercase, k=3))
         fn = f"plot_{pattern_name.replace(' ', '_')}_{timestamp}_{suffix}.png"
+
         plt.savefig(fn, dpi=200, bbox_inches="tight")
         plt.close()
+
         print(f"Plot saved as {fn}")
 
 
@@ -1155,14 +1145,14 @@ def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
 
 def plot_pattern():
     patterns = ["Single", "Per-Dst", "Per-Con", "Per-Bucket", "Random"]
-    counts = [19, 6, 7, 9, 1]
+    counts = [19, 6, 7, 9, 2]
 
     dist = {
         "Single": (4, 14, 7),
         "Per-Bucket": (0, 7, 3),
         "Per-Con": (0, 5, 2),
         "Per-Dst": (0, 3, 4),
-        "Random": (0, 0, 1),
+        "Random": (1, 1, 2),
     }
 
     # --- Sortieren nach counts (absteigend) ---
@@ -1213,7 +1203,7 @@ def plot_pattern():
     for y, c in enumerate(counts):
         plt.text(c + 0.2, y, f"{c}", va="center", fontsize=9)
 
-    plt.xlabel("Papers Exploiting IP-ID Class [#]")
+    plt.xlabel("Papers [#]")
     plt.ylabel("IP-ID Class")
     plt.legend(frameon=False, ncol=3, loc="lower right", handlelength=1.2, handletextpad=0.3, columnspacing=0.8,
                borderaxespad=0.2)
@@ -1348,6 +1338,9 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
 
     ax.set_yticks([])
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
+
+    # TODO yAchsen anstrich
+    # TODO space zwischen balken reduzieren
 
     # --- Legende ---
     ax.legend(
