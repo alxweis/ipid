@@ -38,7 +38,7 @@ def filter_ips_by_class(eval_csv: str, class_filter: list[str]):
     proto = parts[-3]
     output_dir = os.path.join("targets", proto, ts)
     os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, "targets.csv.zst")
+    output_file = os.path.join(output_dir, "targets2.csv.zst")
 
     con = duckdb.connect()
     try:
