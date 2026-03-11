@@ -610,8 +610,36 @@ def main():
 
         for r in runs:
             run_sequential(r)
+    elif mode == 24:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+
+        msm_path = str(sys.argv[2])
+        filter_probing_by_targets(msm_path)
     else:
         print_usage()
+
+
+def filter_probing_by_targets(msm_path):
+    probing_file = os.path.join(msm_path, "probing_old.csv.zst")
+    targets_file = os.path.join(msm_path, "targets.csv.zst")
+    output_file = os.path.join(msm_path, "probing.csv.zst")
+
+    con = duckdb.connect()
+
+    query = f"""
+    COPY (
+        SELECT p.*
+        FROM read_csv_auto('{probing_file}', compression='zstd') p
+        SEMI JOIN read_csv_auto('{targets_file}', compression='zstd') t
+        ON p.IP = t.IP
+    )
+    TO '{output_file}' (HEADER, COMPRESSION 'zstd');
+    """
+
+    con.execute(query)
+    con.close()
 
 
 def print_constant_pattern_distribution(msm_path: str):
