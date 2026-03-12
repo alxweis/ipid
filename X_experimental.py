@@ -961,7 +961,7 @@ def plot_random_ipid_sequence(msm_path: str, pattern_name: str, count: int = 10)
         y = list(map(int, seq.split(',')))
 
         plt.figure()
-        plt.plot(range(1, len(y)+1), y, marker="o")
+        plt.plot(range(1, len(y) + 1), y, marker="o")
         plt.xlabel("Index")
         plt.ylabel("IPID Value")
         plt.title(f"{pattern_name} – {ip}")
@@ -1065,13 +1065,13 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     # os_labels = [f"{os_name}" for os_name, total in zip(pivot_table.index, pivot_table["Total"])]
     def fmt_count(n):
         if n >= 1_000_000:
-            return f"{n / 1_000_000:.1f}M"
-        if n >= 100_000:
-            return f"{int(n / 1000)}k"
+            val = f"{n / 1_000_000:.1f}".rstrip("0").rstrip(".")
+            return f"{val}M"
         if n >= 10_000:
             return f"{int(n / 1000)}k"
         if n >= 1000:
-            return f"{n / 1000:.1f}k"
+            val = f"{n / 1000:.1f}".rstrip("0").rstrip(".")
+            return f"{val}k"
         return str(int(n))
 
     os_labels = [
@@ -1237,12 +1237,16 @@ def plot_pattern():
                borderaxespad=0.2)
 
     ax = plt.gca()
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
 
-    # ax = plt.gca()
-    # ax.xaxis.set_minor_locator(AutoMinorLocator())
-    # ax.tick_params(axis="x", which="major", length=6)
-    # ax.tick_params(axis="x", which="minor", length=3)
+    # Major ticks alle 3
+    ax.xaxis.set_major_locator(MultipleLocator(3))
+
+    # Minor ticks alle 1
+    ax.xaxis.set_minor_locator(MultipleLocator(1))
+
+    # Tick Länge (optional für schöneres Paper Layout)
+    ax.tick_params(axis="x", which="major", length=5, width=0.8)
+    ax.tick_params(axis="x", which="minor", length=2.5, width=0.6)
 
     plt.margins(x=0.15)
     plt.tight_layout()
@@ -1299,15 +1303,15 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 2.0))
+    fig, ax = plt.subplots(figsize=(5.5, 1.8))
 
     y_positions = [1, 0]
     datasets = [values1, values2]
-    labels = ["1", "2"]
+    labels = ["1'", "2'"]
 
     bars = []
     fallback_start = fallback_end = 0
-    width = 0.45
+    width = 0.55
 
     for y, values, label in zip(y_positions, datasets, labels):
         left = 0
@@ -1333,7 +1337,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
                 fallback_start = left - val
                 fallback_end = left
 
-        ax.text(-1, y, label, ha="right", va="center", fontsize=10)
+        # ax.text(-1, y, label, ha="right", va="center", fontsize=10)
         bars = current_bars
 
     # --- Gestrichelte Linien & Fläche ---
@@ -1364,16 +1368,15 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
     fig.text(0.01, 0.5, "Measurement [No.]",
              va="center", ha="center", rotation="vertical", fontsize=10)
 
-    ax.set_yticks([])
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(labels)
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
-    # TODO yAchsen anstrich
-    # TODO space zwischen balken reduzieren
-
     # --- Legende ---
+    legend_labels = ["Multi" if c == "Per-CPU" else c for c in all_classes]
     ax.legend(
         [b[0] for b in bars],
-        all_classes,
+        legend_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.02),
         ncol=5,
@@ -1669,14 +1672,14 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 2.0))
+    fig, ax = plt.subplots(figsize=(5.5, 1.8))
 
     y_positions = [1, 0]
     data_sets = [transit_values, endhost_values]
     labels = ["Transit-hops", "End-hosts"]
 
     bars = []
-    width = 0.45
+    width = 0.55
 
     for y, values, ylabel in zip(y_positions, data_sets, labels):
         left = 0
@@ -1720,13 +1723,16 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     #     rotation="vertical", fontsize=10
     # )
 
-    ax.set_yticks([])
+    # ax.set_yticks([])
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(labels)
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
     # --- Legende ---
+    legend_labels = ["Multi" if c == "Per-CPU" else c for c in all_classes]
     ax.legend(
         [b[0] for b in bars],
-        all_classes,
+        legend_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.02),
         ncol=5,
