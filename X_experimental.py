@@ -632,8 +632,8 @@ def merge_eval_with_rst(msm_path, rst_path):
 
     eval_path = os.path.join(msm_path, "eval_std.csv.zst")
     probing_path = os.path.join(msm_path, "probing_std.csv.zst")
-    output_path = os.path.join(msm_path, "eval.csv.zst")
-    probing_tmp_path = os.path.join(msm_path, "probing.csv.zst")
+    output_eval_path = os.path.join(msm_path, "eval.csv.zst")
+    output_probing_path = os.path.join(msm_path, "probing.csv.zst")
 
     # --- Count total eval rows ---
     total_count = con.execute(f"""
@@ -653,35 +653,42 @@ def merge_eval_with_rst(msm_path, rst_path):
         ON e.IP = r.saddr
     """).fetchone()[0]
 
-    # --- Write merged output ---
+    # --- Create filtered eval with stable ordering ---
+    con.execute(f"""
+        CREATE TEMP TABLE eval_filtered AS
+        SELECT 
+            e.*,
+            row_number() OVER () AS rn
+        FROM read_csv_auto('{eval_path}', compression='zstd') e
+        INNER JOIN (
+            SELECT DISTINCT saddr
+            FROM read_csv_auto('{rst_path}', compression='zstd')
+            WHERE classification = 'rst'
+        ) r
+        ON e.IP = r.saddr;
+    """)
+
+    # --- Write eval output ---
     con.execute(f"""
         COPY (
-            SELECT e.*
-            FROM read_csv_auto('{eval_path}', compression='zstd') e
-            INNER JOIN (
-                SELECT DISTINCT saddr
-                FROM read_csv_auto('{rst_path}', compression='zstd')
-                WHERE classification = 'rst'
-            ) r
-            ON e.IP = r.saddr
+            SELECT * EXCLUDE (rn)
+            FROM eval_filtered
+            ORDER BY rn
         )
-        TO '{output_path}'
+        TO '{output_eval_path}'
         (FORMAT CSV, HEADER TRUE, COMPRESSION ZSTD);
     """)
 
-    # --- Filter probing: keep only IPs with RST match ---
+    # --- Align probing EXACTLY to eval_filtered (same order, same multiplicity) ---
     con.execute(f"""
         COPY (
             SELECT p.*
-            FROM read_csv_auto('{probing_path}', compression='zstd') p
-            INNER JOIN (
-                SELECT DISTINCT saddr
-                FROM read_csv_auto('{rst_path}', compression='zstd')
-                WHERE classification = 'rst'
-            ) r
-            ON p.IP = r.saddr
+            FROM eval_filtered e
+            JOIN read_csv_auto('{probing_path}', compression='zstd') p
+            ON e.IP = p.IP
+            ORDER BY e.rn
         )
-        TO '{probing_tmp_path}'
+        TO '{output_probing_path}'
         (FORMAT CSV, HEADER TRUE, COMPRESSION ZSTD);
     """)
 
