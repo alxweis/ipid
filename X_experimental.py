@@ -632,8 +632,8 @@ def merge_eval_with_rst(msm_path, rst_path):
 
     eval_path = os.path.join(msm_path, "eval_std.csv.zst")
     probing_path = os.path.join(msm_path, "probing_std.csv.zst")
-    probing_tmp_path = os.path.join(msm_path, "probing_filtered.csv.zst")
     output_path = os.path.join(msm_path, "eval.csv.zst")
+    probing_tmp_path = os.path.join(msm_path, "probing.csv.zst")
 
     # --- Count total eval rows ---
     total_count = con.execute(f"""
@@ -686,9 +686,6 @@ def merge_eval_with_rst(msm_path, rst_path):
     """)
 
     con.close()
-
-    # --- Replace original probing file ---
-    os.replace(probing_tmp_path, probing_path)
 
     # --- Ratio ---
     ratio = match_count / total_count if total_count > 0 else 0.0
