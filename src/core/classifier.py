@@ -247,10 +247,10 @@ def get_pattern(seq: IPIDSequence, is_mass_scan: bool, get_all=False) -> list[Pa
         result.append(Pattern.REFLECTION)
     if is_constant(seq):
         result.append(Pattern.CONSTANT)
-    if is_per_con(seq):
-        result.append(Pattern.PER_CON)
     if is_per_dst(seq):
         result.append(Pattern.PER_DST)
+    if is_per_con(seq):
+        result.append(Pattern.PER_CON)
     if is_global(seq):
         result.append(Pattern.GLOBAL)
     if is_per_bucket(seq):

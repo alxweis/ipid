@@ -11,8 +11,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 
 from core import TEST_RESULTS
-from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map, is_reflection, \
-    multi_global_ip_id_sequence, is_multi_global
+from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
 
 FORCE_CREATE_DATASET = True
 
@@ -127,7 +126,8 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
             predicted_pattern = get_pattern(seq, is_mass_scan)
 
             if (true_pattern.value == predicted_pattern.value or
-                    (not is_mass_scan and true_pattern in [Pattern.PER_CPU, Pattern.RANDOM] and predicted_pattern == Pattern.FALLBACK)):
+                    (not is_mass_scan and true_pattern in [Pattern.PER_CPU,
+                                                           Pattern.RANDOM] and predicted_pattern == Pattern.FALLBACK)):
                 correct_classifications += 1
             else:
                 # print(f"'{",".join(map(str, seq.full.sequence.tolist()))}' is classified as {predicted_pattern} (real: {true_pattern})")
@@ -293,12 +293,16 @@ class ClassifierTests(unittest.TestCase):
         # chi2, p_chi2 = chisquare(hist)
         # print(p_chi2)
 
-        sequence_length = 10
-        sequence_count_per_pattern = 100_000
+        # seq = IPIDSequence(
+        #     np.array([0, 0, 0, 0, 19908, 44119, 6203, 14284, 19909, 44120, 6204, 14285, 19910, 44121, 6205, 14286]))
+        # print(get_pattern(seq, is_mass_scan=False, get_all=False))
 
-        self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
-        self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
-        self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
+        # sequence_length = 10
+        # sequence_count_per_pattern = 100_000
+        #
+        # self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
+        # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
+        # self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
 
 
 # class ConfigTests(unittest.TestCase):
