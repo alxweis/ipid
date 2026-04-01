@@ -20,7 +20,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import zstandard as zstd
-from matplotlib.ticker import MultipleLocator, MaxNLocator
+from matplotlib.ticker import MultipleLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
@@ -617,8 +617,63 @@ def main():
 
         msm_path = str(sys.argv[2])
         filter_probing_by_targets(msm_path)
+    elif mode == 25:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        merge_eval_with_rst(msm_path=str(sys.argv[2]), rst_path=str(sys.argv[3]))
     else:
         print_usage()
+
+
+def merge_eval_with_rst(msm_path, rst_path):
+    con = duckdb.connect()
+
+    eval_path = os.path.join(msm_path, "eval_std.csv.zst")
+    output_path = os.path.join(msm_path, "eval.csv.zst")
+
+    # --- Count total eval rows ---
+    total_count = con.execute(f"""
+        SELECT COUNT(*) 
+        FROM read_csv_auto('{eval_path}', compression='zstd')
+    """).fetchone()[0]
+
+    # --- Count matches ---
+    match_count = con.execute(f"""
+        SELECT COUNT(*) 
+        FROM read_csv_auto('{eval_path}', compression='zstd') e
+        INNER JOIN (
+            SELECT saddr
+            FROM read_csv_auto('{rst_path}', compression='zstd')
+            WHERE classification = 'rst'
+        ) r
+        ON e.IP = r.saddr
+    """).fetchone()[0]
+
+    # --- Write merged output ---
+    con.execute(f"""
+        COPY (
+            SELECT e.*
+            FROM read_csv_auto('{eval_path}', compression='zstd') e
+            INNER JOIN (
+                SELECT saddr
+                FROM read_csv_auto('{rst_path}', compression='zstd')
+                WHERE classification = 'rst'
+            ) r
+            ON e.IP = r.saddr
+        )
+        TO '{output_path}'
+        (FORMAT CSV, HEADER TRUE, COMPRESSION ZSTD);
+    """)
+
+    con.close()
+
+    # --- Ratio ---
+    ratio = match_count / total_count if total_count > 0 else 0.0
+
+    print(f"Matches: {match_count} / {total_count} ({ratio:.4f})")
+    return ratio
 
 
 def filter_probing_by_targets(msm_path):
