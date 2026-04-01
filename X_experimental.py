@@ -631,6 +631,8 @@ def merge_eval_with_rst(msm_path, rst_path):
     con = duckdb.connect()
 
     eval_path = os.path.join(msm_path, "eval_std.csv.zst")
+    probing_path = os.path.join(msm_path, "probing_std.csv.zst")
+    probing_tmp_path = os.path.join(msm_path, "probing_filtered.csv.zst")
     output_path = os.path.join(msm_path, "eval.csv.zst")
 
     # --- Count total eval rows ---
@@ -644,7 +646,7 @@ def merge_eval_with_rst(msm_path, rst_path):
         SELECT COUNT(*) 
         FROM read_csv_auto('{eval_path}', compression='zstd') e
         INNER JOIN (
-            SELECT saddr
+            SELECT DISTINCT saddr
             FROM read_csv_auto('{rst_path}', compression='zstd')
             WHERE classification = 'rst'
         ) r
@@ -657,7 +659,7 @@ def merge_eval_with_rst(msm_path, rst_path):
             SELECT e.*
             FROM read_csv_auto('{eval_path}', compression='zstd') e
             INNER JOIN (
-                SELECT saddr
+                SELECT DISTINCT saddr
                 FROM read_csv_auto('{rst_path}', compression='zstd')
                 WHERE classification = 'rst'
             ) r
@@ -667,12 +669,31 @@ def merge_eval_with_rst(msm_path, rst_path):
         (FORMAT CSV, HEADER TRUE, COMPRESSION ZSTD);
     """)
 
+    # --- Filter probing: keep only IPs with RST match ---
+    con.execute(f"""
+        COPY (
+            SELECT p.*
+            FROM read_csv_auto('{probing_path}', compression='zstd') p
+            INNER JOIN (
+                SELECT DISTINCT saddr
+                FROM read_csv_auto('{rst_path}', compression='zstd')
+                WHERE classification = 'rst'
+            ) r
+            ON p.IP = r.saddr
+        )
+        TO '{probing_tmp_path}'
+        (FORMAT CSV, HEADER TRUE, COMPRESSION ZSTD);
+    """)
+
     con.close()
+
+    # --- Replace original probing file ---
+    os.replace(probing_tmp_path, probing_path)
 
     # --- Ratio ---
     ratio = match_count / total_count if total_count > 0 else 0.0
-
     print(f"Matches: {match_count} / {total_count} ({ratio:.4f})")
+
     return ratio
 
 
