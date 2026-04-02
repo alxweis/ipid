@@ -663,21 +663,19 @@ def classify_first_four_for_per_con(msm_path):
         print(f"Error: {probing_path} not found.")
         return
 
-    # Use a direct shell pipe. Ensure 'zstdcat' is in your PATH.
-    # The pipe symbol must be at the end of the string for DuckDB to trigger the shell.
     csv_stream_source = f"zstdcat '{probing_path}' |"
-
     num_workers = 6
     chunk_size = 200_000
     global_ranking = defaultdict(int)
     total_classified = 0
 
-    with duckdb.connect(database=":memory:") as con:
-        # Enable external shell access and set memory limits
-        con.execute("SET enable_external_access=true;")
-        con.execute("SET memory_limit='80GB'")
+    # Pass configuration directly to the connect function
+    config = {
+        "enable_external_access": "true",
+        "memory_limit": "80GB"
+    }
 
-        # Wrapping the source in read_csv_auto
+    with duckdb.connect(database=":memory:", config=config) as con:
         query = f"SELECT IP_ID_SEQUENCE FROM read_csv_auto('{csv_stream_source}', header=True) WHERE IP_ID_SEQUENCE IS NOT NULL"
         cursor = con.execute(query)
 
