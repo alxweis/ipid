@@ -650,43 +650,52 @@ def classify_first_four_for_per_con(msm_path):
     ranking = defaultdict(int)
     total_classified = 0
 
-    con = duckdb.connect(database=":memory:")
-    con.execute("PRAGMA threads=8")
-
     local_classifier = classifier
     ranking_local = ranking
 
+    # --- decompress to tempfile ---
     with open(probing_path, "rb") as f:
         dctx = zstd.ZstdDecompressor()
-
         with dctx.stream_reader(f) as reader:
-            cursor = con.execute("""
-                SELECT IP_ID_SEQUENCE
-                FROM read_csv_auto(?, delim=',', header=True)
-                WHERE IP_ID_SEQUENCE IS NOT NULL
-            """, [reader])
+            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                shutil.copyfileobj(reader, tmp)
+                tmp_path = tmp.name
 
-            while True:
-                chunk = cursor.fetchmany(500_000)
-                if not chunk:
-                    break
+    try:
+        # --- single connection ---
+        con = duckdb.connect(database=":memory:")
+        con.execute("PRAGMA threads=8")
 
-                for row in chunk:
-                    seq_str = row[0]
+        cursor = con.execute("""
+            SELECT IP_ID_SEQUENCE
+            FROM read_csv_auto(?, delim=',', header=True)
+            WHERE IP_ID_SEQUENCE IS NOT NULL
+        """, [tmp_path])
 
-                    try:
-                        seq = np.fromstring(seq_str, dtype=np.int32, sep=",")
-                        if seq.size < 4:
-                            continue
-                    except Exception:
+        while True:
+            chunk = cursor.fetchmany(500_000)
+            if not chunk:
+                break
+
+            for row in chunk:
+                seq_str = row[0]
+
+                try:
+                    seq = np.fromstring(seq_str, dtype=np.int32, sep=",")
+                    if seq.size < 4:
                         continue
+                except Exception:
+                    continue
 
-                    cls = local_classifier(seq)
-                    if cls is None:
-                        continue
+                cls = local_classifier(seq)
+                if cls is None:
+                    continue
 
-                    ranking_local[cls] += 1
-                    total_classified += 1
+                ranking_local[cls] += 1
+                total_classified += 1
+
+    finally:
+        os.remove(tmp_path)
 
     if total_classified == 0:
         print("No classified samples.")
