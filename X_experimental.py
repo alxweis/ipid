@@ -618,16 +618,16 @@ def main():
         msm_path = str(sys.argv[2])
         filter_probing_by_targets(msm_path)
     elif mode == 25:
-        if len(sys.argv) < 4:
+        if len(sys.argv) < 5:
             print_usage()
             return
 
-        merge_eval_with_rst(msm_path=str(sys.argv[2]), rst_path=str(sys.argv[3]))
+        merge_eval_with_rst(msm_path=str(sys.argv[2]), rst_path=str(sys.argv[3]), class_filter=str(sys.argv[4]))
     else:
         print_usage()
 
 
-def merge_eval_with_rst(msm_path, rst_path):
+def merge_eval_with_rst(msm_path, rst_path, class_filter):
     con = duckdb.connect()
 
     eval_path = os.path.join(msm_path, "eval_std.csv.zst")
@@ -648,7 +648,7 @@ def merge_eval_with_rst(msm_path, rst_path):
         INNER JOIN (
             SELECT DISTINCT saddr
             FROM read_csv_auto('{rst_path}', compression='zstd')
-            WHERE classification = 'rst'
+            WHERE classification = '{class_filter}'
         ) r
         ON e.IP = r.saddr
     """).fetchone()[0]
@@ -663,7 +663,7 @@ def merge_eval_with_rst(msm_path, rst_path):
         INNER JOIN (
             SELECT DISTINCT saddr
             FROM read_csv_auto('{rst_path}', compression='zstd')
-            WHERE classification = 'rst'
+            WHERE classification = '{class_filter}'
         ) r
         ON e.IP = r.saddr;
     """)
