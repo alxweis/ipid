@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -634,85 +635,116 @@ def main():
         print_usage()
 
 
+def _worker_process_chunk(rows):
+    """
+    Internal helper function to process a batch of rows in a separate process.
+    """
+    local_ranking = defaultdict(int)
+    local_count = 0
+
+    for (seq_str,) in rows:
+        try:
+            # Convert comma-separated string to numpy array
+            seq = np.fromstring(seq_str, dtype=np.int32, sep=",")
+
+            if seq.size < 4:
+                raise RuntimeError("seq.size < 4")
+
+            # Check if the overall sequence matches the PER_CON pattern
+            ip_id_seq = IPIDSequence(seq)
+            pattern = get_pattern(seq=ip_id_seq, is_mass_scan=False, get_all=False)
+
+            if pattern == Pattern.PER_CON:
+                # Classify specifically based on the first 4 values
+                sub_seq = IPIDSequence(seq[:4])
+                sub_pattern = get_pattern(seq=sub_seq, is_mass_scan=False, get_all=False)
+
+                local_ranking[sub_pattern.value] += 1
+                local_count += 1
+        except Exception:
+            # Skip malformed rows safely
+            continue
+
+    return local_ranking, local_count
+
+
 def classify_first_four_for_per_con(msm_path):
+    """
+    Processes 87M rows from a .csv.zst file using 8 cores and 120GB RAM.
+    Streaming approach: No temporary files created.
+    """
     probing_path = os.path.join(msm_path, "probing.csv.zst")
 
-    def classifier(arr) -> str | None:
-        ip_id_seq = IPIDSequence(arr)
-        pattern = get_pattern(seq=ip_id_seq, is_mass_scan=False, get_all=False)
-        if pattern != Pattern.PER_CON:
-            return None
-
-        non_con_ip_id_seq = IPIDSequence(arr[:4])
-        non_con_pattern = get_pattern(seq=non_con_ip_id_seq, is_mass_scan=False, get_all=False)
-        return non_con_pattern.value
-
-    ranking = defaultdict(int)
-    total_classified = 0
-
-    local_classifier = classifier
-    ranking_local = ranking
-
-    # --- decompress to tempfile ---
-    tmp_path = os.path.join(msm_path, "probing_decompressed.csv")
-
-    with open(probing_path, "rb") as f:
-        dctx = zstd.ZstdDecompressor()
-        with dctx.stream_reader(f) as reader:
-            with open(tmp_path, "wb") as tmp:
-                shutil.copyfileobj(reader, tmp)
-
-    try:
-        # --- single connection ---
-        con = duckdb.connect(database=":memory:")
-        con.execute("PRAGMA threads=8")
-
-        cursor = con.execute("""
-            SELECT IP_ID_SEQUENCE
-            FROM read_csv_auto(?, delim=',', header=True)
-            WHERE IP_ID_SEQUENCE IS NOT NULL
-        """, [tmp_path])
-
-        while True:
-            chunk = cursor.fetchmany(500_000)
-            if not chunk:
-                break
-
-            for row in chunk:
-                seq_str = row[0]
-
-                try:
-                    seq = np.fromstring(seq_str, dtype=np.int32, sep=",")
-                    if seq.size < 4:
-                        continue
-                except Exception:
-                    continue
-
-                cls = local_classifier(seq)
-                if cls is None:
-                    continue
-
-                ranking_local[cls] += 1
-                total_classified += 1
-
-    finally:
-        os.remove(tmp_path)
-
-    if total_classified == 0:
-        print("No classified samples.")
+    if not os.path.exists(probing_path):
+        print(f"Error: File not found at {probing_path}")
         return
 
-    print("Relative class distribution:")
+    # 1. Pipeline Setup
+    # 'zstdcat' decompresses to stdout, which DuckDB reads as a stream.
+    sql_query = f"""
+        SELECT IP_ID_SEQUENCE 
+        FROM read_csv_auto('zstdcat "{probing_path}" |', header=True)
+        WHERE IP_ID_SEQUENCE IS NOT NULL
+    """
 
-    sorted_items = sorted(
-        ranking.items(),
-        key=lambda x: x[1] / total_classified,
-        reverse=True
-    )
+    # 2. Resource Management
+    # Use 6-7 workers to maximize throughput while leaving overhead for DuckDB/OS
+    num_workers = 6
+    chunk_size = 200_000
+    global_ranking = defaultdict(int)
+    total_classified = 0
 
-    for cls, count in sorted_items:
-        rel = count / total_classified
-        print(f"{cls}: {rel:.4f} ({count})")
+    print(f"Starting classification of 87M rows...")
+    print(f"Using {num_workers} CPU cores. Streaming from: {probing_path}")
+
+    # 3. Execution with DuckDB + ProcessPool
+    with duckdb.connect(database=":memory:") as con:
+        # Leverage your 120GB RAM for DuckDB's internal buffer
+        con.execute("SET memory_limit='60GB'")
+        cursor = con.execute(sql_query)
+
+        with ProcessPoolExecutor(max_workers=num_workers) as executor:
+            futures = []
+
+            while True:
+                chunk = cursor.fetchmany(chunk_size)
+                if not chunk:
+                    break
+
+                # Offload CPU-heavy string parsing and logic to workers
+                futures.append(executor.submit(_worker_process_chunk, chunk))
+
+                # Periodically collect finished tasks to keep memory usage stable
+                if len(futures) > num_workers * 2:
+                    for f in futures[:num_workers]:
+                        rank, count = f.result()
+                        for k, v in rank.items():
+                            global_ranking[k] += v
+                        total_classified += count
+                    futures = futures[num_workers:]
+
+            # Final result collection
+            for f in futures:
+                rank, count = f.result()
+                for k, v in rank.items():
+                    global_ranking[k] += v
+                total_classified += count
+
+    # 4. Reporting
+    if total_classified == 0:
+        print("No sequences classified as PER_CON.")
+        return
+
+    print("-" * 50)
+    print(f"Total PER_CON samples: {total_classified:,}")
+    print(f"{'Pattern (First 4)':<25} | {'Percentage':>10} | {'Count':>10}")
+    print("-" * 50)
+
+    sorted_results = sorted(global_ranking.items(), key=lambda x: x[1], reverse=True)
+    for cls, count in sorted_results:
+        pct = (count / total_classified) * 100
+        print(f"{str(cls):<25} | {pct:>9.2f}% | {count:>10,}")
+    print("-" * 50)
 
 
 def merge_eval_with_rst(msm_path, rst_path, class_filter):
