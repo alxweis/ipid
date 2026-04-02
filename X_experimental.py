@@ -12,7 +12,6 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
-from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -635,85 +634,85 @@ def main():
         print_usage()
 
 
-def _worker_process_chunk(rows):
-    local_ranking = defaultdict(int)
-    local_count = 0
-
-    for (seq_str,) in rows:
-        try:
-            seq = np.fromstring(seq_str, dtype=np.int32, sep=",")
-            if seq.size < 4:
-                continue
-
-            ip_id_seq = IPIDSequence(seq)
-            if get_pattern(seq=ip_id_seq, is_mass_scan=False, get_all=False) == Pattern.PER_CON:
-                sub_pattern = get_pattern(seq=IPIDSequence(seq[:4]), is_mass_scan=False, get_all=False)
-                local_ranking[sub_pattern.value] += 1
-                local_count += 1
-        except Exception:
-            continue
-
-    return local_ranking, local_count
-
-
 def classify_first_four_for_per_con(msm_path):
-    probing_path = os.path.abspath(os.path.join(msm_path, "probing.csv.zst"))
+    probing_path = os.path.join(msm_path, "probing.csv.zst")
 
-    if not os.path.exists(probing_path):
-        print(f"Error: {probing_path} not found.")
-        return
+    def classifier(arr) -> str | None:
+        ip_id_seq = IPIDSequence(arr)
+        pattern = get_pattern(seq=ip_id_seq, is_mass_scan=False, get_all=False)
+        if pattern != Pattern.PER_CON:
+            return None
 
-    csv_stream_source = f"zstdcat '{probing_path}' |"
-    num_workers = 6
-    chunk_size = 200_000
-    global_ranking = defaultdict(int)
+        non_con_ip_id_seq = IPIDSequence(arr[:4])
+        non_con_pattern = get_pattern(seq=non_con_ip_id_seq, is_mass_scan=False, get_all=False)
+        return non_con_pattern.value
+
+    ranking = defaultdict(int)
     total_classified = 0
 
-    # Pass configuration directly to the connect function
-    config = {
-        "enable_external_access": "true",
-        "memory_limit": "80GB"
-    }
+    local_classifier = classifier
+    ranking_local = ranking
 
-    with duckdb.connect(database=":memory:", config=config) as con:
-        query = f"SELECT IP_ID_SEQUENCE FROM read_csv_auto('{csv_stream_source}', header=True) WHERE IP_ID_SEQUENCE IS NOT NULL"
-        cursor = con.execute(query)
+    # --- decompress to tempfile ---
+    tmp_path = os.path.join(msm_path, "probing_decompressed.csv")
 
-        with ProcessPoolExecutor(max_workers=num_workers) as executor:
-            futures = []
+    with open(probing_path, "rb") as f:
+        dctx = zstd.ZstdDecompressor()
+        with dctx.stream_reader(f) as reader:
+            with open(tmp_path, "wb") as tmp:
+                shutil.copyfileobj(reader, tmp)
 
-            while True:
-                chunk = cursor.fetchmany(chunk_size)
-                if not chunk:
-                    break
+    try:
+        # --- single connection ---
+        con = duckdb.connect(database=":memory:")
+        con.execute("PRAGMA threads=8")
 
-                futures.append(executor.submit(_worker_process_chunk, chunk))
+        cursor = con.execute("""
+            SELECT IP_ID_SEQUENCE
+            FROM read_csv_auto(?, delim=',', header=True)
+            WHERE IP_ID_SEQUENCE IS NOT NULL
+        """, [tmp_path])
 
-                if len(futures) > num_workers * 2:
-                    for f in futures[:num_workers]:
-                        rank, count = f.result()
-                        for k, v in rank.items():
-                            global_ranking[k] += v
-                        total_classified += count
-                    futures = futures[num_workers:]
+        while True:
+            chunk = cursor.fetchmany(500_000)
+            if not chunk:
+                break
 
-            for f in futures:
-                rank, count = f.result()
-                for k, v in rank.items():
-                    global_ranking[k] += v
-                total_classified += count
+            for row in chunk:
+                seq_str = row[0]
+
+                try:
+                    seq = np.fromstring(seq_str, dtype=np.int32, sep=",")
+                    if seq.size < 4:
+                        continue
+                except Exception:
+                    continue
+
+                cls = local_classifier(seq)
+                if cls is None:
+                    continue
+
+                ranking_local[cls] += 1
+                total_classified += 1
+
+    finally:
+        os.remove(tmp_path)
 
     if total_classified == 0:
-        print("No sequences classified.")
+        print("No classified samples.")
         return
 
-    print("-" * 50)
-    print(f"Total classified: {total_classified:,}")
-    sorted_results = sorted(global_ranking.items(), key=lambda x: x[1], reverse=True)
-    for cls, count in sorted_results:
-        pct = (count / total_classified) * 100
-        print(f"{str(cls):<25} | {pct:>9.2f}% | {count:>10,}")
-    print("-" * 50)
+    print("Relative class distribution:")
+
+    sorted_items = sorted(
+        ranking.items(),
+        key=lambda x: x[1] / total_classified,
+        reverse=True
+    )
+
+    for cls, count in sorted_items:
+        rel = count / total_classified
+        print(f"{cls}: {rel:.4f} ({count})")
 
 
 def merge_eval_with_rst(msm_path, rst_path, class_filter):
