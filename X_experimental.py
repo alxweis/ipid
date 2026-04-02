@@ -636,72 +636,50 @@ def main():
 
 
 def _worker_process_chunk(rows):
-    """
-    Internal helper function to process a batch of rows in a separate process.
-    """
     local_ranking = defaultdict(int)
     local_count = 0
 
     for (seq_str,) in rows:
         try:
-            # Convert comma-separated string to numpy array
             seq = np.fromstring(seq_str, dtype=np.int32, sep=",")
-
             if seq.size < 4:
-                raise RuntimeError("seq.size < 4")
+                continue
 
-            # Check if the overall sequence matches the PER_CON pattern
             ip_id_seq = IPIDSequence(seq)
-            pattern = get_pattern(seq=ip_id_seq, is_mass_scan=False, get_all=False)
-
-            if pattern == Pattern.PER_CON:
-                # Classify specifically based on the first 4 values
-                sub_seq = IPIDSequence(seq[:4])
-                sub_pattern = get_pattern(seq=sub_seq, is_mass_scan=False, get_all=False)
-
+            if get_pattern(seq=ip_id_seq, is_mass_scan=False, get_all=False) == Pattern.PER_CON:
+                sub_pattern = get_pattern(seq=IPIDSequence(seq[:4]), is_mass_scan=False, get_all=False)
                 local_ranking[sub_pattern.value] += 1
                 local_count += 1
         except Exception:
-            # Skip malformed rows safely
             continue
 
     return local_ranking, local_count
 
 
 def classify_first_four_for_per_con(msm_path):
-    """
-    Processes 87M rows from a .csv.zst file using 8 cores and 120GB RAM.
-    Streaming approach: No temporary files created.
-    """
-    probing_path = os.path.join(msm_path, "probing.csv.zst")
+    probing_path = os.path.abspath(os.path.join(msm_path, "probing.csv.zst"))
 
     if not os.path.exists(probing_path):
-        print(f"Error: File not found at {probing_path}")
+        print(f"Error: {probing_path} not found.")
         return
 
-    # 1. Pipeline Setup
-    # 'zstdcat' decompresses to stdout, which DuckDB reads as a stream.
-    sql_query = f"""
-        SELECT IP_ID_SEQUENCE 
-        FROM read_csv_auto('zstdcat "{probing_path}" |', header=True)
-        WHERE IP_ID_SEQUENCE IS NOT NULL
-    """
+    # Use a direct shell pipe. Ensure 'zstdcat' is in your PATH.
+    # The pipe symbol must be at the end of the string for DuckDB to trigger the shell.
+    csv_stream_source = f"zstdcat '{probing_path}' |"
 
-    # 2. Resource Management
-    # Use 6-7 workers to maximize throughput while leaving overhead for DuckDB/OS
     num_workers = 6
     chunk_size = 200_000
     global_ranking = defaultdict(int)
     total_classified = 0
 
-    print(f"Starting classification of 87M rows...")
-    print(f"Using {num_workers} CPU cores. Streaming from: {probing_path}")
-
-    # 3. Execution with DuckDB + ProcessPool
     with duckdb.connect(database=":memory:") as con:
-        # Leverage your 120GB RAM for DuckDB's internal buffer
-        con.execute("SET memory_limit='60GB'")
-        cursor = con.execute(sql_query)
+        # Enable external shell access and set memory limits
+        con.execute("SET enable_external_access=true;")
+        con.execute("SET memory_limit='80GB'")
+
+        # Wrapping the source in read_csv_auto
+        query = f"SELECT IP_ID_SEQUENCE FROM read_csv_auto('{csv_stream_source}', header=True) WHERE IP_ID_SEQUENCE IS NOT NULL"
+        cursor = con.execute(query)
 
         with ProcessPoolExecutor(max_workers=num_workers) as executor:
             futures = []
@@ -711,10 +689,8 @@ def classify_first_four_for_per_con(msm_path):
                 if not chunk:
                     break
 
-                # Offload CPU-heavy string parsing and logic to workers
                 futures.append(executor.submit(_worker_process_chunk, chunk))
 
-                # Periodically collect finished tasks to keep memory usage stable
                 if len(futures) > num_workers * 2:
                     for f in futures[:num_workers]:
                         rank, count = f.result()
@@ -723,23 +699,18 @@ def classify_first_four_for_per_con(msm_path):
                         total_classified += count
                     futures = futures[num_workers:]
 
-            # Final result collection
             for f in futures:
                 rank, count = f.result()
                 for k, v in rank.items():
                     global_ranking[k] += v
                 total_classified += count
 
-    # 4. Reporting
     if total_classified == 0:
-        print("No sequences classified as PER_CON.")
+        print("No sequences classified.")
         return
 
     print("-" * 50)
-    print(f"Total PER_CON samples: {total_classified:,}")
-    print(f"{'Pattern (First 4)':<25} | {'Percentage':>10} | {'Count':>10}")
-    print("-" * 50)
-
+    print(f"Total classified: {total_classified:,}")
     sorted_results = sorted(global_ranking.items(), key=lambda x: x[1], reverse=True)
     for cls, count in sorted_results:
         pct = (count / total_classified) * 100
