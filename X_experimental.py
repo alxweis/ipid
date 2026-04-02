@@ -654,12 +654,13 @@ def classify_first_four_for_per_con(msm_path):
     ranking_local = ranking
 
     # --- decompress to tempfile ---
+    tmp_path = os.path.join(msm_path, "probing_decompressed.csv")
+
     with open(probing_path, "rb") as f:
         dctx = zstd.ZstdDecompressor()
         with dctx.stream_reader(f) as reader:
-            with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            with open(tmp_path, "wb") as tmp:
                 shutil.copyfileobj(reader, tmp)
-                tmp_path = tmp.name
 
     try:
         # --- single connection ---
