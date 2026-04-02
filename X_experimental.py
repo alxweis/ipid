@@ -11,6 +11,7 @@ import string
 import subprocess
 import sys
 import tempfile
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from matplotlib.ticker import MultipleLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
-from core.classifier import pattern_generation_map, chi2_test, Pattern
+from core.classifier import pattern_generation_map, chi2_test, Pattern, IPIDSequence, get_pattern
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
     analyze_sequence_stable_lens_natural
@@ -623,8 +624,85 @@ def main():
             return
 
         merge_eval_with_rst(msm_path=str(sys.argv[2]), rst_path=str(sys.argv[3]), class_filter=str(sys.argv[4]))
+    elif mode == 26:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+
+        classify_first_four_for_per_con(msm_path=str(sys.argv[2]))
     else:
         print_usage()
+
+
+def classify_first_four_for_per_con(msm_path):
+    probing_path = os.path.join(msm_path, "probing.csv.zst")
+
+    def classifier(arr) -> str | None:
+        ip_id_seq = IPIDSequence(arr)
+        pattern = get_pattern(seq=ip_id_seq, is_mass_scan=False, get_all=False)
+        if pattern != Pattern.PER_CON:
+            return None
+
+        non_con_ip_id_seq = IPIDSequence(arr[:4])
+        non_con_pattern = get_pattern(seq=non_con_ip_id_seq, is_mass_scan=False, get_all=False)
+        return non_con_pattern.value
+
+    ranking = defaultdict(int)
+    total_classified = 0
+
+    con = duckdb.connect(database=":memory:")
+    con.execute("PRAGMA threads=8")
+
+    local_classifier = classifier
+    ranking_local = ranking
+
+    with open(probing_path, "rb") as f:
+        dctx = zstd.ZstdDecompressor()
+
+        with dctx.stream_reader(f) as reader:
+            cursor = con.execute("""
+                SELECT IP_ID_SEQUENCE
+                FROM read_csv_auto(?, delim=',', header=True)
+                WHERE IP_ID_SEQUENCE IS NOT NULL
+            """, [reader])
+
+            while True:
+                chunk = cursor.fetchmany(500_000)
+                if not chunk:
+                    break
+
+                for row in chunk:
+                    seq_str = row[0]
+
+                    try:
+                        seq = np.fromstring(seq_str, dtype=np.int32, sep=",")
+                        if seq.size < 4:
+                            continue
+                    except Exception:
+                        continue
+
+                    cls = local_classifier(seq)
+                    if cls is None:
+                        continue
+
+                    ranking_local[cls] += 1
+                    total_classified += 1
+
+    if total_classified == 0:
+        print("No classified samples.")
+        return
+
+    print("Relative class distribution:")
+
+    sorted_items = sorted(
+        ranking.items(),
+        key=lambda x: x[1] / total_classified,
+        reverse=True
+    )
+
+    for cls, count in sorted_items:
+        rel = count / total_classified
+        print(f"{cls}: {rel:.4f} ({count})")
 
 
 def merge_eval_with_rst(msm_path, rst_path, class_filter):
