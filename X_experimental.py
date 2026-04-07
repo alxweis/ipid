@@ -1421,7 +1421,7 @@ def plot_pattern():
     plt.savefig("ipid_papers.pdf", bbox_inches="tight")
 
 
-def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: str):
+def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_path_3: str, name: str):
     def load_data(msm_path):
         data_path = os.path.join(msm_path, "analysis", "pattern_distribution", "data.pkl")
         with open(Path(data_path), "rb") as f:
@@ -1433,16 +1433,18 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
     # --- Load both datasets ---
     data1 = load_data(msm_path_1)
     data2 = load_data(msm_path_2)
+    data3 = load_data(msm_path_3)
 
     # --- Sort classes nach Pattern Enum ---
     all_classes = sorted(
-        set(data1.keys()).union(data2.keys()),
+        set(data1.keys()).union(data2.keys()).union(data3.keys()),
         key=lambda c: [p.value for p in Pattern].index(c)
         if c in [p.value for p in Pattern] else 999
     )
 
     values1 = [float(data1.get(c, 0.0)) for c in all_classes]
     values2 = [float(data2.get(c, 0.0)) for c in all_classes]
+    values3 = [float(data3.get(c, 0.0)) for c in all_classes]
 
     # --- Farbzuordnung ---
     color_map = {
@@ -1471,11 +1473,11 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 1.8))
+    fig, ax = plt.subplots(figsize=(5.5, 2.4))
 
-    y_positions = [1, 0]
-    datasets = [values1, values2]
-    labels = ["1'", "2'"]
+    y_positions = [2, 1, 0]
+    datasets = [values1, values2, values3]
+    labels = ["1'", "2'", "3'"]
 
     bars = []
     fallback_start = fallback_end = 0
@@ -1501,24 +1503,27 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
 
             left += val
 
-            if y == 1 and cls == "Fallback":
+            if y == 2 and cls == "Fallback":
                 fallback_start = left - val
                 fallback_end = left
 
         # ax.text(-1, y, label, ha="right", va="center", fontsize=10)
         bars = current_bars
 
-    # --- Gestrichelte Linien & Fläche ---
+    # --- Gestrichelte Linien & Fläche (FIX für 3 Bars) ---
+    y_top = 2 - width / 2
+    y_bottom = 1 + width / 2
+
     ax.plot([fallback_start, 0],
-            [(1 - width) + width * 0.5, width * 0.5],
+            [y_top, y_bottom],
             color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
 
     ax.plot([fallback_end, 100],
-            [(1 - width) + width * 0.5, width * 0.5],
+            [y_top, y_bottom],
             color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
 
     ax.fill_betweenx(
-        [(1 - width) + width * 0.5, width * 0.5],
+        [y_top, y_bottom],
         [fallback_start, 0],
         [fallback_end, 100],
         color='lightgray', alpha=0.5
@@ -1526,7 +1531,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, name: 
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(-0.5, 1.5)
+    ax.set_ylim(-0.5, 2.5)
     ax.set_xlabel("IP-ID Class Distribution [%]", labelpad=2)
 
     # --- MINORTICKS aktivieren ---
@@ -1873,7 +1878,8 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
             left += val
 
         ax.text(-1, y, ylabel, ha="right", va="center", fontsize=10)
-        bars = current_bars
+        if y == y_positions[0]:
+            bars = current_bars
 
     # --- Achsen ---
     ax.set_xlim(0, 100)

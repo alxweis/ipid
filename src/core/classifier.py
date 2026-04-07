@@ -25,6 +25,8 @@ class IPIDSubsequence:
         self.increments: np.ndarray = np.diff(self.sequence) % (MAX_IP_ID + 1)
 
     def is_increasing(self, min_inc: int, max_inc: int) -> bool:
+        if len(self.increments) == 0:
+            return False
         return np.all((min_inc <= self.increments) & (self.increments <= max_inc))
 
 
