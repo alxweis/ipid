@@ -1607,7 +1607,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
         "Per-CPU": "#66E0E0",
         "Random": "#FFB266",
         "Fallback": "#A0A0A0",
-        "Too few samples": "#707070",
+        "Too few samples": "#808080",
     }
 
     # --- ACM Plot style ---
