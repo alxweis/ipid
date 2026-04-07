@@ -1513,7 +1513,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
                 fallback_start = left - val
                 fallback_end = left
 
-        ax.text(-1, y, label, ha="right", va="center", fontsize=10)
+        # ax.text(-1, y, label, ha="right", va="center", fontsize=10)
         bars = current_bars
 
     # --- Gestrichelte Linien & Fläche (FIX für 3 Bars) ---
