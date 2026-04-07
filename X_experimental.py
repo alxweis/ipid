@@ -948,6 +948,12 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
 
     ordered_labels = filtered_labels
 
+    # --- Rename Fallback in class labels ---
+    ordered_labels = [
+        "<80 samples" if lbl == "Fallback" else lbl
+        for lbl in ordered_labels
+    ]
+
     # ------------------------------
     # Farben
     # ------------------------------
@@ -1054,7 +1060,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
 
     plt.tight_layout()
 
-    out_file = os.path.join(out_dir, "os_distribution_acm_style.pdf")
+    out_file = os.path.join(out_dir, "os_distribution_acm_style_new.pdf")
     plt.savefig(out_file, format="pdf", bbox_inches="tight")
     plt.close(fig)
 
