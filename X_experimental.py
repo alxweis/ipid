@@ -2036,7 +2036,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
             left += val
 
-        ax.text(-1, y, ylabel, ha="right", va="center", fontsize=10)
+        # ax.text(-1, y, ylabel, ha="right", va="center", fontsize=10)
         if y == y_positions[0]:
             bars = current_bars
 
