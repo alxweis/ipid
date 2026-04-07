@@ -546,11 +546,12 @@ def main():
             plot_os_heatmap(msm_path, "network_os_devices",
                             [cisco_ios, huawei_vrp, mikrotik_routeros, zynos, drayos])
     elif mode == 17:
-        if len(sys.argv) < 6:
+        if len(sys.argv) < 5:
             print_usage()
             return
 
-        plot_pattern_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
+        # plot_pattern_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
+        plot_pattern_distribution_acm_style_old(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
     elif mode == 18:
         if len(sys.argv) < 3:
             print_usage()
@@ -1581,6 +1582,10 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
     data1 = load_data(msm_path_1)
     data2 = load_data(msm_path_2)
 
+    # --- Rename only in second measurement ---
+    if "Fallback" in data2:
+        data2["Too few samples"] = data2.pop("Fallback")
+
     # --- Sort classes nach Pattern Enum ---
     all_classes = sorted(
         set(data1.keys()).union(data2.keys()),
@@ -1601,7 +1606,8 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
         "Per-Bucket": "#6EE66E",
         "Per-CPU": "#66E0E0",
         "Random": "#FFB266",
-        "Fallback": "#A0A0A0"
+        "Fallback": "#A0A0A0",
+        "Too few samples": "#707070",
     }
 
     # --- ACM Plot style ---
