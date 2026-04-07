@@ -1436,6 +1436,10 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
     data2 = load_data(msm_path_2)
     data3 = load_data(msm_path_3)
 
+    # --- Rename only in second measurement ---
+    if "Fallback" in data2:
+        data2["<80 samples"] = data2.pop("Fallback")
+
     # --- Sort classes nach Pattern Enum ---
     all_classes = sorted(
         set(data1.keys()).union(data2.keys()).union(data3.keys()),
@@ -1457,7 +1461,8 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
         "Per-Bucket": "#6EE66E",
         "Per-CPU": "#66E0E0",
         "Random": "#FFB266",
-        "Fallback": "#A0A0A0"
+        "Fallback": "#A0A0A0",
+        "<80 samples": "#808080",
     }
 
     # --- ACM Plot style ---
@@ -1478,7 +1483,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
 
     y_positions = [2, 1, 0]
     datasets = [values1, values2, values3]
-    labels = ["SYN-ACK/RST-ACK", "SYN-ACK", "RST-ACK"]
+    labels = ["1'", "2'", "3'"]
 
     bars = []
     fallback_start = fallback_end = 0
@@ -1508,27 +1513,27 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
                 fallback_start = left - val
                 fallback_end = left
 
-        # ax.text(-1, y, label, ha="right", va="center", fontsize=10)
+        ax.text(-1, y, label, ha="right", va="center", fontsize=10)
         bars = current_bars
 
     # --- Gestrichelte Linien & Fläche (FIX für 3 Bars) ---
-    # y_top = 2 - width / 2
-    # y_bottom = 1 + width / 2
-    #
-    # ax.plot([fallback_start, 0],
-    #         [y_top, y_bottom],
-    #         color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
-    #
-    # ax.plot([fallback_end, 100],
-    #         [y_top, y_bottom],
-    #         color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
-    #
-    # ax.fill_betweenx(
-    #     [y_top, y_bottom],
-    #     [fallback_start, 0],
-    #     [fallback_end, 100],
-    #     color='lightgray', alpha=0.5
-    # )
+    y_top = 2 - width / 2
+    y_bottom = 1 + width / 2
+
+    ax.plot([fallback_start, 0],
+            [y_top, y_bottom],
+            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+
+    ax.plot([fallback_end, 100],
+            [y_top, y_bottom],
+            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+
+    ax.fill_betweenx(
+        [y_top, y_bottom],
+        [fallback_start, 0],
+        [fallback_end, 100],
+        color='lightgray', alpha=0.5
+    )
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
