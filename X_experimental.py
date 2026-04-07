@@ -1477,7 +1477,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
 
     y_positions = [2, 1, 0]
     datasets = [values1, values2, values3]
-    labels = ["R/SA", "R", "SA"]
+    labels = ["R/SA/RA", "R", "SA"]
 
     bars = []
     fallback_start = fallback_end = 0
