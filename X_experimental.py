@@ -1584,7 +1584,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
 
     # --- Rename only in second measurement ---
     if "Fallback" in data2:
-        data2["Too few samples"] = data2.pop("Fallback")
+        data2["<80 samples"] = data2.pop("Fallback")
 
     # --- Sort classes nach Pattern Enum ---
     all_classes = sorted(
@@ -1607,7 +1607,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
         "Per-CPU": "#66E0E0",
         "Random": "#FFB266",
         "Fallback": "#A0A0A0",
-        "Too few samples": "#808080",
+        "<80 samples": "#808080",
     }
 
     # --- ACM Plot style ---
