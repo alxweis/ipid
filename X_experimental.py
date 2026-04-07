@@ -506,9 +506,9 @@ def main():
 
         msm_path = str(sys.argv[2])
 
-        plot_os_distribution(msm_path, oses, "all")
-        plot_os_distribution(msm_path, router, "router")
-        plot_os_distribution(msm_path, end_device, "end_device")
+        # plot_os_distribution(msm_path, oses, "all")
+        # plot_os_distribution(msm_path, router, "router")
+        # plot_os_distribution(msm_path, end_device, "end_device")
 
         rhel = (["redhat"], "RHEL")
         ubuntu_debian = (["ubuntu", "debian"], "Ubuntu/Debian")
@@ -1186,6 +1186,9 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     pivot.columns = ["class", "os_group", "count"]
     pivot_table = pivot.pivot(index="os_group", columns="class", values="count").fillna(0)
 
+    # --- Rename Fallback class ---
+    pivot_table = pivot_table.rename(columns={"Fallback": "<80 samples"})
+
     # Absolute Summen pro OS
     pivot_table["Total"] = pivot_table.sum(axis=1)
     # pivot_table = pivot_table.sort_values("Total", ascending=False)
@@ -1204,7 +1207,12 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     pivot_table = pivot_table.loc[desired_order]
 
     # Sortierung der Spalten
-    pattern_order = [p.value for p in Pattern if p.value in pivot_table.columns]
+    pattern_order = []
+    for p in Pattern:
+        if p.value == "Fallback" and "<80 samples" in pivot_table.columns:
+            pattern_order.append("<80 samples")
+        elif p.value in pivot_table.columns:
+            pattern_order.append(p.value)
     pivot_table = pivot_table[pattern_order + ["Total"]]
 
     # Relative Werte
@@ -1270,7 +1278,7 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
 
     os.makedirs(analysis_dir, exist_ok=True)
     pivot_table_rel.to_pickle(os.path.join(analysis_dir, "data.pkl"))
-    plt.savefig(os.path.join(analysis_dir, "plot.pdf"), bbox_inches="tight", dpi=300)
+    plt.savefig(os.path.join(analysis_dir, "plot_new.pdf"), bbox_inches="tight", dpi=300)
 
     # Info-Datei mit absoluten und relativen Werten
     with open(os.path.join(analysis_dir, "info.txt"), "w", encoding="utf-8") as f:
