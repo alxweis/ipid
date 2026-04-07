@@ -1538,7 +1538,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
     ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
     ax.tick_params(axis="x", which="minor", length=2, width=0.5)
 
-    fig.text(0, 0.5, "Flags",
+    fig.text(0.01, 0.5, "Flags",
              va="center", ha="center", rotation="vertical", fontsize=10)
 
     ax.set_yticks(y_positions)
