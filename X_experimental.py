@@ -1477,7 +1477,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
 
     y_positions = [2, 1, 0]
     datasets = [values1, values2, values3]
-    labels = ["Any", "RST", "SA"]
+    labels = ["R/SA", "R", "SA"]
 
     bars = []
     fallback_start = fallback_end = 0
@@ -1538,7 +1538,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
     ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
     ax.tick_params(axis="x", which="minor", length=2, width=0.5)
 
-    fig.text(0.01, 0.5, "Flags",
+    fig.text(-0.01, 0.5, "Flags",
              va="center", ha="center", rotation="vertical", fontsize=10)
 
     ax.set_yticks(y_positions)
