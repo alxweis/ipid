@@ -546,11 +546,11 @@ def main():
             plot_os_heatmap(msm_path, "network_os_devices",
                             [cisco_ios, huawei_vrp, mikrotik_routeros, zynos, drayos])
     elif mode == 17:
-        if len(sys.argv) < 5:
+        if len(sys.argv) < 6:
             print_usage()
             return
 
-        plot_pattern_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
+        plot_pattern_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
     elif mode == 18:
         if len(sys.argv) < 3:
             print_usage()
