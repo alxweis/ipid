@@ -1961,6 +1961,11 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     if isinstance(endhost_data, pd.DataFrame):
         endhost_data = dict(zip(endhost_data["class"], endhost_data["relative"]))
 
+    # --- Rename Fallback ---
+    for d in (transit_data, endhost_data):
+        if "Fallback" in d:
+            d["<80 samples"] = d.pop("Fallback")
+
     # --- Sort classes ---
     all_classes = sorted(
         set(transit_data.keys()).union(endhost_data.keys()),
@@ -1981,7 +1986,8 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
         "Per-Bucket": "#6EE66E",
         "Per-CPU": "#66E0E0",
         "Random": "#FFB266",
-        "Fallback": "#A0A0A0"
+        "Fallback": "#A0A0A0",
+        "<80 samples": "#808080",
     }
 
     # --- ACM Style ---
