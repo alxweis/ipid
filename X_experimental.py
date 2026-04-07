@@ -1423,7 +1423,7 @@ def plot_pattern():
 
 def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_path_3: str, name: str):
     def load_data(msm_path):
-        data_path = os.path.join(msm_path, "analysis", "pattern_distribution", "data.pkl")
+        data_path = os.path.join(msm_path, "pattern_distribution", "data.pkl")
         with open(Path(data_path), "rb") as f:
             data = pickle.load(f)
         if isinstance(data, pd.DataFrame):
@@ -1477,7 +1477,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
 
     y_positions = [2, 1, 0]
     datasets = [values1, values2, values3]
-    labels = ["1'", "2'", "3'"]
+    labels = ["Any", "RST", "SA"]
 
     bars = []
     fallback_start = fallback_end = 0
@@ -1511,23 +1511,23 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
         bars = current_bars
 
     # --- Gestrichelte Linien & Fläche (FIX für 3 Bars) ---
-    y_top = 2 - width / 2
-    y_bottom = 1 + width / 2
-
-    ax.plot([fallback_start, 0],
-            [y_top, y_bottom],
-            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
-
-    ax.plot([fallback_end, 100],
-            [y_top, y_bottom],
-            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
-
-    ax.fill_betweenx(
-        [y_top, y_bottom],
-        [fallback_start, 0],
-        [fallback_end, 100],
-        color='lightgray', alpha=0.5
-    )
+    # y_top = 2 - width / 2
+    # y_bottom = 1 + width / 2
+    #
+    # ax.plot([fallback_start, 0],
+    #         [y_top, y_bottom],
+    #         color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+    #
+    # ax.plot([fallback_end, 100],
+    #         [y_top, y_bottom],
+    #         color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+    #
+    # ax.fill_betweenx(
+    #     [y_top, y_bottom],
+    #     [fallback_start, 0],
+    #     [fallback_end, 100],
+    #     color='lightgray', alpha=0.5
+    # )
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
@@ -1538,7 +1538,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
     ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
     ax.tick_params(axis="x", which="minor", length=2, width=0.5)
 
-    fig.text(0.01, 0.5, "Measurement [No.]",
+    fig.text(0.01, 0.5, "Flags",
              va="center", ha="center", rotation="vertical", fontsize=10)
 
     ax.set_yticks(y_positions)
