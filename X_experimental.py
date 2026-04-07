@@ -2036,14 +2036,15 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
             left += val
 
-        ax.text(-1, y, ylabel, ha="right", va="center", fontsize=10)
+        # ax.text(-1, y, ylabel, ha="right", va="center", fontsize=10)
         bars = current_bars
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.5, 1.5)
     ax.set_xlabel("IP-ID Class Distribution [%]")
-    ax.set_ylabel("Device Type", labelpad=65)
+    # ax.set_ylabel("Device Type", labelpad=10)
+    ax.set_ylabel("Device Type")
 
     # Minorticks (5 %)
     ax.xaxis.set_minor_locator(MultipleLocator(5))
