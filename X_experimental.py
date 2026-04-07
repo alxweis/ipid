@@ -1424,7 +1424,7 @@ def plot_pattern():
 
 def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_path_3: str, name: str):
     def load_data(msm_path):
-        data_path = os.path.join(msm_path, "pattern_distribution", "data.pkl")
+        data_path = os.path.join(msm_path, "analysis", "pattern_distribution", "data.pkl")
         with open(Path(data_path), "rb") as f:
             data = pickle.load(f)
         if isinstance(data, pd.DataFrame):
