@@ -169,10 +169,10 @@ def is_per_con(seq: IPIDSequence) -> bool:
 
 
 def is_per_bucket(seq: IPIDSequence) -> bool:
-    return (seq.ap.is_increasing(min_inc=1, max_inc=MAX_INC) and
-            seq.bp.is_increasing(min_inc=1, max_inc=MAX_INC) and
-            seq.cp.is_increasing(min_inc=1, max_inc=MAX_INC) and
-            seq.dp.is_increasing(min_inc=1, max_inc=MAX_INC))
+    return (seq.ap.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC) and
+            seq.bp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC) and
+            seq.cp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC) and
+            seq.dp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC))
 
 
 def is_global(seq: IPIDSequence) -> bool:
