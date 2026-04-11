@@ -546,7 +546,7 @@ def main():
             plot_os_heatmap(msm_path, "network_os_devices",
                             [cisco_ios, huawei_vrp, mikrotik_routeros, zynos, drayos])
     elif mode == 17:
-        if len(sys.argv) < 6:
+        if len(sys.argv) < 5:
             print_usage()
             return
 
