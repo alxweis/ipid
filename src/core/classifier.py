@@ -34,17 +34,22 @@ class IPIDSequence:
     def __init__(self, sequence: list[int] | tuple[int, ...] | np.ndarray):
         arr = np.array(sequence, dtype=np.int32)
         self.s = IPIDSubsequence(arr)
-        idx = np.arange(len(arr)) % 8
-        self.a = IPIDSubsequence(arr[np.isin(idx, [0, 2, 4, 6])])
-        self.b = IPIDSubsequence(arr[np.isin(idx, [1, 3, 5, 7])])
-        self.ap = IPIDSubsequence(arr[np.isin(idx, [0, 4])])
-        self.ap_no_first = IPIDSubsequence(arr[np.isin(idx, [0, 4])][1:])
-        self.bp = IPIDSubsequence(arr[np.isin(idx, [1, 5])])
-        self.bp_no_first = IPIDSubsequence(arr[np.isin(idx, [1, 5])][1:])
-        self.cp = IPIDSubsequence(arr[np.isin(idx, [2, 6])])
-        self.cp_no_first = IPIDSubsequence(arr[np.isin(idx, [2, 6])][1:])
-        self.dp = IPIDSubsequence(arr[np.isin(idx, [3, 7])])
-        self.dp_no_first = IPIDSubsequence(arr[np.isin(idx, [3, 7])][1:])
+        idx = np.arange(len(arr)) % 6
+        self.a = IPIDSubsequence(arr[np.isin(idx, [0, 1, 4])])
+        self.b = IPIDSubsequence(arr[np.isin(idx, [2, 3, 5])])
+        self.ap = IPIDSubsequence(arr[np.isin(idx, [1, 4])])
+        self.bp = IPIDSubsequence(arr[np.isin(idx, [2, 5])])
+        # idx = np.arange(len(arr)) % 8
+        # self.a = IPIDSubsequence(arr[np.isin(idx, [0, 2, 4, 6])])
+        # self.b = IPIDSubsequence(arr[np.isin(idx, [1, 3, 5, 7])])
+        # self.ap = IPIDSubsequence(arr[np.isin(idx, [0, 4])])
+        # self.ap_no_first = IPIDSubsequence(arr[np.isin(idx, [0, 4])][1:])
+        # self.bp = IPIDSubsequence(arr[np.isin(idx, [1, 5])])
+        # self.bp_no_first = IPIDSubsequence(arr[np.isin(idx, [1, 5])][1:])
+        # self.cp = IPIDSubsequence(arr[np.isin(idx, [2, 6])])
+        # self.cp_no_first = IPIDSubsequence(arr[np.isin(idx, [2, 6])][1:])
+        # self.dp = IPIDSubsequence(arr[np.isin(idx, [3, 7])])
+        # self.dp_no_first = IPIDSubsequence(arr[np.isin(idx, [3, 7])][1:])
 
     def __len__(self):
         return len(self.s.sequence)
@@ -162,17 +167,21 @@ def is_per_dst(seq: IPIDSequence) -> bool:
 
 
 def is_per_con(seq: IPIDSequence) -> bool:
-    return (seq.ap_no_first.is_increasing(min_inc=1, max_inc=1) and
-            seq.bp_no_first.is_increasing(min_inc=1, max_inc=1) and
-            seq.cp_no_first.is_increasing(min_inc=1, max_inc=1) and
-            seq.dp_no_first.is_increasing(min_inc=1, max_inc=1))
+    return (seq.ap.is_increasing(min_inc=1, max_inc=1) and
+            seq.bp.is_increasing(min_inc=1, max_inc=1))
+    # return (seq.ap_no_first.is_increasing(min_inc=1, max_inc=1) and
+    #         seq.bp_no_first.is_increasing(min_inc=1, max_inc=1) and
+    #         seq.cp_no_first.is_increasing(min_inc=1, max_inc=1) and
+    #         seq.dp_no_first.is_increasing(min_inc=1, max_inc=1))
 
 
 def is_per_bucket(seq: IPIDSequence) -> bool:
     return (seq.ap.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC) and
-            seq.bp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC) and
-            seq.cp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC) and
-            seq.dp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC))
+            seq.bp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC))
+    # return (seq.ap.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC) and
+    #         seq.bp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC) and
+    #         seq.cp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC) and
+    #         seq.dp.is_increasing(min_inc=1, max_inc=LOCAL_GE1_MAX_INC))
 
 
 def is_global(seq: IPIDSequence) -> bool:
