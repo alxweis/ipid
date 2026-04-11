@@ -1819,15 +1819,12 @@ def analyze_traceroute_device_behavior(caida_itdk_path: str, msm_path: str, t: i
         from read_csv_auto('{ip_to_node_file}', compression='zstd')
     """)
     conditions = []
-    params = []
 
     if t is not None:
-        conditions.append("m.T = ?")
-        params.append(t)
+        conditions.append(f"m.T = {int(t)}")
 
     if d is not None:
-        conditions.append("m.D = ?")
-        params.append(d)
+        conditions.append(f"m.D = {int(d)}")
 
     where_clause = ""
     if conditions:
@@ -1839,7 +1836,7 @@ def analyze_traceroute_device_behavior(caida_itdk_path: str, msm_path: str, t: i
         from eval e
         join ip_to_node m on e.IP = m.IP
         {where_clause}
-    """, params)
+    """)
     df_plot = con.execute("""
         select
             IP_ID_PATTERN as class,
