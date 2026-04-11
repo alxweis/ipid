@@ -2038,7 +2038,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
     y_positions = [1, 0]
     data_sets = [transit_values, endhost_values]
-    labels = ["Router", "Not seen forwarding packets"]
+    labels = ["Router", "Dst-only"]
 
     bars = []
     width = 0.55
