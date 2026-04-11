@@ -487,7 +487,7 @@ def main():
         if len(sys.argv) < 4:
             print_usage()
             return
-        analyze_traceroute_device_behavior(str(sys.argv[2]), str(sys.argv[3]), t=1, d=0, name="transit-hop")
+        analyze_traceroute_device_behavior(str(sys.argv[2]), str(sys.argv[3]), t=1, d=None, name="transit-hop")
     elif mode == 14:
         if len(sys.argv) < 4:
             print_usage()
@@ -550,8 +550,8 @@ def main():
             print_usage()
             return
 
-        plot_pattern_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
-        # plot_pattern_distribution_acm_style_old(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
+        # plot_pattern_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
+        plot_pattern_distribution_acm_style_old(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
     elif mode == 18:
         if len(sys.argv) < 3:
             print_usage()
@@ -1601,7 +1601,9 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
     data1 = load_data(msm_path_1)
     data2 = load_data(msm_path_2)
 
-    # --- Rename only in second measurement ---
+    # --- Rename Fallback in measurements ---
+    if "Fallback" in data1:
+        data1["Unclassified"] = data1.pop("Fallback")
     if "Fallback" in data2:
         data2["<80 samples"] = data2.pop("Fallback")
 
@@ -1647,7 +1649,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
 
     y_positions = [1, 0]
     datasets = [values1, values2]
-    labels = ["1'", "2'"]
+    labels = ["RTT-based", "Fixed-Interval"]
 
     bars = []
     fallback_start = fallback_end = 0
@@ -1673,7 +1675,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
 
             left += val
 
-            if y == 1 and cls == "Fallback":
+            if y == 1 and cls == "Unclassified":
                 fallback_start = left - val
                 fallback_end = left
 
@@ -1705,7 +1707,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
     ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
     ax.tick_params(axis="x", which="minor", length=2, width=0.5)
 
-    fig.text(0.01, 0.5, "Measurement [No.]",
+    fig.text(0.01, 0.5, "Measurement Type",
              va="center", ha="center", rotation="vertical", fontsize=10)
 
     ax.set_yticks(y_positions)
@@ -1799,7 +1801,7 @@ def plot_os_distribution(msm_path: str, oses: list[str], ident: str):
     print("Done.")
 
 
-def analyze_traceroute_device_behavior(caida_itdk_path: str, msm_path: str, t: int, d: int, name: str):
+def analyze_traceroute_device_behavior(caida_itdk_path: str, msm_path: str, t: int | None, d: int | None, name: str):
     ip_to_node_file = os.path.join(caida_itdk_path, "ip_to_node.csv.zst")
     eval_file = os.path.join(msm_path, "eval.csv.zst")
 
@@ -1816,14 +1818,28 @@ def analyze_traceroute_device_behavior(caida_itdk_path: str, msm_path: str, t: i
         select IP, T, D
         from read_csv_auto('{ip_to_node_file}', compression='zstd')
     """)
+    conditions = []
+    params = []
+
+    if t is not None:
+        conditions.append("m.T = ?")
+        params.append(t)
+
+    if d is not None:
+        conditions.append("m.D = ?")
+        params.append(d)
+
+    where_clause = ""
+    if conditions:
+        where_clause = "where " + " and ".join(conditions)
+
     con.execute(f"""
         create view joined as
         select e.IP_ID_PATTERN
         from eval e
         join ip_to_node m on e.IP = m.IP
-        where m.T = {t} and m.D = {d}
-    """)
-
+        {where_clause}
+    """, params)
     df_plot = con.execute("""
         select
             IP_ID_PATTERN as class,
