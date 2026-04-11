@@ -1627,7 +1627,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
         "Per-Bucket": "#6EE66E",
         "Per-CPU": "#66E0E0",
         "Random": "#FFB266",
-        "Fallback": "#A0A0A0",
+        "Unclassified": "#CCCCCC",
         "<80 samples": "#808080",
     }
 
@@ -2038,7 +2038,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
     y_positions = [1, 0]
     data_sets = [transit_values, endhost_values]
-    labels = ["Transit-hops", "End-hosts"]
+    labels = ["Router", "Not seen forwarding packets"]
 
     bars = []
     width = 0.55
