@@ -896,7 +896,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         SELECT n.IP, n.T, n.D, t.OS
         FROM ip_to_node n
         LEFT JOIN targets_os t ON n.IP = t.IP
-        WHERE (n.T = 1 AND n.D = 0) OR (n.T = 0 AND n.D = 1)
+        WHERE (n.T = 1) OR (n.T = 0 AND n.D = 1)
     """).fetch_df()
 
     df_joined = df_joined[df_joined["OS"].notna()]
@@ -915,7 +915,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
     # ------------------------------
     # DISTRIBUTIONS
     # ------------------------------
-    transit = df_joined[(df_joined["T"] == 1) & (df_joined["D"] == 0)]
+    transit = df_joined[df_joined["T"] == 1]
     endhost = df_joined[(df_joined["T"] == 0) & (df_joined["D"] == 1)]
 
     print("\n[Transit-Hop IP, OS] (erste 100):")
