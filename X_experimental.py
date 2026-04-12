@@ -1593,10 +1593,10 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
 
     # --- Legende ---
     legend_labels = ["Multi" if c == "Per-CPU" else c for c in all_classes]
-    fig.legend(
+    ax.legend(
         [b[0] for b in bars],
         legend_labels,
-        loc="upper center",
+        loc="lower center",
         bbox_to_anchor=(0.5, 1.02),
         ncol=5,
         frameon=False,
