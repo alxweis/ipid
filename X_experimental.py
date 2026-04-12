@@ -1805,13 +1805,20 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
         data2["Reflection"] = data2.pop("Mirror")
 
     # --- Sort classes nach Pattern Enum ---
-    pattern_values = [p.value for p in Pattern]
+    pattern_index = {p.value: i for i, p in enumerate(Pattern)}
+
+    def sort_key(c):
+        if c == "<80 samples":
+            return 1001
+        if c == "Unclassified":
+            return 1000
+
+        base = "Mirror" if c == "Reflection" else c
+        return pattern_index.get(base, 999)
 
     all_classes = sorted(
         set(data1.keys()).union(data2.keys()),
-        key=lambda c: pattern_values.index(
-            "Mirror" if c == "Reflection" else c
-        ) if ("Mirror" if c == "Reflection" else c) in pattern_values else 999
+        key=sort_key
     )
 
     values1 = [float(data1.get(c, 0.0)) for c in all_classes]
