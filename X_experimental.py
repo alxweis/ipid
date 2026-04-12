@@ -1024,7 +1024,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
 
     datasets = [transit_values, endhost_values]
     positions = [1, 0]
-    names = ["Transit-hops", "End-hosts"]
+    names = ["Router", "Dst-only"]
 
     for y, values, name in zip(positions, datasets, names):
         left = 0
@@ -1197,8 +1197,11 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     pivot.columns = ["class", "os_group", "count"]
     pivot_table = pivot.pivot(index="os_group", columns="class", values="count").fillna(0)
 
-    # --- Rename Fallback class ---
-    pivot_table = pivot_table.rename(columns={"Fallback": "<80 samples"})
+    # --- Rename classes ---
+    pivot_table = pivot_table.rename(columns={
+        "Fallback": "<80 samples",
+        "Mirror": "Reflection"
+    })
 
     # Absolute Summen pro OS
     pivot_table["Total"] = pivot_table.sum(axis=1)
@@ -1222,6 +1225,8 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     for p in Pattern:
         if p.value == "Fallback" and "<80 samples" in pivot_table.columns:
             pattern_order.append("<80 samples")
+        elif p.value == "Mirror" and "Reflection" in pivot_table.columns:
+            pattern_order.append("Reflection")
         elif p.value in pivot_table.columns:
             pattern_order.append(p.value)
     pivot_table = pivot_table[pattern_order + ["Total"]]
@@ -1461,17 +1466,25 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
     data2 = load_data(msm_path_2)
     data3 = load_data(msm_path_3)
 
-    # --- Rename Fallback in measurements ---
-    if "Fallback" in data1:
-        data1["Unclassified"] = data1.pop("Fallback")
-    if "Fallback" in data2:
-        data2["<80 samples"] = data2.pop("Fallback")
+    # --- Rename classes ---
+    for d in (data1, data2, data3):
+        if "Fallback" in d:
+            if d is data2:
+                d["<80 samples"] = d.pop("Fallback")
+            else:
+                d["Unclassified"] = d.pop("Fallback")
+
+        if "Mirror" in d:
+            d["Reflection"] = d.pop("Mirror")
 
     # --- Sort classes nach Pattern Enum ---
+    pattern_values = [p.value for p in Pattern]
+
     all_classes = sorted(
         set(data1.keys()).union(data2.keys()).union(data3.keys()),
-        key=lambda c: [p.value for p in Pattern].index(c)
-        if c in [p.value for p in Pattern] else 999
+        key=lambda c: pattern_values.index(
+            "Mirror" if c == "Reflection" else c
+        ) if ("Mirror" if c == "Reflection" else c) in pattern_values else 999
     )
 
     values1 = [float(data1.get(c, 0.0)) for c in all_classes]
@@ -1480,7 +1493,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
 
     # --- Farbzuordnung ---
     color_map = {
-        "Mirror": "#FFE866",
+        "Reflection": "#FFE866",
         "Constant": "#6FB8FF",
         "Single": "#FF8080",
         "Per-Con": "#FF85C1",
@@ -1616,16 +1629,24 @@ def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, ms
     data3 = load_data(msm_path_3)
 
     # --- Rename Fallback in measurements ---
-    if "Fallback" in data1:
-        data1["Unclassified"] = data1.pop("Fallback")
-    if "Fallback" in data2:
-        data2["<80 samples"] = data2.pop("Fallback")
+    for d in (data1, data2, data3):
+        if "Fallback" in d:
+            if d is data2:
+                d["<80 samples"] = d.pop("Fallback")
+            else:
+                d["Unclassified"] = d.pop("Fallback")
+
+        if "Mirror" in d:
+            d["Reflection"] = d.pop("Mirror")
 
     # --- Sort classes nach Pattern Enum ---
+    pattern_values = [p.value for p in Pattern]
+
     all_classes = sorted(
         set(data1.keys()).union(data2.keys()).union(data3.keys()),
-        key=lambda c: [p.value for p in Pattern].index(c)
-        if c in [p.value for p in Pattern] else 999
+        key=lambda c: pattern_values.index(
+            "Mirror" if c == "Reflection" else c
+        ) if ("Mirror" if c == "Reflection" else c) in pattern_values else 999
     )
 
     values1 = [float(data1.get(c, 0.0)) for c in all_classes]
@@ -1634,7 +1655,7 @@ def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, ms
 
     # --- Farbzuordnung ---
     color_map = {
-        "Mirror": "#FFE866",
+        "Reflection": "#FFE866",
         "Constant": "#6FB8FF",
         "Single": "#FF8080",
         "Per-Con": "#FF85C1",
@@ -1698,23 +1719,23 @@ def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, ms
         bars = current_bars
 
     # --- Gestrichelte Linien & Fläche (FIX für 3 Bars) ---
-    y_top = 2 - width / 2
-    y_bottom = 1 + width / 2
-
-    ax.plot([fallback_start, 0],
-            [y_top, y_bottom],
-            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
-
-    ax.plot([fallback_end, 100],
-            [y_top, y_bottom],
-            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
-
-    ax.fill_betweenx(
-        [y_top, y_bottom],
-        [fallback_start, 0],
-        [fallback_end, 100],
-        color='lightgray', alpha=0.5
-    )
+    # y_top = 2 - width / 2
+    # y_bottom = 1 + width / 2
+    #
+    # ax.plot([fallback_start, 0],
+    #         [y_top, y_bottom],
+    #         color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+    #
+    # ax.plot([fallback_end, 100],
+    #         [y_top, y_bottom],
+    #         color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+    #
+    # ax.fill_betweenx(
+    #     [y_top, y_bottom],
+    #     [fallback_start, 0],
+    #     [fallback_end, 100],
+    #     color='lightgray', alpha=0.5
+    # )
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
@@ -1768,17 +1789,25 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
     data1 = load_data(msm_path_1)
     data2 = load_data(msm_path_2)
 
-    # --- Rename Fallback in measurements ---
+    # --- Rename classes ---
     if "Fallback" in data1:
         data1["Unclassified"] = data1.pop("Fallback")
     if "Fallback" in data2:
         data2["<80 samples"] = data2.pop("Fallback")
 
+    if "Mirror" in data1:
+        data1["Reflection"] = data1.pop("Mirror")
+    if "Mirror" in data2:
+        data2["Reflection"] = data2.pop("Mirror")
+
     # --- Sort classes nach Pattern Enum ---
+    pattern_values = [p.value for p in Pattern]
+
     all_classes = sorted(
         set(data1.keys()).union(data2.keys()),
-        key=lambda c: [p.value for p in Pattern].index(c)
-        if c in [p.value for p in Pattern] else 999
+        key=lambda c: pattern_values.index(
+            "Mirror" if c == "Reflection" else c
+        ) if ("Mirror" if c == "Reflection" else c) in pattern_values else 999
     )
 
     values1 = [float(data1.get(c, 0.0)) for c in all_classes]
@@ -1786,7 +1815,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
 
     # --- Farbzuordnung ---
     color_map = {
-        "Mirror": "#FFE866",
+        "Reflection": "#FFE866",
         "Constant": "#6FB8FF",
         "Single": "#FF8080",
         "Per-Con": "#FF85C1",
@@ -2155,16 +2184,19 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     if isinstance(endhost_data, pd.DataFrame):
         endhost_data = dict(zip(endhost_data["class"], endhost_data["relative"]))
 
-    # --- Rename Fallback ---
+    # --- Rename classes ---
     for d in (transit_data, endhost_data):
         if "Fallback" in d:
             d["<80 samples"] = d.pop("Fallback")
+        if "Mirror" in d:
+            d["Reflection"] = d.pop("Mirror")
 
     # --- Sort classes ---
     all_classes = sorted(
         set(transit_data.keys()).union(endhost_data.keys()),
-        key=lambda c: [p.value for p in Pattern].index(c)
-        if c in [p.value for p in Pattern] else 999
+        key=lambda c: [p.value for p in Pattern].index(
+            "Mirror" if c == "Reflection" else c
+        ) if ("Mirror" if c == "Reflection" else c) in [p.value for p in Pattern] else 999
     )
 
     transit_values = [float(transit_data.get(c, 0.0)) for c in all_classes]
@@ -2172,7 +2204,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
     # --- Farbzuordnung (wie bisher) ---
     color_map = {
-        "Mirror": "#FFE866",
+        "Reflection": "#FFE866",
         "Constant": "#6FB8FF",
         "Single": "#FF8080",
         "Per-Con": "#FF85C1",
