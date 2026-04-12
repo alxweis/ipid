@@ -1593,10 +1593,10 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
 
     # --- Legende ---
     legend_labels = ["Multi" if c == "Per-CPU" else c for c in all_classes]
-    ax.legend(
+    fig.legend(
         [b[0] for b in bars],
         legend_labels,
-        loc="lower center",
+        loc="upper center",
         bbox_to_anchor=(0.5, 1.02),
         ncol=5,
         frameon=False,
@@ -1631,10 +1631,7 @@ def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, ms
     # --- Rename Fallback in measurements ---
     for d in (data1, data2, data3):
         if "Fallback" in d:
-            if d is data2:
-                d["<80 samples"] = d.pop("Fallback")
-            else:
-                d["Unclassified"] = d.pop("Fallback")
+            d["<80 samples"] = d.pop("Fallback")
 
         if "Mirror" in d:
             d["Reflection"] = d.pop("Mirror")
