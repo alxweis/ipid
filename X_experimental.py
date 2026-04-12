@@ -506,9 +506,9 @@ def main():
 
         msm_path = str(sys.argv[2])
 
-        # plot_os_distribution(msm_path, oses, "all")
-        # plot_os_distribution(msm_path, router, "router")
-        # plot_os_distribution(msm_path, end_device, "end_device")
+        plot_os_distribution(msm_path, oses, "all")
+        plot_os_distribution(msm_path, router, "router")
+        plot_os_distribution(msm_path, end_device, "end_device")
 
         rhel = (["redhat"], "RHEL")
         ubuntu_debian = (["ubuntu", "debian"], "Ubuntu/Debian")
@@ -550,7 +550,6 @@ def main():
             print_usage()
             return
 
-        # plot_pattern_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
         plot_pattern_distribution_acm_style_old(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
     elif mode == 18:
         if len(sys.argv) < 3:
@@ -631,6 +630,18 @@ def main():
             return
 
         classify_first_four_for_per_con(msm_path=str(sys.argv[2]))
+    elif mode == 27:
+        if len(sys.argv) < 6:
+            print_usage()
+            return
+
+        plot_pattern_distribution_acm_style(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
+    elif mode == 28:
+        if len(sys.argv) < 6:
+            print_usage()
+            return
+
+        plot_pattern_distribution_acm_style_rst(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
     else:
         print_usage()
 
@@ -1433,7 +1444,7 @@ def plot_pattern():
 
     plt.margins(x=0.15)
     plt.tight_layout()
-    plt.savefig("ipid_papers.pdf", bbox_inches="tight")
+    plt.savefig(os.path.join(EXPERIMENTAL_RESULTS, "ipid_papers.pdf"), bbox_inches="tight")
 
 
 def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_path_3: str, name: str):
@@ -1450,7 +1461,9 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
     data2 = load_data(msm_path_2)
     data3 = load_data(msm_path_3)
 
-    # --- Rename only in second measurement ---
+    # --- Rename Fallback in measurements ---
+    if "Fallback" in data1:
+        data1["Unclassified"] = data1.pop("Fallback")
     if "Fallback" in data2:
         data2["<80 samples"] = data2.pop("Fallback")
 
@@ -1475,7 +1488,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
         "Per-Bucket": "#6EE66E",
         "Per-CPU": "#66E0E0",
         "Random": "#FFB266",
-        "Fallback": "#A0A0A0",
+        "Unclassified": "#CCCCCC",
         "<80 samples": "#808080",
     }
 
@@ -1497,7 +1510,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
 
     y_positions = [2, 1, 0]
     datasets = [values1, values2, values3]
-    labels = ["1'", "2'", "3'"]
+    labels = ["RTT-based", "Fixed-Interval", "RTT-based & Connection-oriented"]
 
     bars = []
     fallback_start = fallback_end = 0
@@ -1523,7 +1536,161 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
 
             left += val
 
-            if y == 2 and cls == "Fallback":
+            if y == 2 and cls == "Unclassified":
+                fallback_start = left - val
+                fallback_end = left
+
+        # ax.text(-1, y, label, ha="right", va="center", fontsize=10)
+        bars = current_bars
+
+    # --- Gestrichelte Linien & Fläche (FIX für 3 Bars) ---
+    y_top = 2 - width / 2
+    y_bottom = 1 + width / 2
+
+    ax.plot([fallback_start, 0],
+            [y_top, y_bottom],
+            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+
+    ax.plot([fallback_end, 100],
+            [y_top, y_bottom],
+            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+
+    ax.fill_betweenx(
+        [y_top, y_bottom],
+        [fallback_start, 0],
+        [fallback_end, 100],
+        color='lightgray', alpha=0.5
+    )
+
+    # --- Achsen ---
+    ax.set_xlim(0, 100)
+    ax.set_ylim(-0.5, 2.5)
+    ax.set_xlabel("IP-ID Class Distribution [%]", labelpad=2)
+
+    # --- MINORTICKS aktivieren ---
+    ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
+    ax.tick_params(axis="x", which="minor", length=2, width=0.5)
+
+    fig.text(0.01, 0.5, "Measurement Type",
+             va="center", ha="center", rotation="vertical", fontsize=10)
+
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(labels)
+    ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
+
+    # --- Legende ---
+    legend_labels = ["Multi" if c == "Per-CPU" else c for c in all_classes]
+    ax.legend(
+        [b[0] for b in bars],
+        legend_labels,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.02),
+        ncol=5,
+        frameon=False,
+        handlelength=1.2,
+        handletextpad=0.3,
+        columnspacing=0.8,
+        borderaxespad=0.2,
+    )
+
+    plt.tight_layout()
+
+    path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_pattern_distribution.pdf")
+    plt.savefig(path, format="pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[+] Combined horizontal stacked bar plot saved to {path}")
+
+
+def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, msm_path_3: str, name: str):
+    def load_data(msm_path):
+        data_path = os.path.join(msm_path, "pattern_distribution", "data.pkl")
+        with open(Path(data_path), "rb") as f:
+            data = pickle.load(f)
+        if isinstance(data, pd.DataFrame):
+            data = dict(zip(data["class"], data["relative"]))
+        return data
+
+    # --- Load both datasets ---
+    data1 = load_data(msm_path_1)
+    data2 = load_data(msm_path_2)
+    data3 = load_data(msm_path_3)
+
+    # --- Rename Fallback in measurements ---
+    if "Fallback" in data1:
+        data1["Unclassified"] = data1.pop("Fallback")
+    if "Fallback" in data2:
+        data2["<80 samples"] = data2.pop("Fallback")
+
+    # --- Sort classes nach Pattern Enum ---
+    all_classes = sorted(
+        set(data1.keys()).union(data2.keys()).union(data3.keys()),
+        key=lambda c: [p.value for p in Pattern].index(c)
+        if c in [p.value for p in Pattern] else 999
+    )
+
+    values1 = [float(data1.get(c, 0.0)) for c in all_classes]
+    values2 = [float(data2.get(c, 0.0)) for c in all_classes]
+    values3 = [float(data3.get(c, 0.0)) for c in all_classes]
+
+    # --- Farbzuordnung ---
+    color_map = {
+        "Mirror": "#FFE866",
+        "Constant": "#6FB8FF",
+        "Single": "#FF8080",
+        "Per-Con": "#FF85C1",
+        "Per-Dst": "#B580FF",
+        "Per-Bucket": "#6EE66E",
+        "Per-CPU": "#66E0E0",
+        "Random": "#FFB266",
+        "Unclassified": "#CCCCCC",
+        "<80 samples": "#808080",
+    }
+
+    # --- ACM Plot style ---
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Latin Modern Roman"],
+        "mathtext.fontset": "cm",
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "pdf.fonttype": 42,
+    })
+
+    fig, ax = plt.subplots(figsize=(5.5, 2.4))
+
+    y_positions = [2, 1, 0]
+    datasets = [values1, values2, values3]
+    labels = ["SYN-ACK/RST-ACK", "SYN-ACK", "RST-ACK"]
+
+    bars = []
+    fallback_start = fallback_end = 0
+    width = 0.55
+
+    for y, values, label in zip(y_positions, datasets, labels):
+        left = 0
+        current_bars = []
+        for cls, val in zip(all_classes, values):
+            color = color_map.get(cls, "#CCCCCC")
+            bar = ax.barh(y, val, left=left, height=width,
+                          edgecolor="none", color=color)
+            current_bars.append(bar)
+
+            # --- Prozentwerte ab 5%, ganzzahlig gerundet ---
+            if val >= 1:
+                ax.text(
+                    left + val / 2, y,
+                    f"{int(math.floor(val + 0.5))}",  # <-- ganze Zahl
+                    ha="center", va="center",
+                    color="black", fontsize=9
+                )
+
+            left += val
+
+            if y == 2 and cls == "Unclassified":
                 fallback_start = left - val
                 fallback_end = left
 
