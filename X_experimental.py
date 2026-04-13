@@ -11,6 +11,7 @@ import string
 import subprocess
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -642,8 +643,56 @@ def main():
             return
 
         plot_pattern_distribution_acm_style_rst(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]), str(sys.argv[5]))
+    elif mode == 29:
+        if len(sys.argv) < 3:
+            print_usage()
+            return
+
+        targets_file = os.path.join(str(sys.argv[2]), "targets.csv.zst")
+        sample_targets(targets_file)
     else:
         print_usage()
+
+
+def sample_targets(input_file: str):
+    output_file = os.path.join(os.path.dirname(input_file), "targets_sample.csv.zst")
+    con = duckdb.connect()
+
+    start_total = time.time()
+    print(f"[INFO] Start processing: {input_file}")
+
+    # 1. COUNT
+    print("[INFO] Counting total rows...")
+    t0 = time.time()
+    total_rows = con.execute(f"""
+        SELECT COUNT(*) FROM read_csv_auto('{input_file}')
+    """).fetchone()[0]
+    t1 = time.time()
+    print(f"[INFO] Total rows: {total_rows:,} (took {t1 - t0:.2f}s)")
+
+    # 2. Zielgröße
+    target_n = max(1_000_000, int(math.ceil(0.05 * total_rows)))
+    print(f"[INFO] Target sample size: {target_n:,} rows")
+
+    # 3. Sampling + Export
+    print("[INFO] Sampling and writing output...")
+    t2 = time.time()
+    con.execute(f"""
+        COPY (
+            SELECT *
+            FROM read_csv_auto('{input_file}')
+            USING SAMPLE {target_n} ROWS
+        )
+        TO '{output_file}'
+        (FORMAT CSV, COMPRESSION ZSTD);
+    """)
+    t3 = time.time()
+
+    print(f"[INFO] Sampling + export done (took {t3 - t2:.2f}s)")
+    print(f"[INFO] Output written to: {output_file}")
+    print(f"[INFO] Total runtime: {time.time() - start_total:.2f}s")
+
+    con.close()
 
 
 def classify_first_four_for_per_con(msm_path):
