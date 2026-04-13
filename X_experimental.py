@@ -655,7 +655,15 @@ def main():
 
 
 def sample_targets(input_file: str):
-    output_file = os.path.join(os.path.dirname(input_file), "targets_sample.csv.zst")
+    output_file = os.path.join(
+        os.path.dirname(os.path.dirname(input_file)),
+        "sample",
+        "targets.csv.zst"
+    )
+
+    output_dir = os.path.dirname(output_file)
+    os.makedirs(output_dir, exist_ok=True)
+
     con = duckdb.connect()
 
     start_total = time.time()
