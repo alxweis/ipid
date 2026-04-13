@@ -679,7 +679,7 @@ def sample_targets(input_file: str):
     print(f"[INFO] Total rows: {total_rows:,} (took {t1 - t0:.2f}s)")
 
     # 2. Zielgröße
-    target_n = max(1_000_000, int(math.ceil(0.05 * total_rows)))
+    target_n = max(1_800_000, int(math.ceil(0.09 * total_rows)))
     print(f"[INFO] Target sample size: {target_n:,} rows")
 
     # 3. Sampling + Export
