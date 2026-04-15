@@ -18,7 +18,7 @@ b2b_request_interval: "10ms"
 b2b_retry_count: 0
 
 # SEQ Probing
-seq_request_count: 10
+seq_request_count: 16
 seq_retry_count: 0
 
 # MASS Probing
@@ -36,10 +36,10 @@ iface_b:
 min_rtt: "2s"
 default_send_ip_ids: [ 0 ] # Sends [0,0,0,...]
 detect_reflected_ip_ids: True
-reflection_send_ip_ids: [ 18933,18933,3717,3718,3719 ] # Sequence with fixed arbitrary values
+reflection_send_ip_ids: [ 18933,18932,3717,3718,3719 ] # Sequence with fixed arbitrary values
 
 # Hitlist
-zmap_bandwidth: "30M" # Bandwidth for zmap scans (K=Kbps, M=Mbps, G=Gbps)
+zmap_bandwidth: "50M" # Bandwidth for zmap scans (K=Kbps, M=Mbps, G=Gbps)
 
 # Filenames # TODO Use this as reference consistently
 targets_ip_fn: "targets.csv.zst"
