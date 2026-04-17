@@ -321,8 +321,8 @@ class ClassifierTests(unittest.TestCase):
         #     np.array([0, 0, 0, 0, 19908, 44119, 6203, 14284, 19909, 44120, 6204, 14285, 19910, 44121, 6205, 14286]))
         # print(get_pattern(seq, is_mass_scan=False, get_all=False))
 
-        sequence_length = 80
-        sequence_count_per_pattern = 1_000
+        sequence_length = 10
+        sequence_count_per_pattern = 100_000
 
         self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
         self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
