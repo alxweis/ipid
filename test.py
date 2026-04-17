@@ -55,7 +55,7 @@ def create_lossy_dataset(sequence_length: int, sequence_count_per_pattern: int):
             continue
 
         for _ in range(sequence_count_per_pattern):
-            seq = generator(sequence_length).full.sequence.tolist()
+            seq = generator(sequence_length).s.sequence.tolist()
 
             # Remove 20% of sequence
             k = int(len(seq) * 0.2)
@@ -77,7 +77,7 @@ def create_reorder_dataset(sequence_length: int, sequence_count_per_pattern: int
             continue
 
         for _ in range(sequence_count_per_pattern):
-            seq = generator(sequence_length).full.sequence.tolist()
+            seq = generator(sequence_length).s.sequence.tolist()
 
             # Reorder 20% of sequence
             reorder_seq = seq.copy()
@@ -113,8 +113,6 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
     print(f"### {dataset.value.upper()} DATASET ###\n")
 
     is_mass_scan = sequence_length >= 80
-    overall_correct = 0
-    overall_total = 0
     confusion_matrix = defaultdict(lambda: defaultdict(int))
 
     for true_pattern, ip_id_sequences in data.items():
@@ -125,9 +123,7 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         for seq in ip_id_sequences:
             predicted_pattern = get_pattern(seq, is_mass_scan)
 
-            if (true_pattern.value == predicted_pattern.value or
-                    (not is_mass_scan and true_pattern in [Pattern.PER_CPU,
-                                                           Pattern.RANDOM] and predicted_pattern == Pattern.FALLBACK)):
+            if true_pattern.value == predicted_pattern.value:
                 correct_classifications += 1
             else:
                 # print(f"'{",".join(map(str, seq.full.sequence.tolist()))}' is classified as {predicted_pattern} (real: {true_pattern})")
@@ -145,8 +141,8 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         )
         print(f"Misclassification breakdown: {dict(misclassified_counts)}")
 
-        overall_correct += correct_classifications
-        overall_total += sequence_count_per_pattern
+        # overall_correct += correct_classifications
+        # overall_total += sequence_count_per_pattern
 
         # Update confusion matrix
         confusion_matrix[true_pattern.value][true_pattern.value] += correct_classifications
@@ -162,19 +158,28 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
     f1s = []
 
     print(f"\n=== Overall Evaluation ===")
+    overall_correct = 0
+    overall_total = 0
 
     for true_label, inner_dict in confusion_matrix.items():
         true_labels.append(true_label)
 
-        tp = confusion_matrix[true_label][true_label]
+        if not is_mass_scan and true_label in [Pattern.PER_CPU.value, Pattern.RANDOM.value]:
+            tp = confusion_matrix[true_label][Pattern.FALLBACK.value]
+            fp = sum(confusion_matrix[other][true_label] for other in confusion_matrix if other != Pattern.FALLBACK.value)
+        else:
+            tp = confusion_matrix[true_label][true_label]
+            fp = sum(confusion_matrix[other][true_label] for other in confusion_matrix if other != true_label)
+
         fn = sum(confusion_matrix[true_label].values()) - tp
-        fp = sum(confusion_matrix[other][true_label] for other in confusion_matrix if other != true_label)
         precision = tp / (tp + fp) if tp + fp else 0
         precisions.append(precision)
         recall = tp / (tp + fn) if tp + fn else 0
         recalls.append(recall)
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
         f1s.append(f1)
+        overall_correct += tp
+        overall_total += tp + fn + fp
         print(f"{true_label}: Precision={precision:.4f}, Recall={recall:.4f}, F1={f1:.4f}")
 
         for predicted_label, value in inner_dict.items():
@@ -200,18 +205,37 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
 
     # ACM CCR Stil
     plt.rcParams.update({
-        "font.family": "Times New Roman",
-        "font.size": 11,
-        "axes.titlesize": 12,
-        "axes.labelsize": 11,
+        "font.family": "serif",
+        "font.serif": ["Latin Modern Roman", "Times New Roman"],
+        "mathtext.fontset": "cm",
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
         "xtick.labelsize": 10,
         "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "pdf.fonttype": 42,
     })
 
-    cm_rel = cm / cm.sum(axis=1, keepdims=True) * 100
-    df = pd.DataFrame(cm_rel, index=true_labels, columns=predicted_labels)
+    # --- Mapping definieren ---
+    LABEL_MAP = {
+        "Fallback": "Unclassified",
+        "Per-CPU": "Multi",
+        "Mirror": "Reflection",
+    }
 
-    plt.figure(figsize=(4.8, 2.8))
+    def remap(label: str) -> str:
+        return LABEL_MAP.get(label, label)
+
+    cm_rel = cm / cm.sum(axis=1, keepdims=True) * 100
+    # df = pd.DataFrame(cm_rel, index=true_labels, columns=predicted_labels)
+    df = pd.DataFrame(
+        cm_rel,
+        index=[remap(l) for l in true_labels],
+        columns=[remap(l) for l in predicted_labels]
+    )
+
+    plt.figure(figsize=(4.5, 2.5))
     ax = sns.heatmap(
         df,
         annot=True,
@@ -222,9 +246,9 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         linecolor='white'
     )
 
-    ax.set_xlabel("Predicted Class", labelpad=4)
-    ax.set_ylabel("True Class", labelpad=4)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=25, ha="center")
+    ax.set_xlabel("Predicted IP-ID Selection Method", labelpad=4)
+    ax.set_ylabel("True IP-ID Selection Method", labelpad=4)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
     # Schwarzer Rand
     for _, spine in ax.spines.items():
@@ -297,12 +321,12 @@ class ClassifierTests(unittest.TestCase):
         #     np.array([0, 0, 0, 0, 19908, 44119, 6203, 14284, 19909, 44120, 6204, 14285, 19910, 44121, 6205, 14286]))
         # print(get_pattern(seq, is_mass_scan=False, get_all=False))
 
-        # sequence_length = 10
-        # sequence_count_per_pattern = 100_000
-        #
-        # self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
-        # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
-        # self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
+        sequence_length = 80
+        sequence_count_per_pattern = 1_000
+
+        self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
 
 
 # class ConfigTests(unittest.TestCase):

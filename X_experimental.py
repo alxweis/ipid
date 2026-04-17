@@ -26,7 +26,8 @@ from matplotlib.ticker import MultipleLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
-from core.classifier import pattern_generation_map, chi2_test, Pattern, IPIDSequence, get_pattern
+from core.classifier import pattern_generation_map, chi2_test, Pattern, IPIDSequence, get_pattern, fft_test, \
+    frequency_test, runs_test
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
     analyze_sequence_stable_lens_natural
@@ -276,7 +277,7 @@ def main():
             return
 
         sequence_length = int(sys.argv[2])
-        sequence_count_per_pattern = 10000
+        sequence_count_per_pattern = 10_000
 
         chi2_inc_result: dict[str, tuple[float, float]] = {}
 
@@ -294,10 +295,44 @@ def main():
             for _ in range(sequence_count_per_pattern):
                 seq = generator(sequence_length)
 
-                p_chi2_even_inc = chi2_test(seq.even.increments)
-                p_chi2_odd_inc = chi2_test(seq.odd.increments)
+                s = chi2_test(seq.s.increments)
+                a = chi2_test(seq.a.increments)
+                b = chi2_test(seq.b.increments)
+                ap = chi2_test(seq.ap.increments)
+                bp = chi2_test(seq.bp.increments)
+                cp = chi2_test(seq.cp.increments)
+                dp = chi2_test(seq.dp.increments)
 
-                update_range(chi2_inc_result, pattern.value, p_chi2_even_inc, p_chi2_odd_inc)
+                # s_fft = fft_test(seq.s.increments)
+                # a_fft = fft_test(seq.a.increments)
+                # b_fft = fft_test(seq.b.increments)
+                # ap_fft = fft_test(seq.ap.increments)
+                # bp_fft = fft_test(seq.bp.increments)
+                # cp_fft = fft_test(seq.cp.increments)
+                # dp_fft = fft_test(seq.dp.increments)
+                #
+                # s_frq = frequency_test(seq.s.increments)
+                # a_frq = frequency_test(seq.a.increments)
+                # b_frq = frequency_test(seq.b.increments)
+                # ap_frq = frequency_test(seq.ap.increments)
+                # bp_frq = frequency_test(seq.bp.increments)
+                # cp_frq = frequency_test(seq.cp.increments)
+                # dp_frq = frequency_test(seq.dp.increments)
+                #
+                # s_rns = runs_test(seq.s.increments)
+                # a_rns = runs_test(seq.a.increments)
+                # b_rns = runs_test(seq.b.increments)
+                # ap_rns = runs_test(seq.ap.increments)
+                # bp_rns = runs_test(seq.bp.increments)
+                # cp_rns = runs_test(seq.cp.increments)
+                # dp_rns = runs_test(seq.dp.increments)
+
+                # z = min(s, a, b, ap, bp, cp, dp,
+                #         s_fft, a_fft, b_fft, ap_fft, bp_fft, cp_fft, dp_fft,
+                #         s_frq, a_frq, b_frq, ap_frq, bp_frq, cp_frq, dp_frq,
+                #         s_rns, a_rns, b_rns, ap_rns, bp_rns, cp_rns, dp_rns)
+                z = min(s, a, b, ap, bp, cp, dp)
+                update_range(chi2_inc_result, pattern.value, z, z)
 
         def print_results(title: str, results: dict[str, tuple[float, float]]):
             print(f"{title}:")

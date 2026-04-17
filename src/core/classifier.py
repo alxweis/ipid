@@ -1,6 +1,7 @@
 import math
 import random
 from enum import Enum
+from math import erfc, sqrt, log
 
 import numpy as np
 from scipy.stats import chisquare
@@ -125,18 +126,18 @@ def get_clusters(values: np.ndarray, max_diff: int) -> list[dict[int, np.int32]]
     return final_clusters
 
 
-def p_value(values: np.ndarray, start_point: int, stop_point: int) -> float:
-    intervals = len(values) // 2
-    interval_edges = np.linspace(start_point, stop_point, intervals + 1)
-    observed_frequencies, _ = np.histogram(values, bins=interval_edges)
-    expected_frequencies = np.full(intervals, len(values) / intervals)
-
-    chi2_stat, p = chisquare(f_obs=observed_frequencies, f_exp=expected_frequencies)
-    return p
-
-
-def is_uniform(values: np.ndarray, start_point: int, stop_point: int, alpha: float) -> bool:
-    return p_value(values, start_point, stop_point) > alpha
+# def p_value(values: np.ndarray, start_point: int, stop_point: int) -> float:
+#     intervals = len(values) // 2
+#     interval_edges = np.linspace(start_point, stop_point, intervals + 1)
+#     observed_frequencies, _ = np.histogram(values, bins=interval_edges)
+#     expected_frequencies = np.full(intervals, len(values) / intervals)
+#
+#     chi2_stat, p = chisquare(f_obs=observed_frequencies, f_exp=expected_frequencies)
+#     return p
+#
+#
+# def is_uniform(values: np.ndarray, start_point: int, stop_point: int, alpha: float) -> bool:
+#     return p_value(values, start_point, stop_point) > alpha
 
 
 def is_reflection(seq: IPIDSequence) -> bool:
@@ -222,6 +223,95 @@ def chi2_test(seq: np.ndarray) -> float:
     hist, _ = np.histogram(seq, bins=bins, range=(0, MAX_IP_ID + 1))
     chi2, p_chi2 = chisquare(hist)
     return p_chi2
+
+
+def fft_test(diffs: np.ndarray) -> float:
+    # 1. Map to {-1, +1} (median split, robust gegen Bias)
+    median = np.median(diffs)
+    x = np.where(diffs > median, 1.0, -1.0)
+
+    n = len(x)
+
+    # 2. FFT
+    fft_vals = np.fft.fft(x)
+    mags = np.abs(fft_vals)[:n // 2]
+
+    # 3. Threshold (NIST)
+    T = sqrt(log(1 / 0.05) * n)
+
+    # 4. Expected vs observed peaks
+    N0 = 0.95 * n / 2
+    N1 = np.sum(mags < T)
+
+    # 5. Test statistic
+    d = (N1 - N0) / sqrt(n * 0.95 * 0.05 / 4)
+
+    # 6. p-value
+    p_value = erfc(abs(d) / sqrt(2))
+
+    return p_value
+
+
+def frequency_test(diffs: np.ndarray) -> float:
+    """
+    Monobit test (NIST).
+
+    Args:
+        diffs: np.ndarray of first differences
+
+    Returns:
+        p_value: float
+    """
+
+    # Mapping to {-1, +1}
+    median = np.median(diffs)
+    x = np.where(diffs > median, 1.0, -1.0)
+
+    n = len(x)
+
+    # Test statistic
+    s_obs = abs(np.sum(x)) / sqrt(n)
+
+    # p-value
+    p_value = erfc(s_obs / sqrt(2))
+
+    return p_value
+
+
+def runs_test(diffs: np.ndarray) -> float:
+    """
+    Runs test (NIST).
+
+    Args:
+        diffs: np.ndarray of first differences
+
+    Returns:
+        p_value: float
+    """
+
+    # Mapping to {0,1}
+    median = np.median(diffs)
+    x = np.where(diffs > median, 1, 0)
+
+    n = len(x)
+
+    # Proportion of ones
+    pi = np.mean(x)
+
+    # Voraussetzung prüfen (NIST)
+    if abs(pi - 0.5) >= (2 / sqrt(n)):
+        return 0.0  # fails automatically
+
+    # Anzahl Runs zählen
+    runs = 1 + np.sum(x[:-1] != x[1:])
+
+    # Erwartungswert und Varianz
+    numerator = abs(runs - 2 * n * pi * (1 - pi))
+    denominator = 2 * sqrt(2 * n) * pi * (1 - pi)
+
+    p_value = erfc(numerator / denominator)
+
+    return p_value
 
 
 def is_random(seq: IPIDSequence) -> bool:
@@ -316,26 +406,49 @@ def per_dst_ip_id_sequence(length: int) -> IPIDSequence:
     a = random_ip_id()
     b = random_ip_id()
     for i in range(length):
-        if i % 6 in [0, 1, 4]:
+        # if i % 6 in [0, 1, 4]:
+        #     a = increment_ip_id(a, 1)
+        #     seq.append(a)
+        # elif i % 6 in [2, 3, 5]:
+        #     b = increment_ip_id(b, 1)
+        #     seq.append(b)
+        if i % 8 in [0, 2, 4, 6]:
             a = increment_ip_id(a, 1)
             seq.append(a)
-        elif i % 6 in [2, 3, 5]:
+        elif i % 8 in [1, 3, 5, 7]:
             b = increment_ip_id(b, 1)
             seq.append(b)
     return IPIDSequence(seq)
 
 
 def per_con_ip_id_sequence(length: int) -> IPIDSequence:
-    seq = []
+    # seq = []
+    # a = random_ip_id()
+    # b = random_ip_id()
+    seq = [random_ip_id() for _ in range(4)]
     a = random_ip_id()
     b = random_ip_id()
+    c = random_ip_id()
+    d = random_ip_id()
     for i in range(length):
-        if i % 6 in [1, 4]:
+        # if i % 6 in [1, 4]:
+        #     a = increment_ip_id(a, 1)
+        #     seq.append(a)
+        # elif i % 6 in [2, 5]:
+        #     b = increment_ip_id(b, 1)
+        #     seq.append(b)
+        if i % 8 in [0, 4]:
             a = increment_ip_id(a, 1)
             seq.append(a)
-        elif i % 6 in [2, 5]:
+        elif i % 8 in [1, 5]:
             b = increment_ip_id(b, 1)
             seq.append(b)
+        elif i % 8 in [2, 6]:
+            c = increment_ip_id(c, 1)
+            seq.append(c)
+        elif i % 8 in [3, 7]:
+            d = increment_ip_id(d, 1)
+            seq.append(d)
         else:
             r = random_ip_id()
             seq.append(r)
@@ -346,13 +459,27 @@ def per_bucket_ip_id_sequence(length: int) -> IPIDSequence:
     seq = []
     a = random_ip_id()
     b = random_ip_id()
+    c = random_ip_id()
+    d = random_ip_id()
     for i in range(length):
-        if i % 6 in [1, 4]:
+        # if i % 6 in [1, 4]:
+        #     a = increment_ip_id(a, random.randint(1, LOCAL_GE1_MAX_INC))
+        #     seq.append(a)
+        # elif i % 6 in [2, 5]:
+        #     b = increment_ip_id(b, random.randint(1, LOCAL_GE1_MAX_INC))
+        #     seq.append(b)
+        if i % 8 in [0, 4]:
             a = increment_ip_id(a, random.randint(1, LOCAL_GE1_MAX_INC))
             seq.append(a)
-        elif i % 6 in [2, 5]:
+        elif i % 8 in [1, 5]:
             b = increment_ip_id(b, random.randint(1, LOCAL_GE1_MAX_INC))
             seq.append(b)
+        elif i % 8 in [2, 6]:
+            c = increment_ip_id(c, random.randint(1, LOCAL_GE1_MAX_INC))
+            seq.append(c)
+        elif i % 8 in [3, 7]:
+            d = increment_ip_id(d, random.randint(1, LOCAL_GE1_MAX_INC))
+            seq.append(d)
         else:
             r = random_ip_id()
             seq.append(r)
