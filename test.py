@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from core import TEST_RESULTS
 from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
 
-FORCE_CREATE_DATASET = True
+FORCE_CREATE_DATASET = False
 
 
 class Dataset(Enum):
@@ -235,7 +235,7 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         columns=[remap(l) for l in predicted_labels]
     )
 
-    plt.figure(figsize=(4.5, 2.5))
+    plt.figure(figsize=(4.7, 2.5))
     ax = sns.heatmap(
         df,
         annot=True,
