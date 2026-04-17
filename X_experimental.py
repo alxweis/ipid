@@ -1053,7 +1053,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
 
     # --- Rename Fallback in class labels ---
     ordered_labels = [
-        "<80 samples" if lbl == "Fallback" else lbl
+        "Unclassified" if lbl == "Fallback" else lbl
         for lbl in ordered_labels
     ]
 
@@ -1291,8 +1291,9 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
 
     # --- Rename classes ---
     pivot_table = pivot_table.rename(columns={
-        "Fallback": "<80 samples",
-        "Mirror": "Reflection"
+        "Fallback": "Unclassified",
+        "Mirror": "Reflection",
+        "Per-CPU": "Multi"
     })
 
     # Absolute Summen pro OS
@@ -1315,10 +1316,12 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     # Sortierung der Spalten
     pattern_order = []
     for p in Pattern:
-        if p.value == "Fallback" and "<80 samples" in pivot_table.columns:
-            pattern_order.append("<80 samples")
+        if p.value == "Fallback" and "Unclassified" in pivot_table.columns:
+            pattern_order.append("Unclassified")
         elif p.value == "Mirror" and "Reflection" in pivot_table.columns:
             pattern_order.append("Reflection")
+        elif p.value == "Per-CPU" and "Multi" in pivot_table.columns:
+            pattern_order.append("Multi")
         elif p.value in pivot_table.columns:
             pattern_order.append(p.value)
     pivot_table = pivot_table[pattern_order + ["Total"]]
@@ -1372,7 +1375,7 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     ax.set_yticklabels(os_labels, rotation=0)
 
     # Achsenbeschriftungen
-    plt.xlabel("IP-ID Class", labelpad=4)
+    plt.xlabel("IP-ID Selection Method", labelpad=4)
     plt.ylabel("OS Group (#IP Addr.)", labelpad=4)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
@@ -1523,7 +1526,7 @@ def plot_pattern():
         plt.text(c + 0.2, y, f"{c}", va="center", fontsize=9)
 
     plt.xlabel("Papers [#]")
-    plt.ylabel("IP-ID Class")
+    plt.ylabel("IP-ID Selection Method")
     plt.legend(frameon=False, ncol=3, loc="lower right", handlelength=1.2, handletextpad=0.3, columnspacing=0.8,
                borderaxespad=0.2)
 
@@ -1562,23 +1565,31 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
     for d in (data1, data2, data3):
         if "Fallback" in d:
             if d is data2:
-                d["<80 samples"] = d.pop("Fallback")
+                d["Unclassified"] = d.pop("Fallback")
             else:
                 d["Unclassified"] = d.pop("Fallback")
 
         if "Mirror" in d:
             d["Reflection"] = d.pop("Mirror")
 
+        if "Per-CPU" in d:
+            d["Multi"] = d.pop("Per-CPU")
+
     # --- Sort classes nach Pattern Enum ---
     pattern_values = [p.value for p in Pattern]
 
     def sort_key(c):
-        if c == "<80 samples":
+        if c == "Unclassified":
             return 1001
         if c == "Unclassified":
             return 1000
 
-        base = "Mirror" if c == "Reflection" else c
+        if c == "Reflection":
+            base = "Mirror"
+        elif c == "Multi":
+            base = "Per-CPU"
+        else:
+            base = c
         return pattern_values.index(base) if base in pattern_values else 999
 
     all_classes = sorted(
@@ -1598,10 +1609,10 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
         "Per-Con": "#FF85C1",
         "Per-Dst": "#B580FF",
         "Per-Bucket": "#6EE66E",
-        "Per-CPU": "#66E0E0",
+        "Multi": "#66E0E0",
         "Random": "#FFB266",
         "Unclassified": "#CCCCCC",
-        "<80 samples": "#808080",
+        # "Unclassified": "#808080",
     }
 
     # --- ACM Plot style ---
@@ -1677,7 +1688,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
     # --- Achsen ---
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.5, 2.5)
-    ax.set_xlabel("IP-ID Class Distribution [%]", labelpad=2)
+    ax.set_xlabel("IP-ID Selection Method [%]", labelpad=2)
 
     # --- MINORTICKS aktivieren ---
     ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
@@ -1691,7 +1702,7 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
     # --- Legende ---
-    legend_labels = ["Multi" if c == "Per-CPU" else c for c in all_classes]
+    legend_labels = all_classes
     ax.legend(
         [b[0] for b in bars],
         legend_labels,
@@ -1730,19 +1741,30 @@ def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, ms
     # --- Rename Fallback in measurements ---
     for d in (data1, data2, data3):
         if "Fallback" in d:
-            d["<80 samples"] = d.pop("Fallback")
+            d["Unclassified"] = d.pop("Fallback")
 
         if "Mirror" in d:
             d["Reflection"] = d.pop("Mirror")
 
+        if "Per-CPU" in d:
+            d["Multi"] = d.pop("Per-CPU")
+
     # --- Sort classes nach Pattern Enum ---
     pattern_values = [p.value for p in Pattern]
 
+    alias_map = {
+        "Mirror": "Reflection",
+        "Per-CPU": "Multi"
+    }
+
+    def normalize(c):
+        return alias_map.get(c, c)
+
+    pattern_index = {v: i for i, v in enumerate(pattern_values)}
+
     all_classes = sorted(
         set(data1.keys()).union(data2.keys()).union(data3.keys()),
-        key=lambda c: pattern_values.index(
-            "Mirror" if c == "Reflection" else c
-        ) if ("Mirror" if c == "Reflection" else c) in pattern_values else 999
+        key=lambda c: pattern_index.get(normalize(c), 999)
     )
 
     values1 = [float(data1.get(c, 0.0)) for c in all_classes]
@@ -1757,10 +1779,10 @@ def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, ms
         "Per-Con": "#FF85C1",
         "Per-Dst": "#B580FF",
         "Per-Bucket": "#6EE66E",
-        "Per-CPU": "#66E0E0",
+        "Multi": "#66E0E0",
         "Random": "#FFB266",
         "Unclassified": "#CCCCCC",
-        "<80 samples": "#808080",
+        # "Unclassified": "#808080",
     }
 
     # --- ACM Plot style ---
@@ -1836,7 +1858,7 @@ def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, ms
     # --- Achsen ---
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.5, 2.5)
-    ax.set_xlabel("IP-ID Class Distribution [%]", labelpad=2)
+    ax.set_xlabel("IP-ID Selection Method [%]", labelpad=2)
 
     # --- MINORTICKS aktivieren ---
     ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
@@ -1850,7 +1872,7 @@ def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, ms
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
     # --- Legende ---
-    legend_labels = ["Multi" if c == "Per-CPU" else c for c in all_classes]
+    legend_labels = all_classes
     ax.legend(
         [b[0] for b in bars],
         legend_labels,
@@ -1889,23 +1911,33 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
     if "Fallback" in data1:
         data1["Unclassified"] = data1.pop("Fallback")
     if "Fallback" in data2:
-        data2["<80 samples"] = data2.pop("Fallback")
+        data2["Unclassified"] = data2.pop("Fallback")
 
     if "Mirror" in data1:
         data1["Reflection"] = data1.pop("Mirror")
     if "Mirror" in data2:
         data2["Reflection"] = data2.pop("Mirror")
 
+    if "Per-CPU" in data1:
+        data1["Multi"] = data1.pop("Per-CPU")
+    if "Per-CPU" in data2:
+        data2["Multi"] = data2.pop("Per-CPU")
+
     # --- Sort classes nach Pattern Enum ---
     pattern_index = {p.value: i for i, p in enumerate(Pattern)}
 
     def sort_key(c):
-        if c == "<80 samples":
+        if c == "Unclassified":
             return 1001
         if c == "Unclassified":
             return 1000
 
-        base = "Mirror" if c == "Reflection" else c
+        if c == "Reflection":
+            base = "Mirror"
+        elif c == "Multi":
+            base = "Per-CPU"
+        else:
+            base = c
         return pattern_index.get(base, 999)
 
     all_classes = sorted(
@@ -1924,10 +1956,10 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
         "Per-Con": "#FF85C1",
         "Per-Dst": "#B580FF",
         "Per-Bucket": "#6EE66E",
-        "Per-CPU": "#66E0E0",
+        "Multi": "#66E0E0",
         "Random": "#FFB266",
         "Unclassified": "#CCCCCC",
-        "<80 samples": "#808080",
+        # "Unclassified": "#808080",
     }
 
     # --- ACM Plot style ---
@@ -2000,7 +2032,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
     # --- Achsen ---
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.5, 1.5)
-    ax.set_xlabel("IP-ID Class Distribution [%]", labelpad=2)
+    ax.set_xlabel("IP-ID Selection Method [%]", labelpad=2)
 
     # --- MINORTICKS aktivieren ---
     ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
@@ -2014,7 +2046,7 @@ def plot_pattern_distribution_acm_style_old(msm_path_1: str, msm_path_2: str, na
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
     # --- Legende ---
-    legend_labels = ["Multi" if c == "Per-CPU" else c for c in all_classes]
+    legend_labels = all_classes
     ax.legend(
         [b[0] for b in bars],
         legend_labels,
@@ -2290,16 +2322,32 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     # --- Rename classes ---
     for d in (transit_data, endhost_data):
         if "Fallback" in d:
-            d["<80 samples"] = d.pop("Fallback")
+            d["Unclassified"] = d.pop("Fallback")
         if "Mirror" in d:
             d["Reflection"] = d.pop("Mirror")
+        if "Per-CPU" in d:
+            d["Multi"] = d.pop("Per-CPU")
 
-    # --- Sort classes ---
+    # --- Sort classes nach Pattern Enum ---
+    pattern_index = {p.value: i for i, p in enumerate(Pattern)}
+
+    def sort_key(c):
+        if c == "Unclassified":
+            return 1001
+        if c == "Unclassified":
+            return 1000
+
+        if c == "Reflection":
+            base = "Mirror"
+        elif c == "Multi":
+            base = "Per-CPU"
+        else:
+            base = c
+        return pattern_index.get(base, 999)
+
     all_classes = sorted(
         set(transit_data.keys()).union(endhost_data.keys()),
-        key=lambda c: [p.value for p in Pattern].index(
-            "Mirror" if c == "Reflection" else c
-        ) if ("Mirror" if c == "Reflection" else c) in [p.value for p in Pattern] else 999
+        key=sort_key
     )
 
     transit_values = [float(transit_data.get(c, 0.0)) for c in all_classes]
@@ -2313,10 +2361,10 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
         "Per-Con": "#FF85C1",
         "Per-Dst": "#B580FF",
         "Per-Bucket": "#6EE66E",
-        "Per-CPU": "#66E0E0",
+        "Multi": "#66E0E0",
         "Random": "#FFB266",
         "Fallback": "#A0A0A0",
-        "<80 samples": "#808080",
+        "Unclassified": "#CCCCCC",  # #808080
     }
 
     # --- ACM Style ---
@@ -2371,7 +2419,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     # --- Achsen ---
     ax.set_xlim(0, 100)
     ax.set_ylim(-0.5, 1.5)
-    ax.set_xlabel("IP-ID Class Distribution [%]")
+    ax.set_xlabel("IP-ID Selection Method [%]")
     # ax.set_ylabel("Device Type", labelpad=10)
     ax.set_ylabel("Device Type")
 
@@ -2391,7 +2439,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
     # --- Legende ---
-    legend_labels = ["Multi" if c == "Per-CPU" else c for c in all_classes]
+    legend_labels = all_classes
     ax.legend(
         [b[0] for b in bars],
         legend_labels,
