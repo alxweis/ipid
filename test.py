@@ -134,12 +134,12 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
             #         f"{seq.full.sequence} should be {true_pattern.value} but is {predicted_pattern.value}")
 
         incorrect_classifications = sequence_count_per_pattern - correct_classifications
-        print(
-            f"{true_pattern.value}: total={sequence_count_per_pattern} "
-            f"correct={correct_classifications} incorrect={incorrect_classifications} "
-            f"recall={correct_classifications / sequence_count_per_pattern:.4f}"
-        )
-        print(f"Misclassification breakdown: {dict(misclassified_counts)}")
+        # print(
+        #     f"{true_pattern.value}: total={sequence_count_per_pattern} "
+        #     f"correct={correct_classifications} incorrect={incorrect_classifications} "
+        #     f"recall={correct_classifications / sequence_count_per_pattern:.4f}"
+        # )
+        # print(f"Misclassification breakdown: {dict(misclassified_counts)}")
 
         # overall_correct += correct_classifications
         # overall_total += sequence_count_per_pattern
@@ -180,7 +180,7 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         f1s.append(f1)
         overall_correct += tp
         overall_total += tp + fn + fp
-        print(f"{true_label}: Precision={precision:.4f}, Recall={recall:.4f}, F1={f1:.4f}")
+        # print(f"{true_label}: Precision={precision:.4f}, Recall={recall:.4f}, F1={f1:.4f}")
 
         for predicted_label, value in inner_dict.items():
             predicted_labels.append(predicted_label)
@@ -321,11 +321,11 @@ class ClassifierTests(unittest.TestCase):
         #     np.array([0, 0, 0, 0, 19908, 44119, 6203, 14284, 19909, 44120, 6204, 14285, 19910, 44121, 6205, 14286]))
         # print(get_pattern(seq, is_mass_scan=False, get_all=False))
 
-        sequence_length = 10
+        sequence_length = 80
         sequence_count_per_pattern = 100_000
 
-        # self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
-        # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.IDEAL, sequence_length, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.LOSSY, sequence_length, sequence_count_per_pattern))
         self.assertTrue(create_confusion_matrix(Dataset.REORDER, sequence_length, sequence_count_per_pattern))
 
 
