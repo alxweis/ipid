@@ -279,7 +279,7 @@ def main():
             return
 
         sequence_length = int(sys.argv[2])
-        sequence_count_per_pattern = 10_000
+        sequence_count_per_pattern = 100_000
 
         chi2_inc_result: dict[str, tuple[float, float]] = {}
 
@@ -302,38 +302,29 @@ def main():
                 b = chi2_test(seq.b.increments)
                 ap = chi2_test(seq.ap.increments)
                 bp = chi2_test(seq.bp.increments)
-                cp = chi2_test(seq.cp.increments)
-                dp = chi2_test(seq.dp.increments)
 
                 # s_fft = fft_test(seq.s.increments)
                 # a_fft = fft_test(seq.a.increments)
                 # b_fft = fft_test(seq.b.increments)
                 # ap_fft = fft_test(seq.ap.increments)
                 # bp_fft = fft_test(seq.bp.increments)
-                # cp_fft = fft_test(seq.cp.increments)
-                # dp_fft = fft_test(seq.dp.increments)
                 #
                 # s_frq = frequency_test(seq.s.increments)
                 # a_frq = frequency_test(seq.a.increments)
                 # b_frq = frequency_test(seq.b.increments)
                 # ap_frq = frequency_test(seq.ap.increments)
                 # bp_frq = frequency_test(seq.bp.increments)
-                # cp_frq = frequency_test(seq.cp.increments)
-                # dp_frq = frequency_test(seq.dp.increments)
                 #
                 # s_rns = runs_test(seq.s.increments)
                 # a_rns = runs_test(seq.a.increments)
                 # b_rns = runs_test(seq.b.increments)
                 # ap_rns = runs_test(seq.ap.increments)
                 # bp_rns = runs_test(seq.bp.increments)
-                # cp_rns = runs_test(seq.cp.increments)
-                # dp_rns = runs_test(seq.dp.increments)
 
-                # z = min(s, a, b, ap, bp, cp, dp,
-                #         s_fft, a_fft, b_fft, ap_fft, bp_fft, cp_fft, dp_fft,
-                #         s_frq, a_frq, b_frq, ap_frq, bp_frq, cp_frq, dp_frq,
-                #         s_rns, a_rns, b_rns, ap_rns, bp_rns, cp_rns, dp_rns)
-                z = min(s, a, b, ap, bp, cp, dp)
+                z = min(s, a, b, ap, bp)
+                # z = min(s_fft, a_fft, b_fft, ap_fft, bp_fft,
+                #         s_frq, a_frq, b_frq, ap_frq, bp_frq,
+                #         s_rns, a_rns, b_rns, ap_rns, bp_rns)
                 update_range(chi2_inc_result, pattern.value, z, z)
 
         def print_results(title: str, results: dict[str, tuple[float, float]]):
