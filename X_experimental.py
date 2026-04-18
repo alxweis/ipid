@@ -208,8 +208,10 @@ def main():
 
         con = duckdb.connect()
 
-        tmp_ifaces = tempfile.mktemp(suffix=".csv")
-        tmp_nodes = tempfile.mktemp(suffix=".csv")
+        tmp_dir = caida_itdk_path
+
+        tmp_ifaces = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", dir=tmp_dir).name
+        tmp_nodes = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", dir=tmp_dir).name
 
         print("parsing .ifaces -> temp csv...")
         parse_ifaces_to_csv(tmp_ifaces)
