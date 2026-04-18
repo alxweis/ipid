@@ -179,7 +179,7 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0
         f1s.append(f1)
         overall_correct += tp
-        overall_total += tp + fn + fp
+        overall_total += tp + fn
         # print(f"{true_label}: Precision={precision:.4f}, Recall={recall:.4f}, F1={f1:.4f}")
 
         for predicted_label, value in inner_dict.items():
