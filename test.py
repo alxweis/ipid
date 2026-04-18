@@ -134,12 +134,12 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
             #         f"{seq.full.sequence} should be {true_pattern.value} but is {predicted_pattern.value}")
 
         incorrect_classifications = sequence_count_per_pattern - correct_classifications
-        # print(
-        #     f"{true_pattern.value}: total={sequence_count_per_pattern} "
-        #     f"correct={correct_classifications} incorrect={incorrect_classifications} "
-        #     f"recall={correct_classifications / sequence_count_per_pattern:.4f}"
-        # )
-        # print(f"Misclassification breakdown: {dict(misclassified_counts)}")
+        print(
+            f"{true_pattern.value}: total={sequence_count_per_pattern} "
+            f"correct={correct_classifications} incorrect={incorrect_classifications} "
+            f"recall={correct_classifications / sequence_count_per_pattern:.4f}"
+        )
+        print(f"Misclassification breakdown: {dict(misclassified_counts)}")
 
         # overall_correct += correct_classifications
         # overall_total += sequence_count_per_pattern
