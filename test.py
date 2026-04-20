@@ -311,7 +311,7 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
     ax.set_ylabel("True IP-ID Selection Strategy", labelpad=4)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
-    plt.savefig(out_path, dpi=300)
+    plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.02)
     plt.close(fig)
 
 
