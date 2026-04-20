@@ -2437,7 +2437,7 @@ def plot_transit_endhost_distribution_acm_style(
     ax.set_xlim(0, 100)
     ax.set_ylim(0, total_height)
 
-    ax.set_xlabel("IP-ID Selection Method [%]")
+    ax.set_xlabel("IP-ID Selection Strategy [%]")
     # y-Label horizontal, damit es die Achsenhöhe nicht aufdehnt
     ax.set_ylabel("Device Type", rotation=90, labelpad=6)
 
@@ -2459,7 +2459,6 @@ def plot_transit_endhost_distribution_acm_style(
         handlelength=1.0,
         handletextpad=0.2,
         columnspacing=0.8,
-        # borderaxespad=0.2,
     )
 
     # KEIN tight_layout -> sonst wird die Achsenhöhe wieder verändert
