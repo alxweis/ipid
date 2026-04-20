@@ -2373,7 +2373,7 @@ def plot_transit_endhost_distribution_acm_style(
 
     # --- Figure: feste Breite, Höhe direkt = total_height in Zoll ---
     # Damit entsprechen bar_height/bar_gap/y_padding exakt Zoll in der Figure
-    fig_width = 5.5
+    fig_width = 5.0
     fig, ax = plt.subplots(figsize=(fig_width, total_height))
 
     bars = []
