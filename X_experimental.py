@@ -2416,7 +2416,7 @@ def plot_transit_endhost_distribution_acm_style(
             bar = ax.barh(
                 y, val,
                 left=left,
-                height=0.01,
+                height=0.1,
                 edgecolor="none",
                 color=color
             )
