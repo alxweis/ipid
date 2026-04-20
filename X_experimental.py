@@ -800,7 +800,7 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
 
     step = 20
 
-    start_exp = ((min_exp // step) * step) - step
+    start_exp = (min_exp // step) * step
 
     exponents = np.arange(start_exp, max_exp + 1, step)
 
