@@ -100,18 +100,19 @@ def create_reorder_dataset(sequence_length: int, sequence_count_per_pattern: int
         pickle.dump(data, f)
 
 
-def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_count_per_pattern: int) -> bool:
-    dataset_fp = os.path.join(
-        TEST_RESULTS,
-        f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}.pkl"
-    )
+def create_confusion_matrix(
+        dataset: Dataset,
+        sequence_length: int,
+        sequence_count_per_pattern: int,
+) -> bool:
+    # --- Pfade ---
+    base_name = f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}"
+    dataset_fp = os.path.join(TEST_RESULTS, f"{base_name}.pkl")
+    info_fp = os.path.join(TEST_RESULTS, f"{base_name}_info.txt")
+    heatmap_fp = os.path.join(TEST_RESULTS, f"{base_name}_heatmap.pkl")
+    plot_fp = os.path.join(TEST_RESULTS, f"{base_name}_acm.pdf")
 
-    info_fp = os.path.join(
-        TEST_RESULTS,
-        f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}_info.txt"
-    )
-
-    # Datei leeren
+    # info.txt leeren
     open(info_fp, "w").close()
 
     def log(msg: str = ""):
@@ -119,6 +120,36 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         with open(info_fp, "a") as f:
             f.write(msg + "\n")
 
+    # --- Klassen-Mapping (Reihenfolge = Achsen-Reihenfolge der Heatmap) ---
+    # raw_name -> display_name
+    display_map = {
+        "Mirror": "Reflection",
+        "Constant": "Constant",
+        "Single": "Single",
+        "Per-Con": "Per-Connection",
+        "Per-Dst": "Per-Destination",
+        "Per-Bucket": "Per-Bucket",
+        "Per-CPU": "Multi",
+        "Random": "Random",
+        "Fallback": "Unclassified",
+    }
+    order_index = {k: i for i, k in enumerate(display_map)}
+
+    # --- Cache: wenn Heatmap-Daten existieren und nicht FORCE -> direkt plotten ---
+    if os.path.exists(heatmap_fp) and not FORCE_CREATE_DATASET:
+        log(f"Loading cached heatmap data from {heatmap_fp}")
+        with open(heatmap_fp, "rb") as f:
+            cache = pickle.load(f)
+        df_rel = cache["df_rel"]
+        metrics = cache["metrics"]
+        log(f"Accuracy:        {metrics['accuracy']:.4%}")
+        log(f"Macro Precision: {metrics['macro_precision']:.4%}")
+        log(f"Macro Recall:    {metrics['macro_recall']:.4%}")
+        log(f"Macro F1:        {metrics['macro_f1']:.4%}")
+        _plot_confusion_matrix(df_rel, plot_fp)
+        return True
+
+    # --- Dataset laden (ggf. erzeugen) ---
     if not os.path.exists(dataset_fp) or FORCE_CREATE_DATASET:
         log("Creating dataset...")
         create_dataset(dataset, sequence_length, sequence_count_per_pattern)
@@ -128,50 +159,41 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
 
     log(f"### {dataset.value.upper()} DATASET ###\n")
 
+    # --- Confusion-Matrix aufbauen ---
     is_mass_scan = sequence_length >= 80
     confusion_matrix = defaultdict(lambda: defaultdict(int))
 
     for true_pattern, ip_id_sequences in data.items():
-        correct_classifications = 0
-        sequence_count_per_pattern = len(ip_id_sequences)
-        misclassified_counts = defaultdict(int)
+        correct = 0
+        total = len(ip_id_sequences)
+        misclassified = defaultdict(int)
 
         for seq in ip_id_sequences:
             predicted_pattern = get_pattern(seq, is_mass_scan)
-
             if true_pattern.value == predicted_pattern.value:
-                correct_classifications += 1
+                correct += 1
             else:
-                misclassified_counts[predicted_pattern.value] += 1
-
-        incorrect_classifications = sequence_count_per_pattern - correct_classifications
+                misclassified[predicted_pattern.value] += 1
 
         log(
-            f"{true_pattern.value}: total={sequence_count_per_pattern} "
-            f"correct={correct_classifications} incorrect={incorrect_classifications} "
-            f"recall={correct_classifications / sequence_count_per_pattern:.4f}"
+            f"{true_pattern.value}: total={total} "
+            f"correct={correct} incorrect={total - correct} "
+            f"recall={correct / total:.4f}"
         )
-        log(f"Misclassification breakdown: {dict(misclassified_counts)}")
+        log(f"Misclassification breakdown: {dict(misclassified)}")
 
-        confusion_matrix[true_pattern.value][true_pattern.value] += correct_classifications
-        for predicted, count in misclassified_counts.items():
+        confusion_matrix[true_pattern.value][true_pattern.value] += correct
+        for predicted, count in misclassified.items():
             confusion_matrix[true_pattern.value][predicted] += count
 
-    true_labels = []
-    predicted_labels = []
+    # --- Metriken berechnen ---
+    precisions, recalls, f1s = [], [], []
+    overall_correct = overall_total = 0
 
-    precisions = []
-    recalls = []
-    f1s = []
-
-    log(f"\n=== Overall Evaluation ===")
-    overall_correct = 0
-    overall_total = 0
-
+    log("\n=== Overall Evaluation ===")
     for true_label, inner_dict in confusion_matrix.items():
-        true_labels.append(true_label)
-
-        if not is_mass_scan and true_label in [Pattern.PER_CPU.value, Pattern.RANDOM.value]:
+        # Spezialfall: Per-CPU und Random bei non-mass-scan -> als Fallback gezählt
+        if not is_mass_scan and true_label in (Pattern.PER_CPU.value, Pattern.RANDOM.value):
             tp = confusion_matrix[true_label][Pattern.FALLBACK.value]
             fp = sum(
                 confusion_matrix[other][true_label]
@@ -185,7 +207,6 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
                 for other in confusion_matrix
                 if other != true_label
             )
-
         fn = sum(confusion_matrix[true_label].values()) - tp
 
         precision = tp / (tp + fp) if tp + fp else 0
@@ -199,30 +220,55 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         overall_correct += tp
         overall_total += tp + fn
 
-        for predicted_label in inner_dict:
-            predicted_labels.append(predicted_label)
-
-    log()
-
     accuracy = overall_correct / overall_total
-    log(f"Accuracy: {accuracy:.4%}")
-
     macro_precision = sum(precisions) / len(precisions)
-    log(f"Macro Precision: {macro_precision:.4%}")
-
     macro_recall = sum(recalls) / len(recalls)
-    log(f"Macro Recall: {macro_recall:.4%}")
-
     macro_f1 = sum(f1s) / len(f1s)
-    log(f"Macro F1: {macro_f1:.4%}")
 
     log()
+    log(f"Accuracy:        {accuracy:.4%}")
+    log(f"Macro Precision: {macro_precision:.4%}")
+    log(f"Macro Recall:    {macro_recall:.4%}")
+    log(f"Macro F1:        {macro_f1:.4%}")
+    log()
 
-    true_labels = sorted(set(true_labels), key=lambda x: list(Pattern).index(Pattern(x)))
-    predicted_labels = sorted(set(predicted_labels), key=lambda x: list(Pattern).index(Pattern(x)))
+    # --- DataFrame mit relativen Werten aufbauen ---
+    true_labels = sorted(confusion_matrix.keys(), key=lambda c: order_index.get(c, 999))
+    predicted_labels = sorted(
+        {p for inner in confusion_matrix.values() for p in inner},
+        key=lambda c: order_index.get(c, 999),
+    )
 
-    cm = np.array([[confusion_matrix[t][p] for p in predicted_labels] for t in true_labels])
+    cm = np.array([
+        [confusion_matrix[t][p] for p in predicted_labels]
+        for t in true_labels
+    ], dtype=float)
+    cm_rel = cm / cm.sum(axis=1, keepdims=True) * 100
 
+    df_rel = pd.DataFrame(
+        cm_rel,
+        index=[display_map.get(l, l) for l in true_labels],
+        columns=[display_map.get(l, l) for l in predicted_labels],
+    )
+
+    # --- Heatmap-Daten cachen ---
+    metrics = {
+        "accuracy": accuracy,
+        "macro_precision": macro_precision,
+        "macro_recall": macro_recall,
+        "macro_f1": macro_f1,
+    }
+    with open(heatmap_fp, "wb") as f:
+        pickle.dump({"df_rel": df_rel, "metrics": metrics}, f)
+    log(f"Heatmap data saved to {heatmap_fp}")
+
+    # --- Plot ---
+    _plot_confusion_matrix(df_rel, plot_fp)
+    return True
+
+
+def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
+    """Zeichnet die Confusion-Matrix als ACM-Style Heatmap."""
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Latin Modern Roman", "Times New Roman"],
@@ -236,54 +282,40 @@ def create_confusion_matrix(dataset: Dataset, sequence_length: int, sequence_cou
         "pdf.fonttype": 42,
     })
 
-    LABEL_MAP = {
-        "Fallback": "Unclassified",
-        "Per-CPU": "Multi",
-        "Mirror": "Reflection",
-    }
+    # Annotation-Matrix: "-" für 0, sonst "X.X"
+    annot_matrix = df_rel.map(lambda v: "-" if v < 0.05 else f"{v:.1f}")
 
-    def remap(label: str) -> str:
-        return LABEL_MAP.get(label, label)
-
-    cm_rel = cm / cm.sum(axis=1, keepdims=True) * 100
-
-    df = pd.DataFrame(
-        cm_rel,
-        index=[remap(l) for l in true_labels],
-        columns=[remap(l) for l in predicted_labels]
-    )
-
-    plt.figure(figsize=(4.75, 2.5))
-    ax = sns.heatmap(
-        df,
-        annot=True,
-        fmt=".1f",
+    fig, ax = plt.subplots(figsize=(4.75, 2.5))
+    sns.heatmap(
+        df_rel,
+        ax=ax,
+        annot=annot_matrix,
+        fmt="",
         cmap="Blues",
-        cbar_kws={'label': 'Percentage [%]'},
+        vmin=0, vmax=100,
         linewidths=0.4,
-        linecolor='white'
+        linecolor="white",
+        cbar_kws={"label": "Percentage [%]"},
     )
+
+    # Ränder der Heatmap + Colorbar auf 0.5 linewidth/schwarz angleichen
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(0.5)
+        spine.set_color("black")
+
+    cbar = ax.collections[0].colorbar
+    cbar.outline.set_linewidth(0.5)
+    cbar.outline.set_edgecolor("black")
+    cbar.ax.tick_params(width=0.5)
 
     ax.set_xlabel("Predicted IP-ID Selection Method", labelpad=4)
     ax.set_ylabel("True IP-ID Selection Method", labelpad=4)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
-    for _, spine in ax.spines.items():
-        spine.set_visible(True)
-        spine.set_linewidth(0.5)
-        spine.set_color("black")
-
     plt.tight_layout(pad=0.4)
-    plt.savefig(
-        os.path.join(
-            TEST_RESULTS,
-            f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}_acm.pdf"
-        ),
-        bbox_inches="tight",
-        dpi=300
-    )
-
-    return True
+    plt.savefig(out_path, bbox_inches="tight", dpi=300)
+    plt.close(fig)
 
 
 class ClassifierTests(unittest.TestCase):
@@ -342,7 +374,7 @@ class ClassifierTests(unittest.TestCase):
         #     np.array([0, 0, 0, 0, 19908, 44119, 6203, 14284, 19909, 44120, 6204, 14285, 19910, 44121, 6205, 14286]))
         # print(get_pattern(seq, is_mass_scan=False, get_all=False))
 
-        sequence_count_per_pattern = 100_000
+        sequence_count_per_pattern = 1_000
 
         self.assertTrue(create_confusion_matrix(Dataset.IDEAL, 16, sequence_count_per_pattern))
         # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, 16, sequence_count_per_pattern))
