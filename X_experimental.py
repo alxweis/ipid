@@ -955,8 +955,8 @@ def plot_caida_os_distribution_acm_style(
         caida_itdk_path: str,
         msm_path: str,
         show_dst_only: bool = False,
-        bar_height: float = 0.3,
-        bar_gap: float = 0.1,
+        bar_height: float = 0.2,
+        bar_gap: float = 0.2,
         y_padding: float = 0.1,
 ):
     # --- Pfade ---
@@ -2408,8 +2408,8 @@ def plot_transit_endhost_distribution_acm_style(
         msm_path: str,
         name: str,
         show_dst_only: bool = False,
-        bar_height: float = 0.3,
-        bar_gap: float = 0.1,
+        bar_height: float = 0.2,
+        bar_gap: float = 0.2,
         y_padding: float = 0.1,
 ):
     # --- Load data ---
