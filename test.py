@@ -308,7 +308,7 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
     cbar.ax.tick_params(width=0.5)
 
     ax.set_xlabel("Predicted IP-ID Selection Strategy", labelpad=4)
-    ax.set_ylabel("True IP-ID Selection Strategy", labelpad=4, y=0.5)
+    ax.set_ylabel("True IP-ID Selection Strategy", labelpad=4, y=0.25)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
     plt.tight_layout(pad=0.4)
