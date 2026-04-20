@@ -2437,7 +2437,7 @@ def plot_transit_endhost_distribution_acm_style(
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(-0.1, 0.1)
+    # ax.set_ylim(-0.1, 0.1)
 
     ax.set_xlabel("IP-ID Selection Method [%]")
     ax.set_ylabel("Device Type")
