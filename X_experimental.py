@@ -2390,7 +2390,7 @@ def plot_transit_endhost_distribution_acm_style(
 
     # --- Dynamische Höhe ---
     n_bars = 1 + int(show_dst_only)
-    fig_height = n_bars * 0.5
+    fig_height = n_bars
 
     fig, ax = plt.subplots(figsize=(5.5, fig_height))
 
