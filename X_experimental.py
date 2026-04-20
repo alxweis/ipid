@@ -817,6 +817,16 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
 
     ax.set_xlim(left=ticks[0], right=1.0)
     # ax.set_xlim(left=1e-5, right=1.0)
+
+    # Y Major-Ticks (z.B. alle 20%)
+    y_major = np.arange(0, 101, 20)
+    ax.set_yticks(y_major)
+
+    # Y Minor-Ticks: genau dazwischen
+    y_minor = y_major[:-1] + 10
+    ax.set_yticks(y_minor, minor=True)
+    ax.yaxis.set_minor_formatter(NullFormatter())
+
     ax.set_ylim(0, 100)
 
     ax.set_xlabel(r"Minimum Chi$^2$ p-value over subsequences", labelpad=2)
