@@ -793,7 +793,8 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
 
     # --- Achsen ---
     ax.set_xscale("log")
-    ax.set_xlim(left=floor, right=1.0)
+    # ax.set_xlim(left=floor, right=1.0)
+    ax.set_xlim(left=1e-12, right=1.0)
     ax.set_ylim(0, 100)
 
     ax.set_xlabel(r"Chi$^2$ p-value", labelpad=2)
@@ -808,7 +809,7 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
     # --- Legende über dem Plot ---
     ax.legend(
         loc="lower center",
-        bbox_to_anchor=(0.42, 1.0),
+        bbox_to_anchor=(0.5, 1.02),
         bbox_transform=ax.transAxes,
         ncol=5,
         frameon=False,
