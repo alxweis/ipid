@@ -577,8 +577,8 @@ def main():
         plot_os_heatmap_combined(
             msm_path,
             idents=[
-                ("general_purpose_os_devices", "General-Purpose OS\n(#IP Addr.)"),
-                ("network_os_devices", "Network OS\n(#IP Addr.)"),
+                ("general_purpose_os_devices", "General-Purpose OS"),
+                ("network_os_devices", "Network OS"),
             ],
             name="os_heatmap_combined",
         )
@@ -1415,11 +1415,12 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     totals = []
     for ident, _ in idents:
         analysis_dir = os.path.join(msm_path, "analysis", "os_heatmap", ident)
-        rel = pd.read_pickle(os.path.join(analysis_dir, "data.pkl"))
+        pkl_path = os.path.join(analysis_dir, "data.pkl")
+        info_path = os.path.join(analysis_dir, "info.txt")
+
+        rel = pd.read_pickle(pkl_path)
         tables.append(rel)
-        totals.append(_parse_totals_from_info(
-            os.path.join(analysis_dir, "info.txt"), rel.index
-        ))
+        totals.append(_parse_totals_from_info(info_path, rel.index))
 
     # --- Plot-Style ---
     plt.rcParams.update({
@@ -1435,19 +1436,11 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
         "pdf.fonttype": 42,
     })
 
-    # --- Figure: n Subplots untereinander ---
+    # --- Figure ---
     n_subplots = len(tables)
     row_counts = [len(t.index) for t in tables]
     cell_h = 0.15
-    fig_height = sum(row_counts) * cell_h + 1.5
-
-    # Feste Margins (damit subplots_adjust vorhersehbar wirkt).
-    # left:   Platz für gemeinsames y-Label + y-Tick-Labels
-    # right:  Platz für Colorbar
-    # top:    Platz für subplot-Titel
-    # bottom: Platz für x-Tick-Labels + x-Achsenlabel
-    left, right, top, bottom = 0.28, 0.88, 0.94, 0.22
-    hspace = 0.18
+    fig_height = sum(row_counts) * cell_h + 1.8  # etwas mehr Platz wg. Titeln
 
     fig, axes = plt.subplots(
         n_subplots, 1,
@@ -1458,18 +1451,6 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     if n_subplots == 1:
         axes = [axes]
 
-    fig.subplots_adjust(
-        left=left, right=right, top=top, bottom=bottom, hspace=hspace,
-    )
-
-    # --- Colorbar mittig auf Höhe der gesamten Subplot-Säule ---
-    cbar_width = 0.025
-    cbar_left = right + 0.02
-    cbar_bottom = bottom
-    cbar_height = top - bottom
-    cbar_ax = fig.add_axes([cbar_left, cbar_bottom, cbar_width, cbar_height])
-
-    # --- Subplots zeichnen ---
     for i, (ax, (ident, subplot_title), rel, totals_i) in enumerate(
             zip(axes, idents, tables, totals)
     ):
@@ -1484,25 +1465,21 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
             vmin=0, vmax=100,
             linewidths=0.4,
             linecolor="white",
-            cbar=(i == 0),
-            cbar_ax=cbar_ax if i == 0 else None,
-            cbar_kws={"label": "Percentage [%]"} if i == 0 else None,
+            cbar=False,  # Colorbar später manuell
         )
 
-        # y-Tick-Labels mit Total-Count
+        # y-Labels mit Total-Count (nur Tick-Labels, KEIN ylabel pro Subplot)
         os_labels = [
             f"{os_name} ({_fmt_count(totals_i.get(os_name, 0))})"
             for os_name in rel.index
         ]
         ax.set_yticklabels(os_labels, rotation=0)
-
-        # Subplot-Titel über der jeweiligen Heatmap
-        ax.set_title(subplot_title, fontsize=10, pad=4)
-
-        # Kein individuelles y-Label mehr (gemeinsames kommt via fig.text)
         ax.set_ylabel("")
 
-        # x-Achse nur unten
+        # Subplot-Titel
+        ax.set_title(subplot_title, fontsize=10, pad=4)
+
+        # x-Labels nur beim untersten Subplot
         if is_last:
             ax.set_xlabel("IP-ID Selection Strategy", labelpad=4)
             ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
@@ -1515,22 +1492,35 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
             spine.set_linewidth(0.5)
             spine.set_color("black")
 
-    # --- Gemeinsames y-Label für beide Subplots ---
-    # Vertikal mittig zwischen top und bottom der Subplot-Säule
+    # --- Layout: mehr Abstand zwischen Subplots ---
+    fig.subplots_adjust(left=0.30, right=0.88, top=0.93, bottom=0.18, hspace=0.25)
+
+    # --- Gemeinsames y-Label (zentriert über beide Subplots) ---
+    # Zentrum zwischen oberster und unterster Achse berechnen
+    top_ax_bbox = axes[0].get_position()
+    bot_ax_bbox = axes[-1].get_position()
+    y_center = (top_ax_bbox.y1 + bot_ax_bbox.y0) / 2
     fig.text(
-        0.03, (top + bottom) / 2,
-        "Operating System (#IP Addresses)",
-        rotation=90, ha="center", va="center",
+        0.02, y_center,
+        "Operating System (#IP Addr.)",
+        rotation=90, va="center", ha="left",
         fontsize=10,
-              )
+    )
+
+    # --- Gemeinsame Colorbar, vertikal zentriert ---
+    cbar_height = top_ax_bbox.y1 - bot_ax_bbox.y0
+    cbar_ax = fig.add_axes([0.90, bot_ax_bbox.y0, 0.025, cbar_height])
+
+    # ScalarMappable für die Colorbar aus den Heatmap-Parametern
+    sm = plt.cm.ScalarMappable(cmap="Blues", norm=plt.Normalize(vmin=0, vmax=100))
+    sm.set_array([])
+    fig.colorbar(sm, cax=cbar_ax, label="Percentage [%]")
 
     # --- Speichern ---
     out_dir = os.path.join(msm_path, "analysis", "os_heatmap_combined")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f"{name}.pdf")
-    # WICHTIG: kein bbox_inches="tight", sonst verschieben sich die Margins
-    # und die Colorbar-Mitte passt nicht mehr.
-    plt.savefig(out_path, dpi=300)
+    plt.savefig(out_path, bbox_inches="tight", dpi=300)
     plt.close(fig)
 
     print(f"[+] Combined heatmap saved to {out_path}")
