@@ -797,7 +797,7 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
     ax.set_xlim(left=1e-5, right=1.0)
     ax.set_ylim(0, 100)
 
-    ax.set_xlabel(r"Chi$^2$ p-value", labelpad=2)
+    ax.set_xlabel(r"Min. Chi$^2$ p-value over subsequences", labelpad=2)
     ax.set_ylabel("Cum. Percentage [%]", labelpad=2)
 
     ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
@@ -811,10 +811,10 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
         loc="lower center",
         bbox_to_anchor=(0.5, 1.02),
         bbox_transform=ax.transAxes,
-        ncol=5,
+        ncol=4,
         frameon=False,
-        handlelength=1.2,
-        handletextpad=0.3,
+        handlelength=1.0,
+        handletextpad=0.2,
         columnspacing=0.8,
     )
 
