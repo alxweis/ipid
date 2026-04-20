@@ -2453,13 +2453,13 @@ def plot_transit_endhost_distribution_acm_style(
         [b[0] for b in bars],
         legend_labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),
-        ncol=3,
+        # bbox_to_anchor=(0.5, 1.02),
+        ncol=5,
         frameon=False,
-        handlelength=1.2,
-        handletextpad=0.3,
+        handlelength=1.0,
+        handletextpad=0.2,
         columnspacing=0.8,
-        borderaxespad=0.2,
+        # borderaxespad=0.2,
     )
 
     # KEIN tight_layout -> sonst wird die Achsenhöhe wieder verändert
