@@ -2454,7 +2454,7 @@ def plot_transit_endhost_distribution_acm_style(
         legend_labels,
         loc="lower center",
         bbox_to_anchor=(0.0, 1.02),
-        bbox_transform=ax.transAxes,
+        # bbox_transform=ax.transAxes,
         ncol=5,
         frameon=False,
         handlelength=1.0,
