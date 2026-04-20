@@ -344,8 +344,8 @@ def main():
 
         fig, ax = plt.subplots(figsize=(6.5, 3.0))
 
-        # Log-Bins: von 10^-30 bis 10^0
-        bins = np.logspace(-30, 0, 80)
+        # Log-Bins: von 10^-10 bis 10^0
+        bins = np.logspace(-10, 0, 80)
 
         # Klassen in display_map-Reihenfolge zeichnen
         sorted_classes = sorted(chi2_inc_result.keys(), key=lambda c: order_index.get(c, 999))
@@ -354,7 +354,7 @@ def main():
             values = np.asarray(chi2_inc_result[cls], dtype=float)
 
             # p-Werte von 0 auf sehr kleine Zahl clippen (log-Skala kann kein 0)
-            values = np.clip(values, 1e-30, 1.0)
+            values = np.clip(values, 1e-10, 1.0)
 
             display_name, color = display_map.get(cls, (cls, "#CCCCCC"))
             ax.hist(
@@ -367,7 +367,7 @@ def main():
             )
 
         ax.set_xscale("log")
-        ax.set_xlim(1e-30, 1.0)
+        ax.set_xlim(1e-10, 1.0)
         ax.set_xlabel(r"Chi$^2$ $p$-value")
         ax.set_ylabel("Count")
 
