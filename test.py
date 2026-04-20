@@ -312,7 +312,7 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
     plt.tight_layout(pad=0.4)
-    plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.02)
+    plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=(0.3, 0.02, 0.02, 0.02))
     plt.close(fig)
 
 
