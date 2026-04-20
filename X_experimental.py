@@ -2390,7 +2390,7 @@ def plot_transit_endhost_distribution_acm_style(
 
     # --- Dynamische Höhe ---
     n_bars = 1 + int(show_dst_only)
-    fig_height = 0.6 + n_bars * (bar_height + 0.2)
+    fig_height = n_bars * (bar_height + 0.05) + 0.25
 
     fig, ax = plt.subplots(figsize=(5.5, fig_height))
 
@@ -2437,7 +2437,7 @@ def plot_transit_endhost_distribution_acm_style(
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(-0.1, max(y_positions) + 0.1)
+    ax.set_ylim(-bar_height/2, bar_height/2)
 
     ax.set_xlabel("IP-ID Selection Method [%]")
     ax.set_ylabel("Device Type")
