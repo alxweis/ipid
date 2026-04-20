@@ -297,8 +297,10 @@ def main():
                 b = chi2_test(seq.b.increments)
                 ap = chi2_test(seq.ap.increments)
                 bp = chi2_test(seq.bp.increments)
+                cp = chi2_test(seq.cp.increments)
+                dp = chi2_test(seq.dp.increments)
 
-                z = min(s, a, b, ap, bp)
+                z = min(s, a, b, ap, bp, cp, dp)
                 p_values.append(z)
 
             chi2_inc_result[pattern.value] = p_values
