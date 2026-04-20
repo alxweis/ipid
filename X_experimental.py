@@ -2376,9 +2376,9 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
     fig, ax = plt.subplots(figsize=(5.5, 1.8))
 
-    y_positions = [1, 0]
-    data_sets = [transit_values, endhost_values]
-    labels = ["Router", "Dst-only"]
+    y_positions = [0]
+    data_sets = [transit_values]
+    labels = ["Router"]
 
     bars = []
     width = 0.55
@@ -2411,7 +2411,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(-0.5, 1.5)
+    ax.set_ylim(-0.5, 0.5)
     ax.set_xlabel("IP-ID Selection Method [%]")
     # ax.set_ylabel("Device Type", labelpad=10)
     ax.set_ylabel("Device Type")
