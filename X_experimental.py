@@ -1444,8 +1444,8 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     n_cols = len(tables[0].columns)
 
     # Zellgröße wie in plot_os_heatmap() (5.0 x 2.5 inch Figure bei ~9 Spalten / ~8 Zeilen)
-    cell_w = 0.5
-    cell_h = 0.31
+    cell_w = 0.2
+    cell_h = 0.2
 
     # Figure-Größe: Breite = n_cols * cell_w + Platz für y-Labels/Colorbar
     #               Höhe  = sum(rows) * cell_h + Platz für x-Labels
@@ -1454,7 +1454,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
 
     fig, axes = plt.subplots(
         n_subplots, 1,
-        figsize=(5.0, fig_height),
+        figsize=(fig_width, fig_height),
         gridspec_kw={"height_ratios": row_counts},
         sharex=True,
     )
