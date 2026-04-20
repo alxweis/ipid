@@ -2300,16 +2300,10 @@ def plot_transit_endhost_distribution_acm_style(
         msm_path: str,
         name: str,
         show_dst_only: bool = False,
-        bar_height: float = 0.2,
-        bar_gap: float = 0.1,
+        bar_height: float = 0.15,
+        bar_gap: float = 0.10,
         y_padding: float = 0.05,
 ):
-    import os, pickle, math
-    from pathlib import Path
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    from matplotlib.ticker import MultipleLocator
-
     # --- Load data ---
     transit_path = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution", "data.pkl")
     endhost_path = os.path.join(msm_path, "analysis", "end-device_pattern_distribution", "data.pkl")
@@ -2325,7 +2319,7 @@ def plot_transit_endhost_distribution_acm_style(
     if isinstance(endhost_data, pd.DataFrame):
         endhost_data = dict(zip(endhost_data["class"], endhost_data["relative"]))
 
-    # --- Rename classes (unchanged logic) ---
+    # --- Rename classes ---
     for d in (transit_data, endhost_data):
         if "Fallback" in d:
             d["Unclassified"] = d.pop("Fallback")
@@ -2334,7 +2328,7 @@ def plot_transit_endhost_distribution_acm_style(
         if "Per-CPU" in d:
             d["Multi"] = d.pop("Per-CPU")
 
-    # --- Display mapping ---
+    # --- Anzeige-Mapping (NEU, nur für Plot) ---
     display_map = {
         "Reflection": "Reflection",
         "Constant": "Constant",
@@ -2347,7 +2341,7 @@ def plot_transit_endhost_distribution_acm_style(
         "Unclassified": "Unclassified",
     }
 
-    # --- Sorting ---
+    # --- Sort classes nach Pattern Enum ---
     pattern_index = {p.value: i for i, p in enumerate(Pattern)}
 
     def sort_key(c):
@@ -2369,7 +2363,7 @@ def plot_transit_endhost_distribution_acm_style(
     transit_values = [float(transit_data.get(c, 0.0)) for c in all_classes]
     endhost_values = [float(endhost_data.get(c, 0.0)) for c in all_classes]
 
-    # --- Colors ---
+    # --- Farbzuordnung ---
     color_map = {
         "Reflection": "#FFE866",
         "Constant": "#6FB8FF",
@@ -2382,17 +2376,22 @@ def plot_transit_endhost_distribution_acm_style(
         "Unclassified": "#CCCCCC",
     }
 
-    # --- Style ---
+    # --- ACM Style ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Latin Modern Roman"],
         "mathtext.fontset": "cm",
         "font.size": 10,
         "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
         "pdf.fonttype": 42,
     })
 
-    # --- Data selection ---
+    # --- Geometrie berechnen ---
+    # Datensteuerung
     data_sets = [transit_values]
     labels = ["Router"]
 
@@ -2402,15 +2401,22 @@ def plot_transit_endhost_distribution_acm_style(
 
     n_bars = len(data_sets)
 
-    # --- Exact y-geometry ---
-    y_positions = [i * (bar_height + bar_gap) for i in range(n_bars)]
+    # y-Positionen: Bar i hat Zentrum bei y_padding + bar_height/2 + i*(bar_height + bar_gap)
+    # Gesamthöhe des Datenbereichs = 2*y_padding + n_bars*bar_height + (n_bars-1)*bar_gap
+    y_positions = [
+        y_padding + bar_height / 2 + i * (bar_height + bar_gap)
+        for i in range(n_bars)
+    ]
+    total_height = 2 * y_padding + n_bars * bar_height + max(n_bars - 1, 0) * bar_gap
 
-    # --- Figure (height derived from geometry) ---
-    fig_height = y_positions[-1] + bar_height + 2 * y_padding
+    # Figure-Höhe proportional zur data-range (1 inch pro data-unit als grobe Basis,
+    # damit bar_height/bar_gap/y_padding visuell exakt in dieser Einheit wirken)
+    fig_height = total_height * 4  # Skalierungsfaktor für lesbare Größe
     fig, ax = plt.subplots(figsize=(5.5, fig_height))
 
-    # --- Plot ---
     bars = []
+
+    # --- Plot ---
     for y, values in zip(y_positions, data_sets):
         left = 0
         current_bars = []
@@ -2419,8 +2425,7 @@ def plot_transit_endhost_distribution_acm_style(
             color = color_map.get(cls, "#CCCCCC")
 
             bar = ax.barh(
-                y,
-                val,
+                y, val,
                 left=left,
                 height=bar_height,
                 edgecolor="none",
@@ -2430,37 +2435,31 @@ def plot_transit_endhost_distribution_acm_style(
 
             if val >= 1:
                 ax.text(
-                    left + val / 2,
-                    y,
+                    left + val / 2, y,
                     f"{int(math.floor(val + 0.5))}",
-                    ha="center",
-                    va="center",
-                    fontsize=9
+                    ha="center", va="center",
+                    fontsize=9, color="black"
                 )
 
             left += val
 
         bars = current_bars
 
-    # --- Axes ---
+    # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(
-        -y_padding,
-        y_positions[-1] + bar_height + y_padding
-    )
+    ax.set_ylim(0, total_height)
 
     ax.set_xlabel("IP-ID Selection Method [%]")
     ax.set_ylabel("Device Type")
 
-    ax.set_yticks(y_positions)
-    ax.set_yticklabels(labels)
-
     ax.xaxis.set_minor_locator(MultipleLocator(5))
     ax.tick_params(axis="x", which="minor", length=2, width=0.5)
 
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(labels)
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
-    # --- Legend ---
+    # --- Legende ---
     legend_labels = [display_map.get(c, c) for c in all_classes]
 
     ax.legend(
@@ -2476,9 +2475,8 @@ def plot_transit_endhost_distribution_acm_style(
         borderaxespad=0.2,
     )
 
-    plt.tight_layout(pad=0.2)
+    plt.tight_layout()
 
-    # --- Output (unchanged) ---
     output_dir = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_transit_endhost_distribution.pdf")
     plt.savefig(output_dir, format="pdf", bbox_inches="tight")
     plt.close(fig)
