@@ -1493,10 +1493,9 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
             spine.set_color("black")
 
     # --- Layout: mehr Abstand zwischen Subplots ---
-    fig.subplots_adjust(left=0.30, right=0.88, top=0.93, bottom=0.18, hspace=0.25)
+    fig.subplots_adjust(left=0.38, right=0.88, top=0.93, bottom=0.18, hspace=0.25)
 
     # --- Gemeinsames y-Label (zentriert über beide Subplots) ---
-    # Zentrum zwischen oberster und unterster Achse berechnen
     top_ax_bbox = axes[0].get_position()
     bot_ax_bbox = axes[-1].get_position()
     y_center = (top_ax_bbox.y1 + bot_ax_bbox.y0) / 2
@@ -1509,12 +1508,16 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
 
     # --- Gemeinsame Colorbar, vertikal zentriert ---
     cbar_height = top_ax_bbox.y1 - bot_ax_bbox.y0
-    cbar_ax = fig.add_axes([0.90, bot_ax_bbox.y0, 0.025, cbar_height])
+    cbar_ax = fig.add_axes([0.90, bot_ax_bbox.y0, 0.015, cbar_height])
 
-    # ScalarMappable für die Colorbar aus den Heatmap-Parametern
     sm = plt.cm.ScalarMappable(cmap="Blues", norm=plt.Normalize(vmin=0, vmax=100))
     sm.set_array([])
-    fig.colorbar(sm, cax=cbar_ax, label="Percentage [%]")
+    cbar = fig.colorbar(sm, cax=cbar_ax, label="Percentage [%]")
+
+    # Ränder der Colorbar an Heatmap-Spines angleichen (linewidth=0.5, schwarz)
+    cbar.outline.set_linewidth(0.5)
+    cbar.outline.set_edgecolor("black")
+    cbar_ax.tick_params(width=0.5)
 
     # --- Speichern ---
     out_dir = os.path.join(msm_path, "analysis", "os_heatmap_combined")
