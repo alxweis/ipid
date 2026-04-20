@@ -2300,7 +2300,7 @@ def plot_transit_endhost_distribution_acm_style(
         msm_path: str,
         name: str,
         show_dst_only: bool = False,
-        bar_height: float = 0.3,
+        bar_height: float = 0.15,
 ):
     # --- Load data ---
     transit_path = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution", "data.pkl")
@@ -2437,7 +2437,7 @@ def plot_transit_endhost_distribution_acm_style(
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(-bar_height, max(y_positions) + bar_height)
+    ax.set_ylim(-0.1, max(y_positions) + 0.1)
 
     ax.set_xlabel("IP-ID Selection Method [%]")
     ax.set_ylabel("Device Type")
