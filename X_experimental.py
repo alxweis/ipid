@@ -1500,7 +1500,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     bot_ax_bbox = axes[-1].get_position()
     y_center = (top_ax_bbox.y1 + bot_ax_bbox.y0) / 2
     fig.text(
-        -0.05, y_center,
+        -0.04, y_center,
         "Operating System (#IP Addr.)",
         rotation=90, va="center", ha="left",
         fontsize=10,
