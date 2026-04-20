@@ -2453,7 +2453,7 @@ def plot_transit_endhost_distribution_acm_style(
         [b[0] for b in bars],
         legend_labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.0 if show_dst_only else 1.4),
+        bbox_to_anchor=(0.4, 1.0 if show_dst_only else 1.4),
         bbox_transform=ax.transAxes,
         ncol=5,
         frameon=False,
