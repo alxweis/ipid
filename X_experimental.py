@@ -2299,7 +2299,8 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
 def plot_transit_endhost_distribution_acm_style(
         msm_path: str,
         name: str,
-        show_dst_only: bool = False
+        show_dst_only: bool = False,
+        bar_height: float = 0.15
 ):
     # --- Load data ---
     transit_path = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution", "data.pkl")
@@ -2416,7 +2417,7 @@ def plot_transit_endhost_distribution_acm_style(
             bar = ax.barh(
                 y, val,
                 left=left,
-                height=0.1,
+                height=bar_height,
                 edgecolor="none",
                 color=color
             )
