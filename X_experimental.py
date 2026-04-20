@@ -810,6 +810,11 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
     ticks = 10.0 ** exponents
     ax.set_xticks(ticks)
 
+    minor_exponents = exponents[:-1] + step / 2
+    minor_ticks = 10.0 ** minor_exponents
+    ax.set_xticks(minor_ticks, minor=True)
+    ax.xaxis.set_minor_formatter(NullFormatter())
+
     ax.set_xlim(left=ticks[0], right=1.0)
     # ax.set_xlim(left=1e-5, right=1.0)
     ax.set_ylim(0, 100)
