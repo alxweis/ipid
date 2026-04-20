@@ -1438,22 +1438,30 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
         "pdf.fonttype": 42,
     })
 
-    # --- Figure: n Subplots untereinander, Höhen proportional zur Anzahl Zeilen ---
+    # --- Figure: n Subplots untereinander, Zellen mit fester Größe ---
     n_subplots = len(tables)
     row_counts = [len(t.index) for t in tables]
-    height_ratios = row_counts  # Subplot-Höhe ~ Anzahl OS-Gruppen
-    fig_height = 0.45 * sum(row_counts) + 1.8  # heuristisch: pro Zeile ~0.45" + Platz für x-Labels
+    n_cols = len(tables[0].columns)
+
+    # Zellgröße wie in plot_os_heatmap() (5.0 x 2.5 inch Figure bei ~9 Spalten / ~8 Zeilen)
+    cell_w = 0.5
+    cell_h = 0.31
+
+    # Figure-Größe: Breite = n_cols * cell_w + Platz für y-Labels/Colorbar
+    #               Höhe  = sum(rows) * cell_h + Platz für x-Labels
+    fig_width = n_cols * cell_w + 3.5
+    fig_height = sum(row_counts) * cell_h + 1.5
 
     fig, axes = plt.subplots(
         n_subplots, 1,
-        figsize=(6.5, fig_height),
-        gridspec_kw={"height_ratios": height_ratios},
+        figsize=(fig_width, fig_height),
+        gridspec_kw={"height_ratios": row_counts},
         sharex=True,
     )
     if n_subplots == 1:
         axes = [axes]
 
-    # Gemeinsame Colorbar -> eigenes Axes am rechten Rand
+    # Gemeinsame Colorbar rechts außen
     cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
 
     for i, (ax, (ident, subplot_title), rel, totals_i) in enumerate(
@@ -1497,7 +1505,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
             spine.set_color("black")
 
     # Platz für Colorbar am rechten Rand lassen
-    fig.subplots_adjust(left=0.22, right=0.90, top=0.97, bottom=0.18, hspace=0.15)
+    fig.subplots_adjust(left=0.22, right=0.90, top=0.97, bottom=0.18, hspace=0.05)
 
     # --- Speichern ---
     out_dir = os.path.join(msm_path, "analysis", "os_heatmap_combined")
