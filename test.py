@@ -284,7 +284,7 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
 
     annot_matrix = df_rel.map(lambda v: "-" if v < 0.05 else f"{v:.1f}")
 
-    fig, ax = plt.subplots(figsize=(5.5, 2.5))
+    fig, ax = plt.subplots(figsize=(5.2, 2.5))
     sns.heatmap(
         df_rel,
         ax=ax,
