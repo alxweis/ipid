@@ -279,117 +279,7 @@ def main():
             return
 
         sequence_length = int(sys.argv[2])
-        sequence_count_per_pattern = 1_000
-
-        # --- Alle p-values pro Klasse sammeln ---
-        chi2_inc_result: dict[str, list[float]] = {}
-
-        for pattern, generator in pattern_generation_map.items():
-            if generator is None:
-                continue
-
-            p_values = []
-            for _ in range(sequence_count_per_pattern):
-                seq = generator(sequence_length)
-
-                s = chi2_test(seq.s.increments)
-                a = chi2_test(seq.a.increments)
-                b = chi2_test(seq.b.increments)
-                ap = chi2_test(seq.ap.increments)
-                bp = chi2_test(seq.bp.increments)
-                cp = chi2_test(seq.cp.increments)
-                dp = chi2_test(seq.dp.increments)
-
-                z = min(s, a, b, ap, bp, cp, dp)
-                p_values.append(z)
-
-            chi2_inc_result[pattern.value] = p_values
-
-        # --- Summary ausgeben ---
-        def print_results(title: str, results: dict[str, list[float]]):
-            print(f"{title}:")
-            for pattern, values in results.items():
-                print(f"{pattern}: {min(values):.3e} ... {max(values):.3e}")
-            print()
-
-        print_results("Chi2 Inc Result", chi2_inc_result)
-
-        # --- Histogram-Plot ---
-        display_map = {
-            "Mirror": ("Reflection", "#FFE866"),
-            "Constant": ("Constant", "#6FB8FF"),
-            "Single": ("Single", "#FF8080"),
-            "Per-Dst": ("Per-Destination", "#B580FF"),
-            "Per-Con": ("Per-Connection", "#FF85C1"),
-            "Per-Bucket": ("Per-Bucket", "#6EE66E"),
-            "Per-CPU": ("Multi", "#66E0E0"),
-            "Random": ("Random", "#FFB266"),
-            "Fallback": ("Unclassified", "#CCCCCC"),
-        }
-        order_index = {k: i for i, k in enumerate(display_map)}
-
-        # --- Plot-Style ---
-        plt.rcParams.update({
-            "font.family": "serif",
-            "font.serif": ["Latin Modern Roman"],
-            "mathtext.fontset": "cm",
-            "font.size": 10,
-            "axes.linewidth": 0.8,
-            "axes.labelsize": 10,
-            "xtick.labelsize": 9,
-            "ytick.labelsize": 9,
-            "legend.fontsize": 9,
-            "pdf.fonttype": 42,
-        })
-
-        fig, ax = plt.subplots(figsize=(6.5, 3.0))
-
-        # Log-Bins: von 10^-10 bis 10^0
-        bins = np.logspace(-10, 0, 80)
-
-        # Klassen in display_map-Reihenfolge zeichnen
-        sorted_classes = sorted(chi2_inc_result.keys(), key=lambda c: order_index.get(c, 999))
-
-        for cls in sorted_classes:
-            values = np.asarray(chi2_inc_result[cls], dtype=float)
-
-            # p-Werte von 0 auf sehr kleine Zahl clippen (log-Skala kann kein 0)
-            values = np.clip(values, 1e-10, 1.0)
-
-            display_name, color = display_map.get(cls, (cls, "#CCCCCC"))
-            ax.hist(
-                values,
-                bins=bins,
-                histtype="step",  # nur Outline, sonst überlappen sich die Flächen zu sehr
-                linewidth=1.2,
-                color=color,
-                label=display_name,
-            )
-
-        ax.set_xscale("log")
-        ax.set_xlim(1e-10, 1.0)
-        ax.set_xlabel(r"Chi$^2$ $p$-value")
-        ax.set_ylabel("Count")
-
-        ax.grid(axis="both", linestyle="--", linewidth=0.4, alpha=0.5)
-
-        ax.legend(
-            loc="upper center",
-            bbox_to_anchor=(0.5, 1.18),
-            ncol=5,
-            frameon=False,
-            handlelength=1.5,
-            handletextpad=0.4,
-            columnspacing=1.0,
-        )
-
-        plt.tight_layout()
-
-        out_path = os.path.join(TEST_RESULTS, f"chi2_pvalue_histogram_{sequence_length}.pdf")
-        plt.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.02)
-        plt.close(fig)
-
-        print(f"[+] Histogram saved to {out_path}")
+        run_chi2_cdf(sequence_length, sequence_count_per_pattern=100_000, force_create_dataset=True)
     elif mode == 11:
         if len(sys.argv) < 4:
             print_usage()
@@ -795,6 +685,142 @@ def sample_targets(input_file: str):
     print(f"[INFO] Total runtime: {time.time() - start_total:.2f}s")
 
     con.close()
+
+
+def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_create_dataset: bool):
+    cache_fp = os.path.join(
+        TEST_RESULTS,
+        f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}.pkl",
+    )
+    plot_fp = os.path.join(
+        TEST_RESULTS,
+        f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}.pdf",
+    )
+
+    # --- Cache prüfen ---
+    if os.path.exists(cache_fp) and not force_create_dataset:
+        print(f"Loading cached chi2 p-values from {cache_fp}")
+        with open(cache_fp, "rb") as f:
+            pvalues_per_class = pickle.load(f)
+    else:
+        print("Computing chi2 p-values...")
+        pvalues_per_class: dict[str, list[float]] = {}
+
+        for pattern, generator in pattern_generation_map.items():
+            if generator is None:
+                continue
+
+            pvalues = []
+            for _ in range(sequence_count_per_pattern):
+                seq = generator(sequence_length)
+                s = chi2_test(seq.s.increments)
+                a = chi2_test(seq.a.increments)
+                b = chi2_test(seq.b.increments)
+                ap = chi2_test(seq.ap.increments)
+                bp = chi2_test(seq.bp.increments)
+                pvalues.append(min(s, a, b, ap, bp))
+
+            pvalues_per_class[pattern.value] = pvalues
+            print(f"  {pattern.value}: {len(pvalues)} samples, "
+                  f"min={min(pvalues):.2e}, max={max(pvalues):.2e}")
+
+        with open(cache_fp, "wb") as f:
+            pickle.dump(pvalues_per_class, f)
+        print(f"Cached p-values to {cache_fp}")
+
+    # --- Plot ---
+    _plot_chi2_cdf(pvalues_per_class, plot_fp)
+
+
+def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
+    """CDF der chi²-p-Values pro Klasse."""
+    display_map = {
+        "Mirror": ("Reflection", "#FFE866"),
+        "Constant": ("Constant", "#6FB8FF"),
+        "Single": ("Single", "#FF8080"),
+        "Per-Dst": ("Per-Destination", "#B580FF"),
+        "Per-Con": ("Per-Connection", "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket", "#6EE66E"),
+        "Per-CPU": ("Multi", "#66E0E0"),
+        "Random": ("Random", "#FFB266"),
+        "Fallback": ("Unclassified", "#CCCCCC"),
+    }
+    order_index = {k: i for i, k in enumerate(display_map)}
+
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Latin Modern Roman", "Times New Roman"],
+        "mathtext.fontset": "cm",
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "pdf.fonttype": 42,
+    })
+
+    fig, ax = plt.subplots(figsize=(5.2, 3.0))
+
+    # Klassen in Display-Map-Reihenfolge plotten
+    ordered_classes = sorted(
+        pvalues_per_class.keys(),
+        key=lambda c: order_index.get(c, 999),
+    )
+
+    # Kleinste positive p-Value für log-x-Achse ermitteln (0-Werte ersetzen)
+    min_positive = min(
+        (p for pvs in pvalues_per_class.values() for p in pvs if p > 0),
+        default=1e-300,
+    )
+    floor = min_positive / 10  # für 0-Ersatz
+
+    for cls in ordered_classes:
+        pvs = np.asarray(pvalues_per_class[cls], dtype=float)
+        # 0 (bzw. sehr kleine Werte) für log-Plot clippen
+        pvs = np.where(pvs <= 0, floor, pvs)
+        pvs_sorted = np.sort(pvs)
+        # CDF in Prozent
+        cdf = np.arange(1, len(pvs_sorted) + 1) / len(pvs_sorted) * 100
+
+        display_name, color = display_map.get(cls, (cls, "#808080"))
+        ax.plot(
+            pvs_sorted, cdf,
+            label=display_name,
+            color=color,
+            linewidth=1.4,
+        )
+
+    # --- Achsen ---
+    ax.set_xscale("log")
+    ax.set_xlim(left=floor, right=1.0)
+    ax.set_ylim(0, 100)
+
+    ax.set_xlabel(r"Chi$^2$ p-value", labelpad=2)
+    ax.set_ylabel("Cum. Percentage [%]", labelpad=2)
+
+    ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.grid(True, which="minor", linestyle=":", linewidth=0.3, alpha=0.3)
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.5)
+
+    # --- Legende über dem Plot ---
+    ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.42, 1.0),
+        bbox_transform=ax.transAxes,
+        ncol=5,
+        frameon=False,
+        handlelength=1.2,
+        handletextpad=0.3,
+        columnspacing=0.8,
+    )
+
+    plt.tight_layout(pad=0.4)
+    plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.05)
+    plt.close(fig)
+    print(f"[+] chi² CDF plot saved to {out_path}")
 
 
 def classify_first_four_for_per_con(msm_path):
