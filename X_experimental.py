@@ -2296,7 +2296,12 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
     print(f"Rerun analysis of {out_path} to get merged results!")
 
 
-def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
+def plot_transit_endhost_distribution_acm_style(
+        msm_path: str,
+        name: str,
+        show_dst_only: bool = False,
+        bar_height: float = 0.3,
+):
     # --- Load data ---
     transit_path = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution", "data.pkl")
     endhost_path = os.path.join(msm_path, "analysis", "end-device_pattern_distribution", "data.pkl")
@@ -2321,15 +2326,25 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
         if "Per-CPU" in d:
             d["Multi"] = d.pop("Per-CPU")
 
+    # --- Anzeige-Mapping (NEU, nur für Plot) ---
+    display_map = {
+        "Reflection": "Reflection",
+        "Constant": "Constant",
+        "Single": "Single Counter",
+        "Per-Con": "Per-Connection Counter",
+        "Per-Dst": "Per-Destination Counter",
+        "Per-Bucket": "Per-Bucket Counter",
+        "Multi": "Multi Counter",
+        "Random": "Random",
+        "Unclassified": "Unclassified",
+    }
+
     # --- Sort classes nach Pattern Enum ---
     pattern_index = {p.value: i for i, p in enumerate(Pattern)}
 
     def sort_key(c):
         if c == "Unclassified":
             return 1001
-        if c == "Unclassified":
-            return 1000
-
         if c == "Reflection":
             base = "Mirror"
         elif c == "Multi":
@@ -2346,7 +2361,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     transit_values = [float(transit_data.get(c, 0.0)) for c in all_classes]
     endhost_values = [float(endhost_data.get(c, 0.0)) for c in all_classes]
 
-    # --- Farbzuordnung (wie bisher) ---
+    # --- Farbzuordnung ---
     color_map = {
         "Reflection": "#FFE866",
         "Constant": "#6FB8FF",
@@ -2356,8 +2371,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
         "Per-Bucket": "#6EE66E",
         "Multi": "#66E0E0",
         "Random": "#FFB266",
-        "Fallback": "#A0A0A0",
-        "Unclassified": "#CCCCCC",  # #808080
+        "Unclassified": "#CCCCCC",
     }
 
     # --- ACM Style ---
@@ -2374,28 +2388,41 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 1.5))
+    # --- Dynamische Höhe ---
+    n_bars = 1 + int(show_dst_only)
+    fig_height = 0.6 + n_bars * (bar_height + 0.2)
 
+    fig, ax = plt.subplots(figsize=(5.5, fig_height))
+
+    # --- Datensteuerung ---
     y_positions = [0]
     data_sets = [transit_values]
     labels = ["Router"]
 
-    bars = []
-    width = 0.3
+    if show_dst_only:
+        y_positions.append(1)
+        data_sets.append(endhost_values)
+        labels.append("Dst-only")
 
-    for y, values, ylabel in zip(y_positions, data_sets, labels):
+    bars = []
+
+    # --- Plot ---
+    for y, values in zip(y_positions, data_sets):
         left = 0
         current_bars = []
+
         for cls, val in zip(all_classes, values):
             color = color_map.get(cls, "#CCCCCC")
 
             bar = ax.barh(
-                y, val, left=left, height=width,
-                edgecolor="none", color=color
+                y, val,
+                left=left,
+                height=bar_height,
+                edgecolor="none",
+                color=color
             )
             current_bars.append(bar)
 
-            # Prozentwerte ganzzahlig, ab 1 %
             if val >= 1:
                 ax.text(
                     left + val / 2, y,
@@ -2406,33 +2433,25 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
             left += val
 
-        # ax.text(-1, y, ylabel, ha="right", va="center", fontsize=10)
         bars = current_bars
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(-0.3, 0.3)
+    ax.set_ylim(-bar_height, max(y_positions) + bar_height)
+
     ax.set_xlabel("IP-ID Selection Method [%]")
-    # ax.set_ylabel("Device Type", labelpad=10)
     ax.set_ylabel("Device Type")
 
-    # Minorticks (5 %)
     ax.xaxis.set_minor_locator(MultipleLocator(5))
     ax.tick_params(axis="x", which="minor", length=2, width=0.5)
 
-    # fig.text(
-    #     0.01, 0.5, "Category",
-    #     va="center", ha="center",
-    #     rotation="vertical", fontsize=10
-    # )
-
-    # ax.set_yticks([])
     ax.set_yticks(y_positions)
     ax.set_yticklabels(labels)
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
     # --- Legende ---
-    legend_labels = all_classes
+    legend_labels = [display_map.get(c, c) for c in all_classes]
+
     ax.legend(
         [b[0] for b in bars],
         legend_labels,
