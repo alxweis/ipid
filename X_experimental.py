@@ -1,5 +1,6 @@
 import bz2
 import csv
+import hashlib
 import ipaddress
 import json
 import math
@@ -950,157 +951,106 @@ def print_constant_pattern_distribution(msm_path: str):
         print(f"{k}: {v} ({v / s * 100:.6f}%)")
 
 
-def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
-    import duckdb
-    import os
-    import matplotlib.pyplot as plt
-    from matplotlib.ticker import MultipleLocator
-
-    # ------------------------------
-    # Mapping: OS → Gruppe oder OS selbst
-    # ------------------------------
-    def map_os_to_group_or_raw(os_str):
-        for group, (members, _) in os_groups.items():
-            if os_str in members:
-                return group
-        return os_str
-
-    # ------------------------------
-    # JOIN CAIDA + OS DATA
-    # ------------------------------
+def plot_caida_os_distribution_acm_style(
+        caida_itdk_path: str,
+        msm_path: str,
+        show_dst_only: bool = False,
+        bar_height: float = 0.3,
+        bar_gap: float = 0.1,
+        y_padding: float = 0.1,
+):
+    # --- Pfade ---
     ip_to_node_file = os.path.join(caida_itdk_path, "ip_to_node.csv.zst")
     targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
     targets_os_file = os.path.join(targets_base_path, "targets_os.csv.zst")
+    out_dir = os.path.join(msm_path, "analysis", "caida_os_distribution")
+    os.makedirs(out_dir, exist_ok=True)
 
+    # --- Daten laden via DuckDB ---
     con = duckdb.connect(database=":memory:")
-
     con.execute(f"""
         CREATE VIEW ip_to_node AS
-        SELECT IP, T, D
-        FROM read_csv_auto('{ip_to_node_file}', compression='zstd');
+        SELECT IP, T, D FROM read_csv_auto('{ip_to_node_file}', compression='zstd');
     """)
-
     con.execute(f"""
         CREATE VIEW targets_os AS
-        SELECT IP, OS
-        FROM read_csv_auto('{targets_os_file}', compression='zstd');
+        SELECT IP, OS FROM read_csv_auto('{targets_os_file}', compression='zstd');
     """)
-
     df_joined = con.execute("""
         SELECT n.IP, n.T, n.D, t.OS
         FROM ip_to_node n
         LEFT JOIN targets_os t ON n.IP = t.IP
         WHERE (n.T = 1) OR (n.T = 0 AND n.D = 1)
     """).fetch_df()
+    con.close()
 
     df_joined = df_joined[df_joined["OS"].notna()]
     df_joined["OS"] = df_joined["OS"].astype(str).str.lower()
 
-    # group or raw
+    # --- OS -> Gruppe/Raw mapping ---
+    def map_os_to_group_or_raw(os_str):
+        for group, (members, _) in os_groups.items():
+            if os_str in members:
+                return group
+        return os_str
+
     df_joined["LABEL"] = df_joined["OS"].apply(map_os_to_group_or_raw)
 
-    # ------------------------------
-    # SAVE CSV
-    # ------------------------------
-    out_dir = os.path.join(msm_path, "analysis", "caida_os_distribution")
-    os.makedirs(out_dir, exist_ok=True)
-    df_joined.to_csv(os.path.join(out_dir, "caida_os.csv.zst"), index=False, compression="zstd")
+    # Save CSV
+    df_joined.to_csv(os.path.join(out_dir, "caida_os.csv.zst"),
+                     index=False, compression="zstd")
 
-    # ------------------------------
-    # DISTRIBUTIONS
-    # ------------------------------
+    # --- Distributions ---
     transit = df_joined[df_joined["T"] == 1]
     endhost = df_joined[(df_joined["T"] == 0) & (df_joined["D"] == 1)]
 
-    print("\n[Transit-Hop IP, OS] (erste 100):")
-    for ip, os_ in (
-            transit[["IP", "LABEL"]]
-                    .drop_duplicates()
-                    .head(100)
-                    .itertuples(index=False)
-    ):
-        print(f"[{ip}, {os_}]")
+    transit_dist = transit["LABEL"].value_counts(normalize=True) * 100
+    endhost_dist = endhost["LABEL"].value_counts(normalize=True) * 100
 
-    transit_dist = (transit["LABEL"].value_counts(normalize=True) * 100)
-    endhost_dist = (endhost["LABEL"].value_counts(normalize=True) * 100)
+    # --- Display-Map bauen (Reihenfolge = Sortier- und Legendenreihenfolge) ---
+    # Basis: OS-Gruppen in definierter Reihenfolge
+    display_map = {
+        grp: (grp, col) for grp, (_, col) in os_groups.items()
+    }
 
-    # ------------------------------
-    # Reihenfolge:
-    # 1) Gruppen
-    # 2) zusätzliche OS > 1%
-    # ------------------------------
-    group_labels = list(os_groups.keys())
+    # Zusätzliche einzelne OSes > 1% in stabiler Reihenfolge anhängen
+    extra_labels = sorted(
+        lbl for lbl in set(df_joined["LABEL"])
+        if lbl not in os_groups
+        and (transit_dist.get(lbl, 0) > 1 or endhost_dist.get(lbl, 0) > 1)
+    )
 
-    extra_labels = [
-        lbl for lbl in sorted(set(df_joined["LABEL"]))
-        if lbl not in os_groups and (transit_dist.get(lbl, 0) > 1 or endhost_dist.get(lbl, 0) > 1)
-    ]
-
-    # ------------------------------
-    # Nur OS Groups / OSes mit >1% aufnehmen
-    # ------------------------------
-    filtered_labels = []
-
-    # zuerst Gruppen in Reihenfolge behalten, aber nur falls >1%
-    for grp in group_labels:
-        if transit_dist.get(grp, 0) > 1 or endhost_dist.get(grp, 0) > 1:
-            filtered_labels.append(grp)
-
-    # dann zusätzliche OSes >1%
-    for lbl in extra_labels:
-        if transit_dist.get(lbl, 0) > 1 or endhost_dist.get(lbl, 0) > 1:
-            filtered_labels.append(lbl)
-
-    ordered_labels = filtered_labels
-
-    # --- Rename Fallback in class labels ---
-    ordered_labels = [
-        "Unclassified" if lbl == "Fallback" else lbl
-        for lbl in ordered_labels
-    ]
-
-    # ------------------------------
-    # Farben
-    # ------------------------------
-    color_map = {}
-
-    # group colors
-    for grp, (_, col) in os_groups.items():
-        color_map[grp] = col
-
-    # extra colors
-    import hashlib
-
-    def stable_index(name, mod):
+    def _stable_color(name: str) -> str:
         h = hashlib.sha1(name.encode("utf-8")).hexdigest()
-        x = int(h[:8], 16) % mod
-        print(f"{name} : {x}")
-        return x
+        return soft_palette[int(h[:8], 16) % len(soft_palette)]
 
     for lbl in extra_labels:
-        color_map[lbl] = soft_palette[stable_index(lbl, len(soft_palette))]
+        display_map[lbl] = (pretty_oses.get(lbl, lbl), _stable_color(lbl))
 
-    # ------------------------------
-    # Werte für Plot
-    # ------------------------------
-    transit_values = [transit_dist.get(lbl, 0) for lbl in ordered_labels]
-    endhost_values = [endhost_dist.get(lbl, 0) for lbl in ordered_labels]
+    # Fallback/Unclassified vor "Other"
+    if "Fallback" in display_map:
+        display_map["Fallback"] = ("Unclassified", display_map["Fallback"][1])
 
-    # ------------------------------
-    # Other-Klasse hinzufügen (Rest zu 100%)
-    # ------------------------------
-    transit_other = 100 - sum(transit_values)
-    endhost_other = 100 - sum(endhost_values)
-    ordered_labels.append("Other")
-    color_map["Other"] = fallback_color
-    pretty_oses["Other"] = "Other"
-    transit_values.append(transit_other)
-    endhost_values.append(endhost_other)
+    # "Other" als letzte Kategorie
+    display_map["Other"] = ("Other", fallback_color)
 
-    # ------------------------------
-    # Plot
-    # ------------------------------
-    # --- ACM Plot style ---
+    # --- Gefilterte Klassen (>1% in mindestens einem Datensatz) + Other ---
+    all_classes = [
+        cls for cls in display_map
+        if cls != "Other" and (
+                transit_dist.get(cls, 0) > 1 or endhost_dist.get(cls, 0) > 1
+        )
+    ]
+
+    transit_values = [transit_dist.get(c, 0.0) for c in all_classes]
+    endhost_values = [endhost_dist.get(c, 0.0) for c in all_classes]
+
+    # Rest zu 100% als "Other"
+    all_classes.append("Other")
+    transit_values.append(100 - sum(transit_values))
+    endhost_values.append(100 - sum(endhost_values))
+
+    # --- Plot-Style ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Latin Modern Roman"],
@@ -1114,93 +1064,120 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 1.5))
+    # --- Geometrie ---
+    data_sets = [transit_values]
+    labels = ["Router"]
+    if show_dst_only:
+        data_sets.append(endhost_values)
+        labels.append("Dst-only")
 
-    datasets = [transit_values]
-    positions = [0]
-    names = ["Router"]
+    n_bars = len(data_sets)
 
-    for y, values, name in zip(positions, datasets, names):
+    total_height = 2 * y_padding + n_bars * bar_height + max(n_bars - 1, 0) * bar_gap
+    y_positions = [
+        y_padding + bar_height / 2 + i * (bar_height + bar_gap)
+        for i in range(n_bars)
+    ]
+
+    fig_width = 5.0
+    fig, ax = plt.subplots(figsize=(fig_width, total_height))
+
+    bars = []
+    for y, values in zip(y_positions, data_sets):
         left = 0
-        for lbl, val in zip(ordered_labels, values):
-            ax.barh(y, val, left=left, height=0.45, edgecolor="none", color=color_map[lbl])
+        current_bars = []
+        for cls, val in zip(all_classes, values):
+            color = display_map.get(cls, ("?", "#CCCCCC"))[1]
+            bar = ax.barh(
+                y, val, left=left, height=bar_height,
+                edgecolor="none", color=color
+            )
+            current_bars.append(bar)
 
             if val >= 1:
-                ax.text(left + val / 2, y, str(int(round(val))), ha="center", va="center", fontsize=9)
-
+                ax.text(
+                    left + val / 2, y,
+                    f"{int(math.floor(val + 0.5))}",
+                    ha="center", va="center",
+                    fontsize=9, color="black"
+                )
             left += val
+        bars = current_bars
 
-        ax.text(-1, y, name, ha="right", va="center", fontsize=10)
-
+    # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(-0.3, 0.3)
+    ax.set_ylim(0, total_height)
+
     ax.set_xlabel("OS Distribution [%]")
-    ax.set_ylabel("Device Type", labelpad=65)
+    ax.set_ylabel("Device Type", rotation=90, labelpad=6)
 
-    ax.set_yticks([])
-    ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
     ax.xaxis.set_minor_locator(MultipleLocator(5))
+    ax.tick_params(axis="x", which="minor", length=2, width=0.5)
 
-    legend_handles = [
-        plt.Line2D([0], [0], color=color_map[lbl], lw=4)
-        for lbl in ordered_labels
-    ]
-    legend_labels = [
-        pretty_oses.get(lbl, lbl)
-        for lbl in ordered_labels
-    ]
+    ax.set_yticks(y_positions)
+    ax.set_yticklabels(labels)
+    ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
+    # --- Legende ---
+    legend_labels = [display_map.get(c, (c, None))[0] for c in all_classes]
+    ncol = int(math.ceil(len(legend_labels) / 2))
     ax.legend(
-        legend_handles,
+        [b[0] for b in bars],
         legend_labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),
-        ncol=int(math.ceil(len(legend_labels) / 2)),
+        bbox_to_anchor=(0.5, 1.0) if show_dst_only else (0.5, 1.4),
+        bbox_transform=ax.transAxes,
+        ncol=ncol,
         frameon=False,
-        handlelength=1.2,
-        handletextpad=0.3,
+        handlelength=1.0,
+        handletextpad=0.2,
         columnspacing=0.8,
-        borderaxespad=0.2,
     )
 
-    plt.tight_layout()
-
     out_file = os.path.join(out_dir, "os_distribution_acm_style_new.pdf")
-    plt.savefig(out_file, format="pdf", bbox_inches="tight")
+    plt.savefig(out_file, format="pdf", bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
     print(f"[+] CAIDA OS distribution saved to {out_file}")
 
-    # ------------------------------
-    # METADATA EXPORT
-    # ------------------------------
+    # --- Metadata export ---
+    _write_caida_os_info(
+        os.path.join(out_dir, "info.txt"),
+        transit, endhost,
+        transit_dist, endhost_dist,
+        all_classes,
+        transit_other=transit_values[-1],
+        endhost_other=endhost_values[-1],
+    )
 
-    info_path = os.path.join(out_dir, "info.txt")
+
+def _write_caida_os_info(info_path, transit, endhost,
+                         transit_dist, endhost_dist,
+                         ordered_labels,
+                         transit_other, endhost_other):
+    """Schreibt Metadata-Info-Datei für die CAIDA OS Distribution."""
+    transit_abs = transit["LABEL"].value_counts()
+    endhost_abs = endhost["LABEL"].value_counts()
 
     with open(info_path, "w") as f:
         f.write("CAIDA OS Distribution Metadata\n")
         f.write("=====================================\n\n")
-
         f.write(f"Total Transit-hops: {len(transit)}\n")
         f.write(f"Total End-hosts:    {len(endhost)}\n\n")
-
         f.write("Per-OS Statistics (absolute and percentage)\n")
         f.write("--------------------------------------------------\n")
 
-        # absolute counts
-        transit_abs = transit["LABEL"].value_counts()
-        endhost_abs = endhost["LABEL"].value_counts()
-
         for lbl in ordered_labels:
-            abs_t = transit_abs.get(lbl, 0)
-            abs_e = endhost_abs.get(lbl, 0)
-
-            pct_t = transit_dist.get(lbl, 0)
-            pct_e = endhost_dist.get(lbl, 0)
-
             if lbl == "Other":
                 pct_t = transit_other
                 pct_e = endhost_other
+                abs_t = ""  # kein sauberer Absolutwert für "Other"
+                abs_e = ""
+            else:
+                pct_t = transit_dist.get(lbl, 0)
+                pct_e = endhost_dist.get(lbl, 0)
+                abs_t = transit_abs.get(lbl, 0)
+                abs_e = endhost_abs.get(lbl, 0)
 
             f.write(
                 f"{lbl}:\n"
