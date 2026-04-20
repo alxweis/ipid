@@ -26,8 +26,7 @@ from matplotlib.ticker import MultipleLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS
-from core.classifier import pattern_generation_map, chi2_test, Pattern, IPIDSequence, get_pattern, fft_test, \
-    frequency_test, runs_test
+from core.classifier import pattern_generation_map, chi2_test, Pattern, IPIDSequence, get_pattern
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
     analyze_sequence_stable_lens_natural
@@ -2319,59 +2318,28 @@ def plot_transit_endhost_distribution_acm_style(
     if isinstance(endhost_data, pd.DataFrame):
         endhost_data = dict(zip(endhost_data["class"], endhost_data["relative"]))
 
-    # --- Rename classes ---
-    for d in (transit_data, endhost_data):
-        if "Fallback" in d:
-            d["Unclassified"] = d.pop("Fallback")
-        if "Mirror" in d:
-            d["Reflection"] = d.pop("Mirror")
-        if "Per-CPU" in d:
-            d["Multi"] = d.pop("Per-CPU")
-
+    # --- Map classes ---
     display_map = {
-        "Reflection": "Reflection",
-        "Constant": "Constant",
-        "Single": "Single Counter",
-        "Per-Con": "Per-Connection Counter",
-        "Per-Dst": "Per-Destination Counter",
-        "Per-Bucket": "Per-Bucket Counter",
-        "Multi": "Multi Counter",
-        "Random": "Random",
-        "Unclassified": "Unclassified",
+        "Mirror": ("Reflection", "#FFE866"),
+        "Constant": ("Constant", "#6FB8FF"),
+        "Single": ("Single", "#FF8080"),
+        "Per-Con": ("Per-Connection", "#FF85C1"),
+        "Per-Dst": ("Per-Destination", "#B580FF"),
+        "Per-Bucket": ("Per-Bucket", "#6EE66E"),
+        "Per-CPU": ("Multi", "#66E0E0"),
+        "Random": ("Random", "#FFB266"),
+        "Fallback": ("Unclassified", "#CCCCCC"),
     }
 
-    pattern_index = {p.value: i for i, p in enumerate(Pattern)}
-
-    def sort_key(c):
-        if c == "Unclassified":
-            return 1001
-        if c == "Reflection":
-            base = "Mirror"
-        elif c == "Multi":
-            base = "Per-CPU"
-        else:
-            base = c
-        return pattern_index.get(base, 999)
+    order_index = {k: i for i, k in enumerate(display_map)}
 
     all_classes = sorted(
         set(transit_data.keys()).union(endhost_data.keys()),
-        key=sort_key
+        key=lambda c: order_index.get(c, 999),
     )
 
     transit_values = [float(transit_data.get(c, 0.0)) for c in all_classes]
     endhost_values = [float(endhost_data.get(c, 0.0)) for c in all_classes]
-
-    color_map = {
-        "Reflection": "#FFE866",
-        "Constant": "#6FB8FF",
-        "Single": "#FF8080",
-        "Per-Con": "#FF85C1",
-        "Per-Dst": "#B580FF",
-        "Per-Bucket": "#6EE66E",
-        "Multi": "#66E0E0",
-        "Random": "#FFB266",
-        "Unclassified": "#CCCCCC",
-    }
 
     plt.rcParams.update({
         "font.family": "serif",
@@ -2413,7 +2381,7 @@ def plot_transit_endhost_distribution_acm_style(
         left = 0
         current_bars = []
         for cls, val in zip(all_classes, values):
-            color = color_map.get(cls, "#CCCCCC")
+            color = display_map.get(cls, ("?", "#CCCCCC"))[1]
             bar = ax.barh(
                 y, val,
                 left=left,
@@ -2448,7 +2416,7 @@ def plot_transit_endhost_distribution_acm_style(
     ax.set_yticklabels(labels)
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
-    legend_labels = [display_map.get(c, c) for c in all_classes]
+    legend_labels = [display_map.get(c, (c, None))[0] for c in all_classes]
     ax.legend(
         [b[0] for b in bars],
         legend_labels,
@@ -2463,11 +2431,11 @@ def plot_transit_endhost_distribution_acm_style(
     )
 
     # KEIN tight_layout -> sonst wird die Achsenhöhe wieder verändert
-    output_dir = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_transit_endhost_distribution.pdf")
-    plt.savefig(output_dir, format="pdf", bbox_inches="tight", pad_inches=0.02)
+    output_path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_transit_endhost_distribution.pdf")
+    plt.savefig(output_path, format="pdf", bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
-    print(f"[+] Transit/Endhost ACM-style distribution saved to {output_dir}")
+    print(f"[+] Transit/Endhost ACM-style distribution saved to {output_path}")
 
 
 def plot_time_between_requests_acm_style(msm_path: str):
