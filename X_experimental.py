@@ -794,9 +794,23 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
     # --- Achsen ---
     ax.set_xscale("log")
 
-    ax.xaxis.set_major_locator(LogLocator(base=10, numticks=10))
-    ax.xaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1, numticks=100))
-    ax.xaxis.set_minor_formatter(NullFormatter())
+    # Exponenten bestimmen
+    min_exp = int(np.floor(np.log10(floor)))
+    max_exp = 0  # immer bis 10^0
+
+    step = 20  # <- hier steuerst du die "Schönheit" (z.B. 10, 20, 25)
+
+    # Start so wählen, dass erster Tick <= floor
+    start_exp = (min_exp // step) * step
+
+    exponents = np.arange(start_exp, max_exp + 1, step)
+
+    # Sicherstellen, dass 10^0 enthalten ist
+    if exponents[-1] != 0:
+        exponents = np.append(exponents, 0)
+
+    ticks = 10.0 ** exponents
+    ax.set_xticks(ticks)
 
     ax.set_xlim(left=floor, right=1.0)
     # ax.set_xlim(left=1e-5, right=1.0)
