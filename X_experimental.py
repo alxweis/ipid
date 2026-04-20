@@ -279,7 +279,7 @@ def main():
             return
 
         sequence_length = int(sys.argv[2])
-        run_chi2_cdf(sequence_length, sequence_count_per_pattern=100_000, force_create_dataset=True)
+        run_chi2_cdf(sequence_length, sequence_count_per_pattern=1_000, force_create_dataset=True)
     elif mode == 11:
         if len(sys.argv) < 4:
             print_usage()
