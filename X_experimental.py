@@ -2452,8 +2452,9 @@ def plot_transit_endhost_distribution_acm_style(
     ax.legend(
         [b[0] for b in bars],
         legend_labels,
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),
+        loc="lower left",
+        bbox_to_anchor=(0.0, 1.02),
+        bbox_transform=ax.transAxes,
         ncol=5,
         frameon=False,
         handlelength=1.0,
@@ -2463,7 +2464,7 @@ def plot_transit_endhost_distribution_acm_style(
 
     # KEIN tight_layout -> sonst wird die Achsenhöhe wieder verändert
     output_dir = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_transit_endhost_distribution.pdf")
-    plt.savefig(output_dir, format="pdf", bbox_inches="tight")
+    plt.savefig(output_dir, format="pdf", bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
     print(f"[+] Transit/Endhost ACM-style distribution saved to {output_dir}")
