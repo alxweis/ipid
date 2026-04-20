@@ -2381,7 +2381,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
     labels = ["Router"]
 
     bars = []
-    width = 0.55
+    width = 0.3
 
     for y, values, ylabel in zip(y_positions, data_sets, labels):
         left = 0
@@ -2411,7 +2411,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(-0.5, 0.5)
+    ax.set_ylim(-0.3, 0.3)
     ax.set_xlabel("IP-ID Selection Method [%]")
     # ax.set_ylabel("Device Type", labelpad=10)
     ax.set_ylabel("Device Type")
