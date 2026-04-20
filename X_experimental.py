@@ -1446,7 +1446,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
 
     fig, axes = plt.subplots(
         n_subplots, 1,
-        figsize=(4.5, fig_height),
+        figsize=(4.0, fig_height),
         gridspec_kw={"height_ratios": row_counts},
         sharex=True,
     )
