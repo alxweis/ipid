@@ -26,7 +26,7 @@ import zstandard as zstd
 from matplotlib.ticker import MultipleLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
-from core import EXPERIMENTAL_RESULTS
+from core import EXPERIMENTAL_RESULTS, TEST_RESULTS
 from core.classifier import pattern_generation_map, chi2_test, Pattern, IPIDSequence, get_pattern
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
@@ -279,21 +279,16 @@ def main():
             return
 
         sequence_length = int(sys.argv[2])
-        sequence_count_per_pattern = 100_000
+        sequence_count_per_pattern = 1_000
 
-        chi2_inc_result: dict[str, tuple[float, float]] = {}
-
-        def update_range(d: dict, key: str, value_min: float, value_max: float) -> None:
-            if key in d:
-                old_min, old_max = d[key]
-                d[key] = min(old_min, value_min), max(old_max, value_max)
-            else:
-                d[key] = value_min, value_max
+        # --- Alle p-values pro Klasse sammeln ---
+        chi2_inc_result: dict[str, list[float]] = {}
 
         for pattern, generator in pattern_generation_map.items():
             if generator is None:
                 continue
 
+            p_values = []
             for _ in range(sequence_count_per_pattern):
                 seq = generator(sequence_length)
 
@@ -303,37 +298,96 @@ def main():
                 ap = chi2_test(seq.ap.increments)
                 bp = chi2_test(seq.bp.increments)
 
-                # s_fft = fft_test(seq.s.increments)
-                # a_fft = fft_test(seq.a.increments)
-                # b_fft = fft_test(seq.b.increments)
-                # ap_fft = fft_test(seq.ap.increments)
-                # bp_fft = fft_test(seq.bp.increments)
-                #
-                # s_frq = frequency_test(seq.s.increments)
-                # a_frq = frequency_test(seq.a.increments)
-                # b_frq = frequency_test(seq.b.increments)
-                # ap_frq = frequency_test(seq.ap.increments)
-                # bp_frq = frequency_test(seq.bp.increments)
-                #
-                # s_rns = runs_test(seq.s.increments)
-                # a_rns = runs_test(seq.a.increments)
-                # b_rns = runs_test(seq.b.increments)
-                # ap_rns = runs_test(seq.ap.increments)
-                # bp_rns = runs_test(seq.bp.increments)
-
                 z = min(s, a, b, ap, bp)
-                # z = min(s_fft, a_fft, b_fft, ap_fft, bp_fft,
-                #         s_frq, a_frq, b_frq, ap_frq, bp_frq,
-                #         s_rns, a_rns, b_rns, ap_rns, bp_rns)
-                update_range(chi2_inc_result, pattern.value, z, z)
+                p_values.append(z)
 
-        def print_results(title: str, results: dict[str, tuple[float, float]]):
+            chi2_inc_result[pattern.value] = p_values
+
+        # --- Summary ausgeben ---
+        def print_results(title: str, results: dict[str, list[float]]):
             print(f"{title}:")
-            for pattern, (_min, _max) in results.items():
-                print(f"{pattern}: {_min}...{_max}")
+            for pattern, values in results.items():
+                print(f"{pattern}: {min(values):.3e} ... {max(values):.3e}")
             print()
 
         print_results("Chi2 Inc Result", chi2_inc_result)
+
+        # --- Histogram-Plot ---
+        display_map = {
+            "Mirror": ("Reflection", "#FFE866"),
+            "Constant": ("Constant", "#6FB8FF"),
+            "Single": ("Single", "#FF8080"),
+            "Per-Dst": ("Per-Destination", "#B580FF"),
+            "Per-Con": ("Per-Connection", "#FF85C1"),
+            "Per-Bucket": ("Per-Bucket", "#6EE66E"),
+            "Per-CPU": ("Multi", "#66E0E0"),
+            "Random": ("Random", "#FFB266"),
+            "Fallback": ("Unclassified", "#CCCCCC"),
+        }
+        order_index = {k: i for i, k in enumerate(display_map)}
+
+        # --- Plot-Style ---
+        plt.rcParams.update({
+            "font.family": "serif",
+            "font.serif": ["Latin Modern Roman"],
+            "mathtext.fontset": "cm",
+            "font.size": 10,
+            "axes.linewidth": 0.8,
+            "axes.labelsize": 10,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "legend.fontsize": 9,
+            "pdf.fonttype": 42,
+        })
+
+        fig, ax = plt.subplots(figsize=(6.5, 3.0))
+
+        # Log-Bins: von 10^-150 bis 10^0
+        bins = np.logspace(-150, 0, 80)
+
+        # Klassen in display_map-Reihenfolge zeichnen
+        sorted_classes = sorted(chi2_inc_result.keys(), key=lambda c: order_index.get(c, 999))
+
+        for cls in sorted_classes:
+            values = np.asarray(chi2_inc_result[cls], dtype=float)
+
+            # p-Werte von 0 auf sehr kleine Zahl clippen (log-Skala kann kein 0)
+            values = np.clip(values, 1e-150, 1.0)
+
+            display_name, color = display_map.get(cls, (cls, "#CCCCCC"))
+            ax.hist(
+                values,
+                bins=bins,
+                histtype="step",  # nur Outline, sonst überlappen sich die Flächen zu sehr
+                linewidth=1.2,
+                color=color,
+                label=display_name,
+            )
+
+        ax.set_xscale("log")
+        ax.set_xlim(1e-150, 1.0)
+        ax.set_xlabel(r"Chi$^2$ $p$-value")
+        ax.set_ylabel("Count")
+
+        ax.grid(axis="both", linestyle="--", linewidth=0.4, alpha=0.5)
+
+        ax.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.18),
+            ncol=5,
+            frameon=False,
+            handlelength=1.5,
+            handletextpad=0.4,
+            columnspacing=1.0,
+        )
+
+        plt.tight_layout()
+
+        out_path = os.path.join(TEST_RESULTS, f"chi2_pvalue_histogram_{sequence_length}.pdf")
+        plt.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.02)
+        plt.close(fig)
+
+        print(f"[+] Histogram saved to {out_path}")
     elif mode == 11:
         if len(sys.argv) < 4:
             print_usage()
@@ -1729,15 +1783,15 @@ def plot_pattern_distribution_acm_style(
 
     # --- Map classes ---
     display_map = {
-        "Mirror":     ("Reflection",      "#FFE866"),
-        "Constant":   ("Constant",        "#6FB8FF"),
-        "Single":     ("Single",          "#FF8080"),
-        "Per-Dst":    ("Per-Destination", "#B580FF"),
-        "Per-Con":    ("Per-Connection",  "#FF85C1"),
-        "Per-Bucket": ("Per-Bucket",      "#6EE66E"),
-        "Per-CPU":    ("Multi",           "#66E0E0"),
-        "Random":     ("Random",          "#FFB266"),
-        "Fallback":   ("Unclassified",    "#CCCCCC"),
+        "Mirror": ("Reflection", "#FFE866"),
+        "Constant": ("Constant", "#6FB8FF"),
+        "Single": ("Single", "#FF8080"),
+        "Per-Dst": ("Per-Destination", "#B580FF"),
+        "Per-Con": ("Per-Connection", "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket", "#6EE66E"),
+        "Per-CPU": ("Multi", "#66E0E0"),
+        "Random": ("Random", "#FFB266"),
+        "Fallback": ("Unclassified", "#CCCCCC"),
     }
 
     order_index = {k: i for i, k in enumerate(display_map)}
@@ -1782,8 +1836,8 @@ def plot_pattern_distribution_acm_style(
 
     # --- Bars zeichnen ---
     bars = []
-    top_y = y_positions[-1]   # obere Bar = RTT-based (values1)
-    mid_y = y_positions[-2]   # mittlere Bar = Fixed-Interval (values2)
+    top_y = y_positions[-1]  # obere Bar = RTT-based (values1)
+    mid_y = y_positions[-2]  # mittlere Bar = Fixed-Interval (values2)
     fallback_start = fallback_end = None
 
     for y, values in zip(y_positions, data_sets):
@@ -1803,7 +1857,7 @@ def plot_pattern_distribution_acm_style(
                     f"{int(math.floor(val + 0.5))}",
                     ha="center", va="center",
                     fontsize=9, color="black",
-                    )
+                )
 
             # Unclassified-Bereich der oberen Bar (RTT-based) merken
             if y == top_y and cls == "Fallback":
@@ -1815,8 +1869,8 @@ def plot_pattern_distribution_acm_style(
 
     # --- Verbindung Unclassified (obere Bar) zu voller Breite (mittlere Bar) ---
     if fallback_start is not None and fallback_end is not None:
-        y_upper = top_y - bar_height / 2   # untere Kante obere Bar
-        y_lower = mid_y + bar_height / 2   # obere Kante mittlere Bar
+        y_upper = top_y - bar_height / 2  # untere Kante obere Bar
+        y_lower = mid_y + bar_height / 2  # obere Kante mittlere Bar
 
         ax.plot([fallback_start, 0],
                 [y_upper, y_lower],
@@ -1894,15 +1948,15 @@ def plot_pattern_distribution_acm_style_rst(
 
     # --- Map classes ---
     display_map = {
-        "Mirror":     ("Reflection",      "#FFE866"),
-        "Constant":   ("Constant",        "#6FB8FF"),
-        "Single":     ("Single",          "#FF8080"),
-        "Per-Dst":    ("Per-Destination", "#B580FF"),
-        "Per-Con":    ("Per-Connection",  "#FF85C1"),
-        "Per-Bucket": ("Per-Bucket",      "#6EE66E"),
-        "Per-CPU":    ("Multi",           "#66E0E0"),
-        "Random":     ("Random",          "#FFB266"),
-        "Fallback":   ("Unclassified",    "#CCCCCC"),
+        "Mirror": ("Reflection", "#FFE866"),
+        "Constant": ("Constant", "#6FB8FF"),
+        "Single": ("Single", "#FF8080"),
+        "Per-Dst": ("Per-Destination", "#B580FF"),
+        "Per-Con": ("Per-Connection", "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket", "#6EE66E"),
+        "Per-CPU": ("Multi", "#66E0E0"),
+        "Random": ("Random", "#FFB266"),
+        "Fallback": ("Unclassified", "#CCCCCC"),
     }
 
     order_index = {k: i for i, k in enumerate(display_map)}
@@ -1965,7 +2019,7 @@ def plot_pattern_distribution_acm_style_rst(
                     f"{int(math.floor(val + 0.5))}",
                     ha="center", va="center",
                     fontsize=9, color="black",
-                    )
+                )
             left += val
         bars = current_bars
 
@@ -2028,15 +2082,15 @@ def plot_pattern_distribution_acm_style_old(
 
     # --- Map classes ---
     display_map = {
-        "Mirror":     ("Reflection",      "#FFE866"),
-        "Constant":   ("Constant",        "#6FB8FF"),
-        "Single":     ("Single",          "#FF8080"),
-        "Per-Dst":    ("Per-Destination", "#B580FF"),
-        "Per-Con":    ("Per-Connection",  "#FF85C1"),
-        "Per-Bucket": ("Per-Bucket",      "#6EE66E"),
-        "Per-CPU":    ("Multi",           "#66E0E0"),
-        "Random":     ("Random",          "#FFB266"),
-        "Fallback":   ("Unclassified",    "#CCCCCC"),
+        "Mirror": ("Reflection", "#FFE866"),
+        "Constant": ("Constant", "#6FB8FF"),
+        "Single": ("Single", "#FF8080"),
+        "Per-Dst": ("Per-Destination", "#B580FF"),
+        "Per-Con": ("Per-Connection", "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket", "#6EE66E"),
+        "Per-CPU": ("Multi", "#66E0E0"),
+        "Random": ("Random", "#FFB266"),
+        "Fallback": ("Unclassified", "#CCCCCC"),
     }
 
     order_index = {k: i for i, k in enumerate(display_map)}
@@ -2064,8 +2118,8 @@ def plot_pattern_distribution_acm_style_old(
     })
 
     # --- Geometrie (zwei Bars: RTT-based oben, Fixed-Interval unten) ---
-    data_sets = [values2, values1]          # Reihenfolge bottom -> top
-    labels = ["Fixed-Interval", "RTT-based"] # passend zu data_sets
+    data_sets = [values2, values1]  # Reihenfolge bottom -> top
+    labels = ["Fixed-Interval", "RTT-based"]  # passend zu data_sets
     n_bars = len(data_sets)
 
     total_height = 2 * y_padding + n_bars * bar_height + max(n_bars - 1, 0) * bar_gap
@@ -2099,7 +2153,7 @@ def plot_pattern_distribution_acm_style_old(
                     f"{int(math.floor(val + 0.5))}",
                     ha="center", va="center",
                     fontsize=9, color="black",
-                    )
+                )
 
             # Unclassified-Bereich der oberen Bar (RTT-based) merken
             if y == top_y and cls == "Fallback":
@@ -2111,8 +2165,8 @@ def plot_pattern_distribution_acm_style_old(
 
     # --- Verbindungslinien + schattierte Fläche zwischen beiden Bars ---
     if fallback_start is not None and fallback_end is not None:
-        top_bottom_edge = top_y - bar_height / 2        # untere Kante obere Bar
-        bot_top_edge   = y_positions[0] + bar_height / 2  # obere Kante untere Bar
+        top_bottom_edge = top_y - bar_height / 2  # untere Kante obere Bar
+        bot_top_edge = y_positions[0] + bar_height / 2  # obere Kante untere Bar
 
         # linke Linie: von Fallback-Start (oben) zu x=0 (unten)
         ax.plot([fallback_start, 0],
