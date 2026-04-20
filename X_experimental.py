@@ -1125,7 +1125,7 @@ def plot_caida_os_distribution_acm_style(
         [b[0] for b in bars],
         legend_labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.0) if show_dst_only else (0.5, 1.4),
+        bbox_to_anchor=(0.42, 1.0) if show_dst_only else (0.44, 1.4),
         bbox_transform=ax.transAxes,
         ncol=ncol,
         frameon=False,
