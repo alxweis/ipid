@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import zstandard as zstd
-from matplotlib.ticker import MultipleLocator, LogLocator
+from matplotlib.ticker import MultipleLocator, LogLocator, NullFormatter
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS, TEST_RESULTS
@@ -793,12 +793,14 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
 
     # --- Achsen ---
     ax.set_xscale("log")
+
+    ax.xaxis.set_major_locator(LogLocator(base=10, numticks=10))
+    ax.xaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1, numticks=100))
+    ax.xaxis.set_minor_formatter(NullFormatter())
+
     ax.set_xlim(left=floor, right=1.0)
     # ax.set_xlim(left=1e-5, right=1.0)
     ax.set_ylim(0, 100)
-
-    ax.xaxis.set_major_locator(LogLocator(base=10, numticks=12))
-    ax.xaxis.set_minor_locator(LogLocator(base=10, subs=[2, 3, 4, 5, 6, 7, 8, 9], numticks=100))
 
     ax.set_xlabel(r"Minimum Chi$^2$ p-value over subsequences", labelpad=2)
     ax.set_ylabel("Cumulative Percentage [%]", labelpad=2)
