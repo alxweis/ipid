@@ -1710,8 +1710,8 @@ def plot_pattern_distribution_acm_style(
         msm_path_2: str,
         msm_path_3: str,
         name: str,
-        bar_height: float = 0.3,
-        bar_gap: float = 0.1,
+        bar_height: float = 0.2,
+        bar_gap: float = 0.2,
         y_padding: float = 0.1,
 ):
     # --- Load data ---
@@ -1853,7 +1853,7 @@ def plot_pattern_distribution_acm_style(
         [b[0] for b in bars],
         legend_labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),
+        bbox_to_anchor=(0.4, 1.0),
         bbox_transform=ax.transAxes,
         ncol=5,
         frameon=False,
