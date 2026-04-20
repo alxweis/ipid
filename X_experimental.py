@@ -279,7 +279,12 @@ def main():
             return
 
         sequence_length = int(sys.argv[2])
-        run_chi2_cdf(sequence_length, sequence_count_per_pattern=100_000, force_create_dataset=True)
+        force_create_dataset = False
+        sequence_count_per_pattern = 100_000
+        run_chi2_cdf(sequence_length, sequence_count_per_pattern=sequence_count_per_pattern,
+                     force_create_dataset=force_create_dataset, close_range=False)
+        run_chi2_cdf(sequence_length, sequence_count_per_pattern=sequence_count_per_pattern,
+                     force_create_dataset=False, close_range=True)
     elif mode == 11:
         if len(sys.argv) < 4:
             print_usage()
@@ -687,7 +692,7 @@ def sample_targets(input_file: str):
     con.close()
 
 
-def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_create_dataset: bool):
+def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_create_dataset: bool, close_range: bool):
     cache_fp = os.path.join(
         TEST_RESULTS,
         f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}.pkl",
@@ -729,10 +734,10 @@ def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_cr
         print(f"Cached p-values to {cache_fp}")
 
     # --- Plot ---
-    _plot_chi2_cdf(pvalues_per_class, plot_fp)
+    _plot_chi2_cdf(pvalues_per_class, plot_fp, close_range)
 
 
-def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
+def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, close_range: bool):
     """CDF der chi²-p-Values pro Klasse."""
     display_map = {
         "Mirror": ("Reflection", "#FFE866"),
@@ -794,29 +799,31 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
     # --- Achsen ---
     ax.set_xscale("log")
 
-    # Exponenten bestimmen
-    min_exp = int(np.floor(np.log10(floor)))
-    max_exp = 0
+    if not close_range:
+        # Exponenten bestimmen
+        min_exp = int(np.floor(np.log10(floor)))
+        max_exp = 0
 
-    step = 20
+        step = 20
 
-    start_exp = (min_exp // step) * step
+        start_exp = (min_exp // step) * step
 
-    exponents = np.arange(start_exp, max_exp + 1, step)
+        exponents = np.arange(start_exp, max_exp + 1, step)
 
-    if exponents[-1] != 0:
-        exponents = np.append(exponents, 0)
+        if exponents[-1] != 0:
+            exponents = np.append(exponents, 0)
 
-    ticks = 10.0 ** exponents
-    ax.set_xticks(ticks)
+        ticks = 10.0 ** exponents
+        ax.set_xticks(ticks)
 
-    minor_exponents = exponents[:-1] + step / 2
-    minor_ticks = 10.0 ** minor_exponents
-    ax.set_xticks(minor_ticks, minor=True)
-    ax.xaxis.set_minor_formatter(NullFormatter())
+        minor_exponents = exponents[:-1] + step / 2
+        minor_ticks = 10.0 ** minor_exponents
+        ax.set_xticks(minor_ticks, minor=True)
+        ax.xaxis.set_minor_formatter(NullFormatter())
 
-    ax.set_xlim(left=ticks[0], right=1.0)
-    # ax.set_xlim(left=1e-5, right=1.0)
+        ax.set_xlim(left=ticks[0], right=1.0)
+    else:
+        ax.set_xlim(left=1e-5, right=1.0)
 
     # Y Major-Ticks (z.B. alle 20%)
     y_major = np.arange(0, 101, 20)
