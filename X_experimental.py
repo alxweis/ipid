@@ -2299,7 +2299,7 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
 def plot_transit_endhost_distribution_acm_style(
         msm_path: str,
         name: str,
-        show_dst_only: bool = False,
+        show_dst_only: bool = True,
         bar_height: float = 0.3,
         bar_gap: float = 0.1,
         y_padding: float = 0.1,
@@ -2453,7 +2453,7 @@ def plot_transit_endhost_distribution_acm_style(
         [b[0] for b in bars],
         legend_labels,
         loc="lower center",
-        bbox_to_anchor=(0.42 if show_dst_only else 0.44, 1.0 if show_dst_only else 1.4),
+        bbox_to_anchor=(0.42, 1.0) if show_dst_only else (0.44, 1.4),
         bbox_transform=ax.transAxes,
         ncol=5,
         frameon=False,
