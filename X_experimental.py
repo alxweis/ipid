@@ -2301,7 +2301,7 @@ def plot_transit_endhost_distribution_acm_style(
         name: str,
         show_dst_only: bool = True,
         bar_height: float = 0.3,
-        bar_gap: float = 0.15,
+        bar_gap: float = 0.1,
         y_padding: float = 0.1,
 ):
     # --- Load data ---
@@ -2454,7 +2454,7 @@ def plot_transit_endhost_distribution_acm_style(
         legend_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.02),
-        ncol=5,
+        ncol=3,
         frameon=False,
         handlelength=1.2,
         handletextpad=0.3,
