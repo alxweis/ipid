@@ -320,7 +320,7 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
     tight_bbox = fig.get_tightbbox(renderer)
 
     # Ränder manuell erweitern (in Zoll)
-    pad_top, pad_right, pad_bottom, pad_left = 0.3, 0.02, 0.02, 0.02
+    pad_top, pad_right, pad_bottom, pad_left = 0.25, 0.03, 0.03, 0.03
     bbox_padded = Bbox.from_extents(
         tight_bbox.x0 - pad_left,
         tight_bbox.y0 - pad_bottom,
