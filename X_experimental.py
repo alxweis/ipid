@@ -1441,7 +1441,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     # --- Figure: n Subplots untereinander, Zellen mit fester Größe ---
     n_subplots = len(tables)
     row_counts = [len(t.index) for t in tables]
-    cell_h = 0.2
+    cell_h = 0.15
     fig_height = sum(row_counts) * cell_h + 1.5
 
     fig, axes = plt.subplots(
