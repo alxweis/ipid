@@ -2300,7 +2300,7 @@ def plot_transit_endhost_distribution_acm_style(
         msm_path: str,
         name: str,
         show_dst_only: bool = False,
-        bar_height: float = 0.15,
+        bar_height: float = 0.1,
 ):
     # --- Load data ---
     transit_path = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution", "data.pkl")
