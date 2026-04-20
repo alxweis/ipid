@@ -32,7 +32,7 @@ from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_natural
 )
 from hitlist.ip_scan import post_cleanup
-from hitlist.os_scan import oses, router, end_device, pretty_oses, os_groups, fallback_color, soft_palette
+from hitlist.os_scan import pretty_oses, os_groups, fallback_color, soft_palette
 
 filename = os.path.basename(__file__)
 
@@ -573,6 +573,15 @@ def main():
                             [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
             plot_os_heatmap(msm_path, "network_os_devices",
                             [cisco_ios, huawei_vrp, mikrotik_routeros, zynos, drayos])
+
+        plot_os_heatmap_combined(
+            msm_path,
+            idents=[
+                ("general_purpose_os_devices", "General-Purpose OS"),
+                ("network_os_devices", "Network OS"),
+            ],
+            name="os_heatmap_combined",
+        )
     elif mode == 17:
         if len(sys.argv) < 5:
             print_usage()
@@ -1261,15 +1270,15 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
     # --- Klassen-Mapping (Reihenfolge = Spaltenreihenfolge in der Heatmap) ---
     # raw_name -> display_name
     display_map = {
-        "Mirror":     "Reflection",
-        "Constant":   "Constant",
-        "Single":     "Single",
-        "Per-Con":    "Per-Connection",
-        "Per-Dst":    "Per-Destination",
+        "Mirror": "Reflection",
+        "Constant": "Constant",
+        "Single": "Single",
+        "Per-Con": "Per-Connection",
+        "Per-Dst": "Per-Destination",
         "Per-Bucket": "Per-Bucket",
-        "Per-CPU":    "Multi",
-        "Random":     "Random",
-        "Fallback":   "Unclassified",
+        "Per-CPU": "Multi",
+        "Random": "Random",
+        "Fallback": "Unclassified",
     }
 
     # --- Daten laden ---
@@ -1388,6 +1397,167 @@ def _fmt_count(n: float) -> str:
         val = f"{n / 1000:.1f}".rstrip("0").rstrip(".")
         return f"{val}k"
     return str(int(n))
+
+
+def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name: str):
+    """
+    Kombiniert mehrere bereits erzeugte OS-Heatmaps zu einem Plot mit geteilter x-Achse.
+
+    :param msm_path: Basis-Pfad zu den Messungen
+    :param idents: Liste von (ident, subplot_title) Paaren.
+                   'ident' muss zuvor per plot_os_heatmap() erzeugt worden sein.
+    :param name: Dateiname für die kombinierte Ausgabe.
+    """
+    print(f"Plotting combined OS Heatmap: {name}")
+
+    # --- Daten laden ---
+    tables = []
+    totals = []  # absolute Totals pro Zeile, aus info.txt
+    for ident, _ in idents:
+        analysis_dir = os.path.join(msm_path, "analysis", "os_heatmap", ident)
+        pkl_path = os.path.join(analysis_dir, "data.pkl")
+        info_path = os.path.join(analysis_dir, "info.txt")
+
+        rel = pd.read_pickle(pkl_path)
+        tables.append(rel)
+
+        # Totals aus info.txt parsen (Abschnitt "Absolute Counts")
+        totals.append(_parse_totals_from_info(info_path, rel.index))
+
+    # --- Plot-Style ---
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Latin Modern Roman"],
+        "mathtext.fontset": "cm",
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "pdf.fonttype": 42,
+    })
+
+    # --- Figure: n Subplots untereinander, Höhen proportional zur Anzahl Zeilen ---
+    n_subplots = len(tables)
+    row_counts = [len(t.index) for t in tables]
+    height_ratios = row_counts  # Subplot-Höhe ~ Anzahl OS-Gruppen
+    fig_height = 0.45 * sum(row_counts) + 1.8  # heuristisch: pro Zeile ~0.45" + Platz für x-Labels
+
+    fig, axes = plt.subplots(
+        n_subplots, 1,
+        figsize=(6.5, fig_height),
+        gridspec_kw={"height_ratios": height_ratios},
+        sharex=True,
+    )
+    if n_subplots == 1:
+        axes = [axes]
+
+    # Gemeinsame Colorbar -> eigenes Axes am rechten Rand
+    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
+
+    for i, (ax, (ident, subplot_title), rel, totals_i) in enumerate(
+            zip(axes, idents, tables, totals)
+    ):
+        is_last = (i == n_subplots - 1)
+
+        sns.heatmap(
+            rel,
+            ax=ax,
+            annot=True,
+            fmt=".1f",
+            cmap="Blues",
+            vmin=0, vmax=100,
+            linewidths=0.4,
+            linecolor="white",
+            cbar=(i == 0),  # Colorbar nur einmal zeichnen
+            cbar_ax=cbar_ax if i == 0 else None,
+            cbar_kws={"label": "Percentage [%]"} if i == 0 else None,
+        )
+
+        # y-Labels mit Total-Count
+        os_labels = [
+            f"{os_name} ({_fmt_count(totals_i.get(os_name, 0))})"
+            for os_name in rel.index
+        ]
+        ax.set_yticklabels(os_labels, rotation=0)
+        ax.set_ylabel(subplot_title, labelpad=4)
+
+        # x-Labels nur beim untersten Subplot anzeigen
+        if is_last:
+            ax.set_xlabel("IP-ID Selection Strategy", labelpad=4)
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
+        else:
+            ax.set_xlabel("")
+            ax.tick_params(axis="x", which="both", labelbottom=False)
+
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_linewidth(0.5)
+            spine.set_color("black")
+
+    # Platz für Colorbar am rechten Rand lassen
+    fig.subplots_adjust(left=0.22, right=0.90, top=0.97, bottom=0.18, hspace=0.15)
+
+    # --- Speichern ---
+    out_dir = os.path.join(msm_path, "analysis", "os_heatmap_combined")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"{name}.pdf")
+    plt.savefig(out_path, bbox_inches="tight", dpi=300)
+    plt.close(fig)
+
+    print(f"[+] Combined heatmap saved to {out_path}")
+
+
+def _parse_totals_from_info(info_path: str, expected_os_groups) -> dict:
+    """
+    Extrahiert die 'Total'-Spalte aus dem 'Absolute Counts'-Block von info.txt.
+    Gibt ein dict {os_group: total_int} zurück.
+    """
+    totals = {}
+    with open(info_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Abschnitt vor "=== Relative" nehmen
+    abs_block = content.split("=== Relative")[0]
+    lines = abs_block.splitlines()
+
+    # Header-Zeile finden (enthält "Total")
+    header_idx = None
+    for i, line in enumerate(lines):
+        if "Total" in line and not line.startswith("==="):
+            header_idx = i
+            break
+    if header_idx is None:
+        return totals
+
+    # Datenzeilen: alles nach dem Header, non-empty, kein "==="
+    for line in lines[header_idx + 1:]:
+        line = line.rstrip()
+        if not line or line.startswith("==="):
+            continue
+        # Erste Spalte = os_group (kann Leerzeichen enthalten, z.B. "Ubuntu/Debian")
+        # Letzte Zahl = Total
+        parts = line.split()
+        if not parts:
+            continue
+        try:
+            total = int(parts[-1])
+        except ValueError:
+            continue
+        # os_group = alles vor der ersten rein-numerischen Spalte
+        os_name_parts = []
+        for p in parts:
+            try:
+                int(p)
+                break
+            except ValueError:
+                os_name_parts.append(p)
+        os_name = " ".join(os_name_parts)
+        if os_name in expected_os_groups:
+            totals[os_name] = total
+
+    return totals
 
 
 def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
