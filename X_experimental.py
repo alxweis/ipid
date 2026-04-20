@@ -1477,7 +1477,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
         ax.set_ylabel("")
 
         # Subplot-Titel
-        ax.set_title(subplot_title, fontsize=10, pad=4)
+        ax.set_title(subplot_title, fontsize=10, pad=5)
 
         # x-Labels nur beim untersten Subplot
         if is_last:
@@ -1493,7 +1493,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
             spine.set_color("black")
 
     # --- Layout: mehr Abstand zwischen Subplots ---
-    fig.subplots_adjust(left=0.38, right=0.88, top=0.93, bottom=0.18, hspace=0.25)
+    fig.subplots_adjust(left=0.38, right=0.88, top=0.93, bottom=0.18, hspace=0.3)
 
     # --- Gemeinsames y-Label (zentriert über beide Subplots) ---
     top_ax_bbox = axes[0].get_position()
