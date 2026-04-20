@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import zstandard as zstd
-from matplotlib.ticker import MultipleLocator, LogLocator, NullFormatter
+from matplotlib.ticker import MultipleLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS, TEST_RESULTS
@@ -796,16 +796,14 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
 
     # Exponenten bestimmen
     min_exp = int(np.floor(np.log10(floor)))
-    max_exp = 0  # immer bis 10^0
+    max_exp = 0
 
-    step = 20  # <- hier steuerst du die "Schönheit" (z.B. 10, 20, 25)
+    step = 20
 
-    # Start so wählen, dass erster Tick <= floor
-    start_exp = (min_exp // step) * step
+    start_exp = ((min_exp // step) * step) - step
 
     exponents = np.arange(start_exp, max_exp + 1, step)
 
-    # Sicherstellen, dass 10^0 enthalten ist
     if exponents[-1] != 0:
         exponents = np.append(exponents, 0)
 
