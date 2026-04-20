@@ -1105,11 +1105,11 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 2.0))
+    fig, ax = plt.subplots(figsize=(5.5, 1.5))
 
-    datasets = [transit_values, endhost_values]
-    positions = [1, 0]
-    names = ["Router", "Dst-only"]
+    datasets = [transit_values]
+    positions = [0]
+    names = ["Router"]
 
     for y, values, name in zip(positions, datasets, names):
         left = 0
@@ -1124,7 +1124,7 @@ def plot_caida_os_distribution_acm_style(caida_itdk_path: str, msm_path: str):
         ax.text(-1, y, name, ha="right", va="center", fontsize=10)
 
     ax.set_xlim(0, 100)
-    ax.set_ylim(-0.5, 1.5)
+    ax.set_ylim(-0.3, 0.3)
     ax.set_xlabel("OS Distribution [%]")
     ax.set_ylabel("Device Type", labelpad=65)
 
