@@ -577,8 +577,8 @@ def main():
         plot_os_heatmap_combined(
             msm_path,
             idents=[
-                ("general_purpose_os_devices", "General-Purpose OS (#IP addr.)"),
-                ("network_os_devices", "Network OS (#IP Addr.)"),
+                ("general_purpose_os_devices", "General-Purpose OS"),
+                ("network_os_devices", "Network OS"),
             ],
             name="os_heatmap_combined",
         )
