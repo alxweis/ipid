@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from core import TEST_RESULTS
 from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
 
-FORCE_CREATE_DATASET = False
+FORCE_CREATE_DATASET = True
 
 
 class Dataset(Enum):
