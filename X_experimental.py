@@ -534,9 +534,9 @@ def main():
 
         msm_path = str(sys.argv[2])
 
-        plot_os_distribution(msm_path, oses, "all")
-        plot_os_distribution(msm_path, router, "router")
-        plot_os_distribution(msm_path, end_device, "end_device")
+        # plot_os_distribution(msm_path, oses, "all")
+        # plot_os_distribution(msm_path, router, "router")
+        # plot_os_distribution(msm_path, end_device, "end_device")
 
         rhel = (["redhat"], "RHEL")
         ubuntu_debian = (["ubuntu", "debian"], "Ubuntu/Debian")
@@ -1250,21 +1250,38 @@ def plot_random_ipid_sequence(msm_path: str, pattern_name: str, count: int = 10)
 
 
 def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], str]]):
+    print(f"Plotting ACM-style OS Heatmap for {ident}")
+
+    # --- Pfade ---
     eval_path = os.path.join(msm_path, "eval.csv.zst")
     targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
     targets_os_path = os.path.join(targets_base_path, "targets_os.csv.zst")
     analysis_dir = os.path.join(msm_path, "analysis", "os_heatmap", ident)
 
-    print(f"Plotting ACM-style OS Heatmap for {ident}")
+    # --- Klassen-Mapping (Reihenfolge = Spaltenreihenfolge in der Heatmap) ---
+    # raw_name -> display_name
+    display_map = {
+        "Mirror":     "Reflection",
+        "Constant":   "Constant",
+        "Single":     "Single Counter",
+        "Per-Con":    "Per-Connection Counter",
+        "Per-Dst":    "Per-Destination Counter",
+        "Per-Bucket": "Per-Bucket Counter",
+        "Per-CPU":    "Multi Counter",
+        "Random":     "Random",
+        "Fallback":   "Unclassified",
+    }
 
-    con = duckdb.connect(database=':memory:')
+    # --- Daten laden ---
+    con = duckdb.connect(database=":memory:")
     con.execute("PRAGMA threads=8;")
 
-    os_conditions = []
-    for os_list, label in os_groups:
-        for name in os_list:
-            os_conditions.append(f"WHEN lower(t.OS) = '{name.lower()}' THEN '{label}'")
-    os_case = " ".join(os_conditions)
+    os_case_parts = [
+        f"WHEN lower(t.OS) = '{name.lower()}' THEN '{label}'"
+        for os_list, label in os_groups
+        for name in os_list
+    ]
+    os_case = " ".join(os_case_parts)
 
     query = f"""
         SELECT e.IP_ID_PATTERN AS class,
@@ -1273,56 +1290,34 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
         JOIN read_csv_auto('{targets_os_path}') AS t
         ON e.IP = t.IP
     """
-
     df = con.execute(query).fetch_df()
-    # df = df[df["os_group"] != "Other"]
+    con.close()
 
+    # --- Pivot-Table bauen ---
     pivot = df.value_counts().reset_index()
     pivot.columns = ["class", "os_group", "count"]
     pivot_table = pivot.pivot(index="os_group", columns="class", values="count").fillna(0)
 
-    # --- Rename classes ---
-    pivot_table = pivot_table.rename(columns={
-        "Fallback": "Unclassified",
-        "Mirror": "Reflection",
-        "Per-CPU": "Multi"
-    })
+    # Klassen-Spalten umbenennen (nur die, die existieren)
+    pivot_table = pivot_table.rename(columns=display_map)
 
-    # Absolute Summen pro OS
-    pivot_table["Total"] = pivot_table.sum(axis=1)
-    # pivot_table = pivot_table.sort_values("Total", ascending=False)
-
-    # Reihenfolge gemäß os_groups erzwingen
-    desired_order = []
-    for os_list, label in os_groups:
-        if label in pivot_table.index:
-            desired_order.append(label)
-
-    # Other immer ans Ende hängen, falls vorhanden
+    # --- Reihenfolge OS-Gruppen (Zeilen) gemäß os_groups, "Other" ans Ende ---
+    row_order = [label for _, label in os_groups if label in pivot_table.index]
     if "Other" in pivot_table.index:
-        desired_order.append("Other")
+        row_order.append("Other")
+    pivot_table = pivot_table.loc[row_order]
 
-    # Nur OS-Gruppen behalten, die vorkommen
-    pivot_table = pivot_table.loc[desired_order]
+    # --- Reihenfolge Klassen (Spalten) gemäß display_map ---
+    col_order = [display_map[k] for k in display_map if display_map[k] in pivot_table.columns]
+    pivot_table["Total"] = pivot_table[col_order].sum(axis=1)
+    pivot_table = pivot_table[col_order + ["Total"]]
 
-    # Sortierung der Spalten
-    pattern_order = []
-    for p in Pattern:
-        if p.value == "Fallback" and "Unclassified" in pivot_table.columns:
-            pattern_order.append("Unclassified")
-        elif p.value == "Mirror" and "Reflection" in pivot_table.columns:
-            pattern_order.append("Reflection")
-        elif p.value == "Per-CPU" and "Multi" in pivot_table.columns:
-            pattern_order.append("Multi")
-        elif p.value in pivot_table.columns:
-            pattern_order.append(p.value)
-    pivot_table = pivot_table[pattern_order + ["Total"]]
+    # --- Relative Werte ---
+    pivot_table_rel = (
+            pivot_table[col_order].div(pivot_table["Total"], axis=0) * 100
+    )
 
-    # Relative Werte
-    pivot_table_rel = pivot_table.div(pivot_table["Total"], axis=0) * 100
-    pivot_table_rel = pivot_table_rel.drop(columns=["Total"])
-
-    # ACM CCR Stil mit etwas größerer Schrift
+    # --- Plot ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Latin Modern Roman"],
@@ -1342,48 +1337,34 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
         annot=True,
         fmt=".1f",
         cmap="Blues",
-        cbar_kws={'label': 'Percentage [%]'},
+        cbar_kws={"label": "Percentage [%]"},
         linewidths=0.4,
-        linecolor='white'
+        linecolor="white",
     )
 
-    # OS Labels mit Total Count
-    # os_labels = [f"{os_name}" for os_name, total in zip(pivot_table.index, pivot_table["Total"])]
-    def fmt_count(n):
-        if n >= 1_000_000:
-            val = f"{n / 1_000_000:.1f}".rstrip("0").rstrip(".")
-            return f"{val}M"
-        if n >= 10_000:
-            return f"{int(n / 1000)}k"
-        if n >= 1000:
-            val = f"{n / 1000:.1f}".rstrip("0").rstrip(".")
-            return f"{val}k"
-        return str(int(n))
-
+    # y-Labels mit Total-Count
     os_labels = [
-        f"{os_name} ({fmt_count(total)})"
+        f"{os_name} ({_fmt_count(total)})"
         for os_name, total in zip(pivot_table.index, pivot_table["Total"])
     ]
     ax.set_yticklabels(os_labels, rotation=0)
 
-    # Achsenbeschriftungen
-    plt.xlabel("IP-ID Selection Method", labelpad=4)
+    plt.xlabel("IP-ID Selection Strategy", labelpad=4)
     plt.ylabel("OS Group (#IP Addr.)", labelpad=4)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
-    # Rand um Heatmap
-    for _, spine in ax.spines.items():
+    for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_linewidth(0.5)
         spine.set_color("black")
 
     plt.tight_layout(pad=0.4)
 
+    # --- Speichern ---
     os.makedirs(analysis_dir, exist_ok=True)
     pivot_table_rel.to_pickle(os.path.join(analysis_dir, "data.pkl"))
     plt.savefig(os.path.join(analysis_dir, "plot_new.pdf"), bbox_inches="tight", dpi=300)
 
-    # Info-Datei mit absoluten und relativen Werten
     with open(os.path.join(analysis_dir, "info.txt"), "w", encoding="utf-8") as f:
         f.write("=== Absolute Counts (including Totals) ===\n")
         f.write(pivot_table.to_string(float_format=lambda x: f"{int(x)}"))
@@ -1391,8 +1372,20 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
         f.write(pivot_table_rel.to_string(float_format=lambda x: f"{x:.1f}%"))
 
     plt.close()
-    con.close()
     print("Done.")
+
+
+def _fmt_count(n: float) -> str:
+    """Kompakte Zahlendarstellung für OS-Labels."""
+    if n >= 1_000_000:
+        val = f"{n / 1_000_000:.1f}".rstrip("0").rstrip(".")
+        return f"{val}M"
+    if n >= 10_000:
+        return f"{int(n / 1000)}k"
+    if n >= 1000:
+        val = f"{n / 1000:.1f}".rstrip("0").rstrip(".")
+        return f"{val}k"
+    return str(int(n))
 
 
 def plot_os_pattern_distribution(msm_path: str, oses: list[str], ident: str):
