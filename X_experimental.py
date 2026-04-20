@@ -760,7 +760,7 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.2, 3.0))
+    fig, ax = plt.subplots(figsize=(4.0, 3.0))
 
     # Klassen in Display-Map-Reihenfolge plotten
     ordered_classes = sorted(
