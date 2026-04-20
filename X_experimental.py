@@ -1303,8 +1303,8 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
 
     # --- Reihenfolge OS-Gruppen (Zeilen) gemäß os_groups, "Other" ans Ende ---
     row_order = [label for _, label in os_groups if label in pivot_table.index]
-    if "Other" in pivot_table.index:
-        row_order.append("Other")
+    # if "Other" in pivot_table.index:
+    #     row_order.append("Other")
     pivot_table = pivot_table.loc[row_order]
 
     # --- Reihenfolge Klassen (Spalten) gemäß display_map ---
@@ -1337,6 +1337,8 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
         annot=True,
         fmt=".1f",
         cmap="Blues",
+        vmin=0,
+        vmax=100,
         cbar_kws={"label": "Percentage [%]"},
         linewidths=0.4,
         linecolor="white",
