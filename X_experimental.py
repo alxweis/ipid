@@ -1412,7 +1412,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
 
     # --- Daten laden ---
     tables = []
-    totals = []  # absolute Totals pro Zeile, aus info.txt
+    totals = []
     for ident, _ in idents:
         analysis_dir = os.path.join(msm_path, "analysis", "os_heatmap", ident)
         pkl_path = os.path.join(analysis_dir, "data.pkl")
@@ -1420,8 +1420,6 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
 
         rel = pd.read_pickle(pkl_path)
         tables.append(rel)
-
-        # Totals aus info.txt parsen (Abschnitt "Absolute Counts")
         totals.append(_parse_totals_from_info(info_path, rel.index))
 
     # --- Plot-Style ---
@@ -1438,11 +1436,11 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
         "pdf.fonttype": 42,
     })
 
-    # --- Figure: n Subplots untereinander, Zellen mit fester Größe ---
+    # --- Figure ---
     n_subplots = len(tables)
     row_counts = [len(t.index) for t in tables]
     cell_h = 0.15
-    fig_height = sum(row_counts) * cell_h + 1.5
+    fig_height = sum(row_counts) * cell_h + 1.8  # etwas mehr Platz wg. Titeln
 
     fig, axes = plt.subplots(
         n_subplots, 1,
@@ -1452,9 +1450,6 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     )
     if n_subplots == 1:
         axes = [axes]
-
-    # Gemeinsame Colorbar rechts außen
-    cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
 
     for i, (ax, (ident, subplot_title), rel, totals_i) in enumerate(
             zip(axes, idents, tables, totals)
@@ -1470,20 +1465,21 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
             vmin=0, vmax=100,
             linewidths=0.4,
             linecolor="white",
-            cbar=(i == 0),  # Colorbar nur einmal zeichnen
-            cbar_ax=cbar_ax if i == 0 else None,
-            cbar_kws={"label": "Percentage [%]"} if i == 0 else None,
+            cbar=False,  # Colorbar später manuell
         )
 
-        # y-Labels mit Total-Count
+        # y-Labels mit Total-Count (nur Tick-Labels, KEIN ylabel pro Subplot)
         os_labels = [
             f"{os_name} ({_fmt_count(totals_i.get(os_name, 0))})"
             for os_name in rel.index
         ]
         ax.set_yticklabels(os_labels, rotation=0)
-        ax.set_ylabel(subplot_title, labelpad=4)
+        ax.set_ylabel("")
 
-        # x-Labels nur beim untersten Subplot anzeigen
+        # Subplot-Titel
+        ax.set_title(subplot_title, fontsize=10, pad=4)
+
+        # x-Labels nur beim untersten Subplot
         if is_last:
             ax.set_xlabel("IP-ID Selection Strategy", labelpad=4)
             ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
@@ -1496,8 +1492,29 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
             spine.set_linewidth(0.5)
             spine.set_color("black")
 
-    # Platz für Colorbar am rechten Rand lassen
-    fig.subplots_adjust(left=0.22, right=0.90, top=0.97, bottom=0.18, hspace=0.05)
+    # --- Layout: mehr Abstand zwischen Subplots ---
+    fig.subplots_adjust(left=0.30, right=0.88, top=0.93, bottom=0.18, hspace=0.25)
+
+    # --- Gemeinsames y-Label (zentriert über beide Subplots) ---
+    # Zentrum zwischen oberster und unterster Achse berechnen
+    top_ax_bbox = axes[0].get_position()
+    bot_ax_bbox = axes[-1].get_position()
+    y_center = (top_ax_bbox.y1 + bot_ax_bbox.y0) / 2
+    fig.text(
+        0.02, y_center,
+        "Operating System (#IP Addr.)",
+        rotation=90, va="center", ha="left",
+        fontsize=10,
+    )
+
+    # --- Gemeinsame Colorbar, vertikal zentriert ---
+    cbar_height = top_ax_bbox.y1 - bot_ax_bbox.y0
+    cbar_ax = fig.add_axes([0.90, bot_ax_bbox.y0, 0.025, cbar_height])
+
+    # ScalarMappable für die Colorbar aus den Heatmap-Parametern
+    sm = plt.cm.ScalarMappable(cmap="Blues", norm=plt.Normalize(vmin=0, vmax=100))
+    sm.set_array([])
+    fig.colorbar(sm, cax=cbar_ax, label="Percentage [%]")
 
     # --- Speichern ---
     out_dir = os.path.join(msm_path, "analysis", "os_heatmap_combined")
