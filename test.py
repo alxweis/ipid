@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
+from matplotlib.transforms import Bbox
 
 from core import TEST_RESULTS
 from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
@@ -312,7 +313,22 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
     plt.tight_layout(pad=0.4)
-    plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=(0.3, 0.02, 0.02, 0.02))
+
+    # Figure rendern, damit get_tightbbox korrekt arbeitet
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    tight_bbox = fig.get_tightbbox(renderer)
+
+    # Ränder manuell erweitern (in Zoll)
+    pad_top, pad_right, pad_bottom, pad_left = 0.3, 0.02, 0.02, 0.02
+    bbox_padded = Bbox.from_extents(
+        tight_bbox.x0 - pad_left,
+        tight_bbox.y0 - pad_bottom,
+        tight_bbox.x1 + pad_right,
+        tight_bbox.y1 + pad_top,
+        )
+
+    plt.savefig(out_path, bbox_inches=bbox_padded, dpi=300)
     plt.close(fig)
 
 
