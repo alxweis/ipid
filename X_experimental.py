@@ -2198,7 +2198,7 @@ def plot_pattern_distribution_acm_style_old(
         [b[0] for b in bars],
         legend_labels,
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),
+        bbox_to_anchor=(0.44, 1.0),
         bbox_transform=ax.transAxes,
         ncol=5,
         frameon=False,
