@@ -1441,12 +1441,12 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     # --- Figure: n Subplots untereinander, Zellen mit fester Größe ---
     n_subplots = len(tables)
     row_counts = [len(t.index) for t in tables]
-    cell_h = 0.2
+    cell_h = 0.1
     fig_height = sum(row_counts) * cell_h + 1.5
 
     fig, axes = plt.subplots(
         n_subplots, 1,
-        figsize=(5.0, fig_height),
+        figsize=(4.0, fig_height),
         gridspec_kw={"height_ratios": row_counts},
         sharex=True,
     )
