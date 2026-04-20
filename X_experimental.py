@@ -2056,8 +2056,8 @@ def plot_pattern_distribution_acm_style_old(
         msm_path_1: str,
         msm_path_2: str,
         name: str,
-        bar_height: float = 0.3,
-        bar_gap: float = 0.1,
+        bar_height: float = 0.2,
+        bar_gap: float = 0.2,
         y_padding: float = 0.1,
 ):
     # --- Load data ---
