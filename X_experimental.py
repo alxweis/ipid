@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import zstandard as zstd
-from matplotlib.ticker import MultipleLocator
+from matplotlib.ticker import MultipleLocator, NullFormatter
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS, TEST_RESULTS
