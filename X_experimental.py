@@ -539,40 +539,41 @@ def main():
         # plot_os_distribution(msm_path, end_device, "end_device")
 
         rhel = (["redhat"], "RHEL")
-        ubuntu_debian = (["ubuntu", "debian"], "Ubuntu/Debian")
-        windows = (["microsoft", "windows"], "Windows")
+        ubuntu = (["ubuntu"], "Ubuntu")
+        debian = (["debian"], "Debian")
+        windows = (["microsoft", "windows"], "Microsoft Windows")
         centos = (["centos"], "CentOS")
         fedora = (["fedora"], "Fedora")
         freebsd = (["freebsd"], "FreeBSD")
         openbsd = (["openbsd"], "OpenBSD")
 
         huawei_vrp = (["huawei"], "Huawei VRP")
-        zynos = (["zyxel"], "ZynOS")
+        zynos = (["zyxel"], "Zyxel ZynOS")
         cisco_ios = (["cisco"], "Cisco IOS")
-        drayos = (["draytek"], "DrayOS")
+        # drayos = (["draytek"], "DrayOS")
         mikrotik_routeros = (["mikrotik"], "MikroTik RouterOS")
         sonicos = (["sonicwall"], "SonicOS")
 
         # ICMP
         if "icmp" in msm_path:
             plot_os_heatmap(msm_path, "general_purpose_os_devices",
-                            [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+                            [ubuntu, debian, rhel, centos, fedora, freebsd, openbsd, windows])
             plot_os_heatmap(msm_path, "network_os_devices",
-                            [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos, drayos])
+                            [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos])  # drayos
 
         # TCP/80
         if "tcp" in msm_path:
             plot_os_heatmap(msm_path, "general_purpose_os_devices",
-                            [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+                            [ubuntu, debian, rhel, centos, fedora, freebsd, openbsd, windows])
             plot_os_heatmap(msm_path, "network_os_devices",
-                            [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos, drayos])
+                            [cisco_ios, huawei_vrp, mikrotik_routeros, sonicos, zynos])  # drayos
 
         # UDP/53
         if "udp" in msm_path:
             plot_os_heatmap(msm_path, "general_purpose_os_devices",
-                            [ubuntu_debian, rhel, centos, fedora, freebsd, openbsd, windows])
+                            [ubuntu, debian, rhel, centos, fedora, freebsd, openbsd, windows])
             plot_os_heatmap(msm_path, "network_os_devices",
-                            [cisco_ios, huawei_vrp, mikrotik_routeros, zynos, drayos])
+                            [cisco_ios, huawei_vrp, mikrotik_routeros, zynos])  # drayos
 
         plot_os_heatmap_combined(
             msm_path,
@@ -1456,16 +1457,19 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     ):
         is_last = (i == n_subplots - 1)
 
+        # Annotation-Matrix: "-" für 0, sonst "X.X"
+        annot_matrix = rel.map(lambda v: "-" if v == 0 else f"{v:.1f}")
+
         sns.heatmap(
             rel,
             ax=ax,
-            annot=True,
-            fmt=".1f",
+            annot=annot_matrix,
+            fmt="",
             cmap="Blues",
             vmin=0, vmax=100,
             linewidths=0.4,
             linecolor="white",
-            cbar=False,  # Colorbar später manuell
+            cbar=False,
         )
 
         # y-Labels mit Total-Count (nur Tick-Labels, KEIN ylabel pro Subplot)
