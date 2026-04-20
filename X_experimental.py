@@ -1705,75 +1705,53 @@ def plot_pattern():
     plt.savefig(os.path.join(EXPERIMENTAL_RESULTS, "ipid_papers.pdf"), bbox_inches="tight")
 
 
-def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_path_3: str, name: str):
-    def load_data(msm_path):
+def plot_pattern_distribution_acm_style(
+        msm_path_1: str,
+        msm_path_2: str,
+        msm_path_3: str,
+        name: str,
+        bar_height: float = 0.3,
+        bar_gap: float = 0.1,
+        y_padding: float = 0.1,
+):
+    # --- Load data ---
+    def _load_data(msm_path):
         data_path = os.path.join(msm_path, "analysis", "pattern_distribution", "data.pkl")
-        with open(Path(data_path), "rb") as f:
+        with open(data_path, "rb") as f:
             data = pickle.load(f)
         if isinstance(data, pd.DataFrame):
             data = dict(zip(data["class"], data["relative"]))
         return data
 
-    # --- Load both datasets ---
-    data1 = load_data(msm_path_1)
-    data2 = load_data(msm_path_2)
-    data3 = load_data(msm_path_3)
+    data1 = _load_data(msm_path_1)
+    data2 = _load_data(msm_path_2)
+    data3 = _load_data(msm_path_3)
 
-    # --- Rename classes ---
-    for d in (data1, data2, data3):
-        if "Fallback" in d:
-            if d is data2:
-                d["Unclassified"] = d.pop("Fallback")
-            else:
-                d["Unclassified"] = d.pop("Fallback")
+    # --- Map classes ---
+    display_map = {
+        "Mirror":     ("Reflection",      "#FFE866"),
+        "Constant":   ("Constant",        "#6FB8FF"),
+        "Single":     ("Single",          "#FF8080"),
+        "Per-Dst":    ("Per-Destination", "#B580FF"),
+        "Per-Con":    ("Per-Connection",  "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket",      "#6EE66E"),
+        "Per-CPU":    ("Multi",           "#66E0E0"),
+        "Random":     ("Random",          "#FFB266"),
+        "Fallback":   ("Unclassified",    "#CCCCCC"),
+    }
 
-        if "Mirror" in d:
-            d["Reflection"] = d.pop("Mirror")
-
-        if "Per-CPU" in d:
-            d["Multi"] = d.pop("Per-CPU")
-
-    # --- Sort classes nach Pattern Enum ---
-    pattern_values = [p.value for p in Pattern]
-
-    def sort_key(c):
-        if c == "Unclassified":
-            return 1001
-        if c == "Unclassified":
-            return 1000
-
-        if c == "Reflection":
-            base = "Mirror"
-        elif c == "Multi":
-            base = "Per-CPU"
-        else:
-            base = c
-        return pattern_values.index(base) if base in pattern_values else 999
+    order_index = {k: i for i, k in enumerate(display_map)}
 
     all_classes = sorted(
         set(data1.keys()).union(data2.keys()).union(data3.keys()),
-        key=sort_key
+        key=lambda c: order_index.get(c, 999),
     )
 
     values1 = [float(data1.get(c, 0.0)) for c in all_classes]
     values2 = [float(data2.get(c, 0.0)) for c in all_classes]
     values3 = [float(data3.get(c, 0.0)) for c in all_classes]
 
-    # --- Farbzuordnung ---
-    color_map = {
-        "Reflection": "#FFE866",
-        "Constant": "#6FB8FF",
-        "Single": "#FF8080",
-        "Per-Con": "#FF85C1",
-        "Per-Dst": "#B580FF",
-        "Per-Bucket": "#6EE66E",
-        "Multi": "#66E0E0",
-        "Random": "#FFB266",
-        "Unclassified": "#CCCCCC",
-        # "Unclassified": "#808080",
-    }
-
-    # --- ACM Plot style ---
+    # --- Plot-Style ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Latin Modern Roman"],
@@ -1787,99 +1765,109 @@ def plot_pattern_distribution_acm_style(msm_path_1: str, msm_path_2: str, msm_pa
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 2.4))
+    # --- Geometrie (3 Bars: von unten nach oben) ---
+    # Reihenfolge: unten = msm_path_3, Mitte = msm_path_2, oben = msm_path_1
+    data_sets = [values3, values2, values1]
+    labels = ["RTT-based &\nConnection-oriented", "Fixed-Interval", "RTT-based"]
+    n_bars = len(data_sets)
 
-    y_positions = [2, 1, 0]
-    datasets = [values1, values2, values3]
-    labels = ["RTT-based", "Fixed-Interval", "RTT-based &\nConnection-oriented"]
+    total_height = 2 * y_padding + n_bars * bar_height + max(n_bars - 1, 0) * bar_gap
+    y_positions = [
+        y_padding + bar_height / 2 + i * (bar_height + bar_gap)
+        for i in range(n_bars)
+    ]
 
+    fig_width = 5.0
+    fig, ax = plt.subplots(figsize=(fig_width, total_height))
+
+    # --- Bars zeichnen ---
     bars = []
-    fallback_start = fallback_end = 0
-    width = 0.55
+    top_y = y_positions[-1]   # obere Bar = RTT-based (values1)
+    mid_y = y_positions[-2]   # mittlere Bar = Fixed-Interval (values2)
+    fallback_start = fallback_end = None
 
-    for y, values, label in zip(y_positions, datasets, labels):
+    for y, values in zip(y_positions, data_sets):
         left = 0
         current_bars = []
         for cls, val in zip(all_classes, values):
-            color = color_map.get(cls, "#CCCCCC")
-            bar = ax.barh(y, val, left=left, height=width,
-                          edgecolor="none", color=color)
+            color = display_map.get(cls, ("?", "#CCCCCC"))[1]
+            bar = ax.barh(
+                y, val, left=left, height=bar_height,
+                edgecolor="none", color=color,
+            )
             current_bars.append(bar)
 
-            # --- Prozentwerte ab 5%, ganzzahlig gerundet ---
             if val >= 1:
                 ax.text(
                     left + val / 2, y,
-                    f"{int(math.floor(val + 0.5))}",  # <-- ganze Zahl
+                    f"{int(math.floor(val + 0.5))}",
                     ha="center", va="center",
-                    color="black", fontsize=9
-                )
+                    fontsize=9, color="black",
+                    )
+
+            # Unclassified-Bereich der oberen Bar (RTT-based) merken
+            if y == top_y and cls == "Fallback":
+                fallback_start = left
+                fallback_end = left + val
 
             left += val
-
-            if y == 2 and cls == "Unclassified":
-                fallback_start = left - val
-                fallback_end = left
-
-        # ax.text(-1, y, label, ha="right", va="center", fontsize=10)
         bars = current_bars
 
-    # --- Gestrichelte Linien & Fläche (FIX für 3 Bars) ---
-    y_top = 2 - width / 2
-    y_bottom = 1 + width / 2
+    # --- Verbindung Unclassified (obere Bar) zu voller Breite (mittlere Bar) ---
+    if fallback_start is not None and fallback_end is not None:
+        y_upper = top_y - bar_height / 2   # untere Kante obere Bar
+        y_lower = mid_y + bar_height / 2   # obere Kante mittlere Bar
 
-    ax.plot([fallback_start, 0],
-            [y_top, y_bottom],
-            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+        ax.plot([fallback_start, 0],
+                [y_upper, y_lower],
+                color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
 
-    ax.plot([fallback_end, 100],
-            [y_top, y_bottom],
-            color='gray', linestyle='--', linewidth=0.8, alpha=0.5)
+        ax.plot([fallback_end, 100],
+                [y_upper, y_lower],
+                color="gray", linestyle="--", linewidth=0.8, alpha=0.5)
 
-    ax.fill_betweenx(
-        [y_top, y_bottom],
-        [fallback_start, 0],
-        [fallback_end, 100],
-        color='lightgray', alpha=0.5
-    )
+        ax.fill_betweenx(
+            [y_upper, y_lower],
+            [fallback_start, 0],
+            [fallback_end, 100],
+            color="lightgray", alpha=0.5,
+        )
 
     # --- Achsen ---
     ax.set_xlim(0, 100)
-    ax.set_ylim(-0.5, 2.5)
-    ax.set_xlabel("IP-ID Selection Method [%]", labelpad=2)
+    ax.set_ylim(0, total_height)
 
-    # --- MINORTICKS aktivieren ---
-    ax.xaxis.set_minor_locator(MultipleLocator(5))  # alle 5%
+    ax.set_xlabel("IP-ID Selection Strategy [%]", labelpad=2)
+    ax.set_ylabel("Measurement Type", rotation=90, labelpad=6)
+
+    ax.xaxis.set_minor_locator(MultipleLocator(5))
     ax.tick_params(axis="x", which="minor", length=2, width=0.5)
-
-    fig.text(0.01, 0.5, "Measurement Type",
-             va="center", ha="center", rotation="vertical", fontsize=10)
 
     ax.set_yticks(y_positions)
     ax.set_yticklabels(labels)
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
     # --- Legende ---
-    legend_labels = all_classes
+    legend_labels = [display_map.get(c, (c, None))[0] for c in all_classes]
     ax.legend(
         [b[0] for b in bars],
         legend_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.02),
+        bbox_transform=ax.transAxes,
         ncol=5,
         frameon=False,
-        handlelength=1.2,
-        handletextpad=0.3,
+        handlelength=1.0,
+        handletextpad=0.2,
         columnspacing=0.8,
-        borderaxespad=0.2,
     )
 
-    plt.tight_layout()
-
-    path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_pattern_distribution.pdf")
-    plt.savefig(path, format="pdf", bbox_inches="tight")
+    # --- Speichern ---
+    out_path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_pattern_distribution.pdf")
+    plt.savefig(out_path, format="pdf", bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
-    print(f"[+] Combined horizontal stacked bar plot saved to {path}")
+
+    print(f"[+] Combined horizontal stacked bar plot saved to {out_path}")
 
 
 def plot_pattern_distribution_acm_style_rst(msm_path_1: str, msm_path_2: str, msm_path_3: str, name: str):
