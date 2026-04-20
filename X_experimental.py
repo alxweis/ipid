@@ -2299,7 +2299,7 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
 def plot_transit_endhost_distribution_acm_style(
         msm_path: str,
         name: str,
-        show_dst_only: bool = True,
+        show_dst_only: bool = False,
         bar_height: float = 0.15
 ):
     # --- Load data ---
@@ -2390,7 +2390,7 @@ def plot_transit_endhost_distribution_acm_style(
 
     # --- Dynamische Höhe ---
     n_bars = 1 + int(show_dst_only)
-    fig_height = n_bars * 0.3
+    fig_height = n_bars * 0.5
 
     fig, ax = plt.subplots(figsize=(5.5, fig_height))
 
