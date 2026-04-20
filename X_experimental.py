@@ -2298,7 +2298,7 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
 def plot_transit_endhost_distribution_acm_style(
         msm_path: str,
         name: str,
-        show_dst_only: bool = True,
+        show_dst_only: bool = False,
         bar_height: float = 0.3,
         bar_gap: float = 0.1,
         y_padding: float = 0.1,
@@ -2373,7 +2373,7 @@ def plot_transit_endhost_distribution_acm_style(
 
     # --- Figure: feste Breite, Höhe direkt = total_height in Zoll ---
     # Damit entsprechen bar_height/bar_gap/y_padding exakt Zoll in der Figure
-    fig_width = 6.5
+    fig_width = 5.5
     fig, ax = plt.subplots(figsize=(fig_width, total_height))
 
     bars = []
