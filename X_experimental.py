@@ -2374,7 +2374,7 @@ def plot_transit_endhost_distribution_acm_style(msm_path: str, name: str):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 1.8))
+    fig, ax = plt.subplots(figsize=(5.5, 1.5))
 
     y_positions = [0]
     data_sets = [transit_values]
