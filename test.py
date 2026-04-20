@@ -282,10 +282,9 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
         "pdf.fonttype": 42,
     })
 
-    # Annotation-Matrix: "-" für 0, sonst "X.X"
     annot_matrix = df_rel.map(lambda v: "-" if v < 0.05 else f"{v:.1f}")
 
-    fig, ax = plt.subplots(figsize=(4.75, 2.5))
+    fig, ax = plt.subplots(figsize=(5.5, 2.5))
     sns.heatmap(
         df_rel,
         ax=ax,
@@ -298,7 +297,6 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
         cbar_kws={"label": "Percentage [%]"},
     )
 
-    # Ränder der Heatmap + Colorbar auf 0.5 linewidth/schwarz angleichen
     for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_linewidth(0.5)
@@ -309,12 +307,12 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
     cbar.outline.set_edgecolor("black")
     cbar.ax.tick_params(width=0.5)
 
-    ax.set_xlabel("Predicted IP-ID Selection Method", labelpad=4)
-    ax.set_ylabel("True IP-ID Selection Method", labelpad=4)
+    ax.set_xlabel("Predicted IP-ID Selection Strategy", labelpad=4)
+    ax.set_ylabel("True IP-ID Selection Strategy", labelpad=4, y=0.5)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
     plt.tight_layout(pad=0.4)
-    plt.savefig(out_path, bbox_inches="tight", dpi=300)
+    plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.02)
     plt.close(fig)
 
 
