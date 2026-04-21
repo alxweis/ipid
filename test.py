@@ -308,27 +308,28 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
     cbar.outline.set_edgecolor("black")
     cbar.ax.tick_params(width=0.5)
 
-    ax.set_xlabel("Predicted IP-ID Selection Strategy", labelpad=4)
-    ax.set_ylabel("True IP-ID Selection Strategy", labelpad=4, y=0.5)
+    ax.set_xlabel("Generating IP-ID Selection\nStrategy", labelpad=4)
+    ax.set_ylabel("Detected IP-ID Selection\nStrategy", labelpad=4, y=0.5)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
     plt.tight_layout(pad=0.4)
 
     # Figure rendern, damit get_tightbbox korrekt arbeitet
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    tight_bbox = fig.get_tightbbox(renderer)
+    # fig.canvas.draw()
+    # renderer = fig.canvas.get_renderer()
+    # tight_bbox = fig.get_tightbbox(renderer)
+    #
+    # # Ränder manuell erweitern (in Zoll)
+    # pad_top, pad_right, pad_bottom, pad_left = 0.25, 0.03, 0.03, 0.03
+    # bbox_padded = Bbox.from_extents(
+    #     tight_bbox.x0 - pad_left,
+    #     tight_bbox.y0 - pad_bottom,
+    #     tight_bbox.x1 + pad_right,
+    #     tight_bbox.y1 + pad_top,
+    #     )
 
-    # Ränder manuell erweitern (in Zoll)
-    pad_top, pad_right, pad_bottom, pad_left = 0.25, 0.03, 0.03, 0.03
-    bbox_padded = Bbox.from_extents(
-        tight_bbox.x0 - pad_left,
-        tight_bbox.y0 - pad_bottom,
-        tight_bbox.x1 + pad_right,
-        tight_bbox.y1 + pad_top,
-        )
-
-    plt.savefig(out_path, bbox_inches=bbox_padded, dpi=300)
+    # plt.savefig(out_path, bbox_inches=bbox_padded, dpi=300)
+    plt.savefig(out_path, bbox_inches="tight", pad_inches=0.05, dpi=300)
     plt.close(fig)
 
 
