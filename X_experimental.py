@@ -34,6 +34,7 @@ from experimental.sequence_stable_len_analysis.main import (
 )
 from hitlist.ip_scan import post_cleanup
 from hitlist.os_scan import pretty_oses, os_groups, fallback_color, soft_palette
+from postproc import GEOLITE_COUNTRY_DB
 
 filename = os.path.basename(__file__)
 
@@ -639,8 +640,274 @@ def main():
 
         targets_file = os.path.join(str(sys.argv[2]), "targets.csv.zst")
         sample_targets(targets_file)
+    elif mode == 30:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        msm_path_seq = str(sys.argv[2])
+        msm_path_mass = str(sys.argv[3])
+
+        plot_rtt_per_region_acm(msm_path_seq, msm_path_mass)
     else:
         print_usage()
+
+
+def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
+                            max_samples_per_group: int = 500_000):
+    """
+    Plottet einen Split-Violin der RTT-Verteilungen (Inter-Send-Abstände) pro
+    Kontinent für zwei Messungen (SEQ vs MASS).
+
+    :param msm_path_seq:   Pfad zur sequentiellen Messung (probing.csv.zst).
+    :param msm_path_mass:  Pfad zur Mass-Messung (probing.csv.zst).
+    :param max_samples_per_group: Anzahl Samples pro (Kontinent, Source) für den Plot.
+                                  Statistiken in info.txt nutzen weiterhin den vollen Datensatz.
+    """
+    # --- Pfade ---
+    out_dir = os.path.join(msm_path_mass, "analysis", "rtt_per_region_combined")
+    os.makedirs(out_dir, exist_ok=True)
+    cache_fp = os.path.join(out_dir, "rtts_per_continent.parquet")
+    plot_fp = os.path.join(out_dir, "plot_acm_style.pdf")
+    info_fp = os.path.join(out_dir, "info.txt")
+
+    # --- RTT-Daten extrahieren (mit Cache) ---
+    force_create_dataset = True
+    if os.path.exists(cache_fp) and not force_create_dataset:
+        print(f"Loading cached RTTs from {cache_fp}")
+        df = pd.read_parquet(cache_fp)
+    else:
+        print("Extracting RTTs from probing CSVs...")
+        df_seq = _extract_rtts_with_continent(msm_path_seq, label="SEQ")
+        df_mass = _extract_rtts_with_continent(msm_path_mass, label="MASS")
+        df = pd.concat([df_seq, df_mass], ignore_index=True)
+        df.to_parquet(cache_fp, compression="zstd")
+        print(f"Cached RTT dataset to {cache_fp} ({len(df):,} rows)")
+
+    # --- Kontinente filtern (None/Antarctica raus) ---
+    df = df[~df["continent"].isin(["None", "Antarctica"])]
+
+    # --- Reihenfolge: nach Sample-Count (descending) ---
+    order = df["continent"].value_counts().index.tolist()
+
+    # --- Labels mit #IPs pro Kontinent (unique IPs über beide Messungen) ---
+    ip_counts = df.groupby("continent")["ip"].nunique().to_dict()
+    xtick_labels = [f"{c}\n({_fmt_count(ip_counts.get(c, 0))})" for c in order]
+
+    # --- Downsampling für den Plot (Statistik bleibt full-scale) ---
+    print(f"Downsampling to max {max_samples_per_group:,} per (continent, source)...")
+    df_plot = (
+        df.groupby(["continent", "source"], group_keys=False)
+        .apply(lambda g: g.sample(min(len(g), max_samples_per_group), random_state=42))
+    )
+    print(f"Plot dataset: {len(df_plot):,} rows (vs. {len(df):,} full)")
+
+    # --- Plot-Style ---
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Latin Modern Roman"],
+        "mathtext.fontset": "cm",
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "pdf.fonttype": 42,
+    })
+
+    fig, ax = plt.subplots(figsize=(5.5, 2.4))
+
+    palette = {"SEQ": "#6FB8FF", "MASS": "#FF8080"}
+
+    sns.violinplot(
+        data=df_plot,
+        x="continent",
+        y="rtt_ms",
+        hue="source",
+        order=order,
+        hue_order=["SEQ", "MASS"],
+        split=True,
+        inner="quartile",
+        density_norm="width",
+        linewidth=0.5,
+        cut=0,
+        palette=palette,
+        ax=ax,
+    )
+
+    # --- Achsen ---
+    ax.set_xlabel("Continent (#IP Addr.)", labelpad=4)
+    ax.set_ylabel("RTT [ms]", labelpad=4)
+    ax.set_ylim(bottom=0)
+
+    ax.set_xticks(range(len(order)))
+    ax.set_xticklabels(xtick_labels, rotation=0, ha="center")
+
+    ax.grid(True, axis="y", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.tick_params(width=0.5, length=2)
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.5)
+        spine.set_color("black")
+
+    # --- Legende oben ---
+    ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.02),
+        bbox_transform=ax.transAxes,
+        ncol=2,
+        frameon=False,
+        handlelength=1.2,
+        handletextpad=0.3,
+        columnspacing=1.0,
+        title=None,
+    )
+
+    plt.tight_layout(pad=0.4)
+    plt.savefig(plot_fp, format="pdf", bbox_inches="tight", dpi=300, pad_inches=0.02)
+    plt.close(fig)
+
+    print(f"[+] ACM-style RTT violin plot saved to {plot_fp}")
+
+    # --- Info-Datei (auf Basis des vollständigen Datensatzes) ---
+    _write_rtt_region_info(info_fp, df, order, msm_path_seq, msm_path_mass,
+                           max_samples_per_group=max_samples_per_group)
+
+
+def _extract_rtts_with_continent(msm_path: str, label: str) -> pd.DataFrame:
+    """
+    Streamt probing.csv.zst via DuckDB, berechnet Inter-Send-Differenzen
+    direkt in SQL und ergänzt Continent per MaxMind-Lookup.
+
+    Rückgabe: DataFrame mit Spalten [ip, rtt_ms, continent, source].
+    """
+    import maxminddb
+
+    probing_fp = os.path.join(msm_path, "probing.csv.zst")
+
+    con = duckdb.connect(database=":memory:")
+    con.execute("PRAGMA threads=16;")
+    con.execute("PRAGMA memory_limit='80GB';")
+
+    print(f"  [{label}] Parsing sequences in DuckDB...")
+
+    # Inter-Send-Differenzen komplett in SQL:
+    # 1. raw: IP + string -> array<varchar> via string_split
+    # 2. exploded: eine Row pro Timestamp, mit row_id (Sequenz-ID) und pos (Position)
+    # 3. diffs: Differenz zum vorherigen Timestamp innerhalb derselben Sequenz
+    query = f"""
+        WITH raw AS (
+            SELECT
+                IP,
+                string_split(SENT_TS_SEQUENCE, ',') AS ts_arr
+            FROM read_csv_auto('{probing_fp}', compression='zstd')
+            WHERE SENT_TS_SEQUENCE IS NOT NULL
+              AND length(SENT_TS_SEQUENCE) > 0
+        ),
+        exploded AS (
+            SELECT
+                IP,
+                row_number() OVER () AS row_id,
+                generate_subscripts(ts_arr, 1) AS pos,
+                CAST(unnest(ts_arr) AS BIGINT)  AS ts_us
+            FROM raw
+        ),
+        diffs AS (
+            SELECT
+                IP,
+                (ts_us - lag(ts_us) OVER (PARTITION BY row_id ORDER BY pos)) / 1000.0 AS rtt_ms
+            FROM exploded
+        )
+        SELECT IP AS ip, rtt_ms
+        FROM diffs
+        WHERE rtt_ms IS NOT NULL AND rtt_ms > 0
+    """
+
+    # fetch_arrow_table ist zero-copy und deutlich speicherschonender als fetch_df
+    arrow_tbl = con.execute(query).fetch_arrow_table()
+    con.close()
+
+    df = arrow_tbl.to_pandas()
+    print(f"  [{label}] {len(df):,} RTT samples, "
+          f"{df['ip'].nunique():,} unique IPs")
+
+    # --- Continent per MaxMind (mmap, direktes dict-Lookup) ---
+    print(f"  [{label}] Resolving GeoIP continents...")
+    unique_ips = df["ip"].unique()
+    continent_map: dict[str, str] = {}
+
+    with maxminddb.open_database(GEOLITE_COUNTRY_DB,
+                                 mode=maxminddb.MODE_MMAP) as reader:
+        for ip in unique_ips:
+            try:
+                result = reader.get(ip)
+            except (ValueError, TypeError):
+                result = None
+            if result and "continent" in result:
+                continent_map[ip] = result["continent"]["names"].get("en", "None")
+            else:
+                continent_map[ip] = "None"
+
+    df["continent"] = df["ip"].map(continent_map)
+    df["source"] = label
+
+    # Kategorische Typen sparen massiv RAM bei vielen Duplikaten
+    df["continent"] = df["continent"].astype("category")
+    df["source"] = df["source"].astype("category")
+
+    return df
+
+
+def _write_rtt_region_info(
+        info_path: str,
+        df: pd.DataFrame,
+        order: list[str],
+        msm_path_seq: str,
+        msm_path_mass: str,
+        max_samples_per_group: int,
+):
+    """Schreibt Metadata-Info-Datei für RTT-per-Region-Plot."""
+    with open(info_path, "w", encoding="utf-8") as f:
+        f.write("RTT per Region Metadata\n")
+        f.write("=" * 60 + "\n\n")
+        f.write(f"Sequential measurement: {msm_path_seq}\n")
+        f.write(f"Mass measurement:       {msm_path_mass}\n")
+        f.write(f"Downsample cap per (continent, source): "
+                f"{max_samples_per_group:,} (plot only)\n\n")
+
+        for src in ["SEQ", "MASS"]:
+            sub = df[df["source"] == src]
+            f.write(f"--- {src} ---\n")
+            f.write(f"Total RTT samples: {len(sub):,}\n")
+            f.write(f"Unique IPs:        {sub['ip'].nunique():,}\n")
+            if len(sub):
+                f.write(f"Overall mean RTT:  {sub['rtt_ms'].mean():.2f} ms\n")
+                f.write(f"Overall median:    {sub['rtt_ms'].median():.2f} ms\n")
+            f.write("\n")
+
+        f.write("Per-Continent Statistics (full dataset)\n")
+        f.write("-" * 60 + "\n")
+        f.write(f"{'Continent':<15} {'Source':<6} "
+                f"{'#IPs':>10} {'#RTTs':>14} "
+                f"{'Mean':>8} {'Median':>8} {'p95':>8}\n")
+
+        for cont in order:
+            for src in ["SEQ", "MASS"]:
+                sub = df[(df["continent"] == cont) & (df["source"] == src)]
+                if sub.empty:
+                    continue
+                f.write(
+                    f"{cont:<15} {src:<6} "
+                    f"{sub['ip'].nunique():>10,} "
+                    f"{len(sub):>14,} "
+                    f"{sub['rtt_ms'].mean():>8.2f} "
+                    f"{sub['rtt_ms'].median():>8.2f} "
+                    f"{sub['rtt_ms'].quantile(0.95):>8.2f}\n"
+                )
+            f.write("\n")
+
+    print(f"[+] Info file written to {info_path}")
 
 
 def sample_targets(input_file: str):
