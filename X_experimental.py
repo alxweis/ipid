@@ -680,7 +680,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     info_fp = os.path.join(out_dir, "info.txt")
 
     # --- RTT-Daten extrahieren (mit Cache) ---
-    force_create_dataset = True
+    force_create_dataset = False
     if os.path.exists(cache_fp) and not force_create_dataset:
         print(f"Loading cached RTTs from {cache_fp}")
         df = pd.read_parquet(cache_fp)
@@ -708,7 +708,13 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         df.groupby(["continent", "source"], group_keys=False)
         .apply(lambda g: g.sample(min(len(g), max_samples_per_group), random_state=42))
     )
-    print(f"Plot dataset: {len(df_plot):,} rows (vs. {len(df):,} full)")
+
+    # --- Auf 99.5-Perzentil clippen (entfernt extreme Tails für Plot) ---
+    df_plot = (
+        df_plot.groupby(["continent", "source"], group_keys=False)
+        .apply(lambda g: g[g["rtt_ms"] <= g["rtt_ms"].quantile(0.995)])
+    )
+    print(f"Plot dataset after P99.5 clip: {len(df_plot):,} rows")
 
     # --- Plot-Style ---
     plt.rcParams.update({
