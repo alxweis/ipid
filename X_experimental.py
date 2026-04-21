@@ -758,10 +758,17 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
             coll.set_edgecolor(coll.get_facecolor())
             coll.set_linewidth(0.3)
 
-    # Quartil-Linien explizit stylen (falls nicht automatisch gestrichelt)
-    for line in ax.lines:
-        line.set_linestyle("--")
-        line.set_linewidth(0.6)
+    # Quartil-Linien stylen:
+    #   Index 0 -> Q25  (außen, dotted)
+    #   Index 1 -> Median (mitte, dashed)
+    #   Index 2 -> Q75  (außen, dotted)
+    for i, line in enumerate(ax.lines):
+        if i % 3 == 1:
+            line.set_linestyle("--")      # Median: dashed
+            line.set_linewidth(0.3)
+        else:
+            line.set_linestyle(":")       # Q25/Q75: dotted
+            line.set_linewidth(0.3)
         line.set_color("gray")
 
     # --- Achsen ---
@@ -775,8 +782,8 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     # Major ticks alle 100ms, Minor alle 50ms
     ax.yaxis.set_major_locator(MultipleLocator(100))
     ax.yaxis.set_minor_locator(MultipleLocator(50))
-    ax.tick_params(axis="y", which="major", length=4, width=0.5)
-    ax.tick_params(axis="y", which="minor", length=2, width=0.5)
+    ax.tick_params(axis="y", which="major", length=3, width=0.5)
+    ax.tick_params(axis="y", which="minor", length=1.5, width=0.5)
     ax.tick_params(axis="x", which="major", length=3, width=0.5)
 
     ax.grid(True, axis="y", which="major", linestyle="--", linewidth=0.4, alpha=0.5)
