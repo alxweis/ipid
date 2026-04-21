@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import zstandard as zstd
+from matplotlib.collections import PolyCollection
 from matplotlib.ticker import MultipleLocator, NullFormatter
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
@@ -745,11 +746,23 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         split=True,
         inner="quartile",
         density_norm="width",
-        linewidth=0.01,          # <- kein Rand mehr
+        linewidth=0.5,
         cut=0,
         palette=palette,
         ax=ax,
     )
+
+    # Violin-Bodies: Rand = Füllfarbe (optisch "kein Rand")
+    for coll in ax.collections:
+        if isinstance(coll, PolyCollection):
+            coll.set_edgecolor(coll.get_facecolor())
+            coll.set_linewidth(0.3)
+
+    # Quartil-Linien explizit stylen (falls nicht automatisch gestrichelt)
+    for line in ax.lines:
+        line.set_linestyle("--")
+        line.set_linewidth(0.6)
+        line.set_color("gray")
 
     # --- Achsen ---
     ax.set_xlabel("Continent (#IP Addr.)", labelpad=4)
@@ -762,11 +775,12 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     # Major ticks alle 100ms, Minor alle 50ms
     ax.yaxis.set_major_locator(MultipleLocator(100))
     ax.yaxis.set_minor_locator(MultipleLocator(50))
+    ax.tick_params(axis="y", which="major", length=4, width=0.5)
     ax.tick_params(axis="y", which="minor", length=2, width=0.5)
+    ax.tick_params(axis="x", which="major", length=3, width=0.5)
 
     ax.grid(True, axis="y", which="major", linestyle="--", linewidth=0.4, alpha=0.5)
     ax.grid(True, axis="y", which="minor", linestyle=":",  linewidth=0.3, alpha=0.3)
-    ax.tick_params(width=0.5, length=2)
 
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
