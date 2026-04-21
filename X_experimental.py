@@ -2746,22 +2746,15 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
     df = pd.read_pickle(data_path)
 
     # --- Display-Mapping: raw_name -> display_name ---
-    # Reihenfolge hier definiert die Anzeige-Reihenfolge (falls vorhanden)
     display_map = {
-        "Europe":        "Europe",
+        "Europe": "Europe",
         "North America": "N.America",
-        "Asia":          "Asia",
+        "Asia": "Asia",
         "South America": "S.America",
-        "Africa":        "Africa",
-        "Oceania":       "Oceania",
+        "Africa": "Africa",
+        "Oceania": "Oceania",
     }
-    order_index = {k: i for i, k in enumerate(display_map)}
-
-    # Display-Namen anwenden
     df["continent"] = df["continent"].map(lambda c: display_map.get(c, c))
-
-    # Ebenfalls die Mapping-Keys aktualisieren, damit die Reihenfolge stimmt
-    display_order = [display_map[k] for k in display_map]
 
     # --- Outlier-Filter pro Kontinent (oberes 0.5%-Quantil entfernen) ---
     df = (
@@ -2770,9 +2763,8 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
         .reset_index(drop=True)
     )
 
-    # --- Reihenfolge: nach display_map, nur vorhandene Kontinente ---
-    present = set(df["continent"].unique())
-    order = [c for c in display_order if c in present]
+    # --- Reihenfolge: nach Sample-Count (descending) ---
+    order = df["continent"].value_counts().index.tolist()
 
     # --- Plot-Style (konsistent mit anderen ACM-Plots) ---
     plt.rcParams.update({
