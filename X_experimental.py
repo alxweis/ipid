@@ -734,6 +734,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
 
     palette = {"SEQ": "#6FB8FF", "MASS": "#FF8080"}
 
+    # --- Violin-Plot ---
     sns.violinplot(
         data=df_plot,
         x="continent",
@@ -744,7 +745,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         split=True,
         inner="quartile",
         density_norm="width",
-        linewidth=0.5,
+        linewidth=0,          # <- kein Rand mehr
         cut=0,
         palette=palette,
         ax=ax,
@@ -758,24 +759,35 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     ax.set_xticks(range(len(order)))
     ax.set_xticklabels(xtick_labels, rotation=0, ha="center")
 
-    ax.grid(True, axis="y", linestyle="--", linewidth=0.4, alpha=0.5)
+    # Major ticks alle 100ms, Minor alle 50ms
+    ax.yaxis.set_major_locator(MultipleLocator(100))
+    ax.yaxis.set_minor_locator(MultipleLocator(50))
+    ax.tick_params(axis="y", which="minor", length=2, width=0.5)
+
+    ax.grid(True, axis="y", which="major", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.grid(True, axis="y", which="minor", linestyle=":",  linewidth=0.3, alpha=0.3)
     ax.tick_params(width=0.5, length=2)
 
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
         spine.set_color("black")
 
-    # --- Legende oben ---
+    # --- Legende in Plot, oben links, mit Remapping ---
+    label_map = {"SEQ": "RTT-based", "MASS": "Fixed-Interval"}
+    handles, orig_labels = ax.get_legend_handles_labels()
+    new_labels = [label_map.get(l, l) for l in orig_labels]
+
     ax.legend(
-        loc="lower center",
-        bbox_to_anchor=(0.5, 1.02),
+        handles, new_labels,
+        loc="upper left",
+        bbox_to_anchor=(0.01, 0.98),
         bbox_transform=ax.transAxes,
-        ncol=2,
-        frameon=False,
+        ncol=1,
+        frameon=True,
         handlelength=1.2,
         handletextpad=0.3,
-        columnspacing=1.0,
-        title=None,
+        borderpad=0.3,
+        labelspacing=0.3,
     )
 
     plt.tight_layout(pad=0.4)
