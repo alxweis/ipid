@@ -665,7 +665,15 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
                                   Statistiken in info.txt nutzen weiterhin den vollen Datensatz.
     """
     # --- Pfade ---
-    out_dir = os.path.join(msm_path_mass, "analysis", "rtt_per_region_combined")
+    if "icmp" in msm_path_seq:
+        prefix = "icmp"
+    elif "tcp" in msm_path_seq:
+        prefix = "tcp"
+    elif "udp" in msm_path_seq:
+        prefix = "udp"
+    else:
+        raise Exception("No protocol found")
+    out_dir = os.path.join(EXPERIMENTAL_RESULTS, f"{prefix}_rtt_per_region_combined")
     os.makedirs(out_dir, exist_ok=True)
     cache_fp = os.path.join(out_dir, "rtts_per_continent.parquet")
     plot_fp = os.path.join(out_dir, "plot_acm_style.pdf")
