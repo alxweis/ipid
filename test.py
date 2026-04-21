@@ -329,7 +329,7 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
     #     )
 
     # plt.savefig(out_path, bbox_inches=bbox_padded, dpi=300)
-    plt.savefig(out_path, bbox_inches="tight", pad_inches=0.05, dpi=300)
+    plt.savefig(out_path, bbox_inches="tight", pad_inches=0.02, dpi=300)
     plt.close(fig)
 
 
