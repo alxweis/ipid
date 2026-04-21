@@ -731,7 +731,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 2.4))
+    fig, ax = plt.subplots(figsize=(5.0, 2.4))
 
     palette = {"SEQ": "#6FB8FF", "MASS": "#FF8080"}
 
@@ -746,6 +746,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         split=True,
         inner="quartile",
         density_norm="width",
+        width=1.0,
         linewidth=0.5,
         cut=0,
         palette=palette,
@@ -765,10 +766,10 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     for i, line in enumerate(ax.lines):
         if i % 3 == 1:
             line.set_linestyle("--")      # Median: dashed
-            line.set_linewidth(0.3)
+            line.set_linewidth(0.4)
         else:
             line.set_linestyle(":")       # Q25/Q75: dotted
-            line.set_linewidth(0.3)
+            line.set_linewidth(0.4)
         line.set_color("gray")
 
     # --- Achsen ---
