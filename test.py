@@ -14,7 +14,7 @@ from matplotlib.transforms import Bbox
 from core import TEST_RESULTS
 from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
 
-FORCE_CREATE_DATASET = True
+FORCE_CREATE_DATASET = False
 
 
 class Dataset(Enum):

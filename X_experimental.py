@@ -283,8 +283,8 @@ def main():
         sequence_count_per_pattern = 100_000
         run_chi2_cdf(sequence_length, sequence_count_per_pattern=sequence_count_per_pattern,
                      force_create_dataset=force_create_dataset, close_range=False)
-        run_chi2_cdf(sequence_length, sequence_count_per_pattern=sequence_count_per_pattern,
-                     force_create_dataset=False, close_range=True)
+        # run_chi2_cdf(sequence_length, sequence_count_per_pattern=sequence_count_per_pattern,
+        #              force_create_dataset=False, close_range=True)
     elif mode == 11:
         if len(sys.argv) < 4:
             print_usage()
@@ -547,8 +547,8 @@ def main():
             return
 
         # plot_time_between_requests_acm_style(str(sys.argv[2]))
-        # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
-        plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.LOCAL_GE1])
+        plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
+        # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.LOCAL_GE1])
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
@@ -2733,40 +2733,62 @@ def plot_time_between_requests_acm_style(msm_path: str):
 
 
 def plot_avg_rtt_per_continent_acm_style(msm_path: str):
-    # --- Load data ---
+    # --- Pfade ---
     data_path = os.path.join(msm_path, "analysis", "rtt_per_continent", "data.pkl")
     if not os.path.exists(data_path):
         raise FileNotFoundError(f"Data file not found: {data_path}")
 
+    output_dir = os.path.join(msm_path, "analysis", "rtt_per_continent")
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "plot_acm_style.pdf")
+
+    # --- Daten laden ---
     df = pd.read_pickle(data_path)
 
-    df["continent"] = df["continent"].replace({
+    # --- Display-Mapping: raw_name -> display_name ---
+    # Reihenfolge hier definiert die Anzeige-Reihenfolge (falls vorhanden)
+    display_map = {
+        "Europe":        "Europe",
         "North America": "N.America",
+        "Asia":          "Asia",
         "South America": "S.America",
-    })
+        "Africa":        "Africa",
+        "Oceania":       "Oceania",
+    }
+    order_index = {k: i for i, k in enumerate(display_map)}
 
-    df = df.groupby("continent").apply(
-        lambda g: g[g["rtts"] <= g["rtts"].quantile(0.995 / 0.999)]
-    ).reset_index(drop=True)
+    # Display-Namen anwenden
+    df["continent"] = df["continent"].map(lambda c: display_map.get(c, c))
 
-    # --- Compute order by sample count ---
-    df_counts = df["continent"].value_counts()
-    order = df_counts.index.tolist()
+    # Ebenfalls die Mapping-Keys aktualisieren, damit die Reihenfolge stimmt
+    display_order = [display_map[k] for k in display_map]
 
-    # --- ACM CCR Plot style ---
+    # --- Outlier-Filter pro Kontinent (oberes 0.5%-Quantil entfernen) ---
+    df = (
+        df.groupby("continent", group_keys=False)
+        .apply(lambda g: g[g["rtts"] <= g["rtts"].quantile(0.995 / 0.999)])
+        .reset_index(drop=True)
+    )
+
+    # --- Reihenfolge: nach display_map, nur vorhandene Kontinente ---
+    present = set(df["continent"].unique())
+    order = [c for c in display_order if c in present]
+
+    # --- Plot-Style (konsistent mit anderen ACM-Plots) ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Latin Modern Roman"],
         "mathtext.fontset": "cm",
-        "font.size": 8,
-        "axes.linewidth": 0.6,
-        "axes.labelsize": 8,
-        "xtick.labelsize": 7,
-        "ytick.labelsize": 7,
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(2.6, 1.7))
+    fig, ax = plt.subplots(figsize=(5.2, 2.2))
 
     sns.violinplot(
         data=df,
@@ -2774,39 +2796,30 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
         y="rtts",
         order=order,
         inner="quartile",
-        density_norm="width",  # <- ersetzt 'scale="width"'
-        linewidth=0.45,
+        density_norm="width",
+        linewidth=0.5,
         cut=0,
-        color="#1f77b4",
-        ax=ax
+        color="#6FB8FF",
+        ax=ax,
     )
 
-    # --- Labels and layout ---
+    # --- Achsen ---
     ax.set_xlabel("")
-    ax.set_ylabel("Average RTT [ms]")
+    ax.set_ylabel("Average RTT [ms]", labelpad=4)
     ax.set_ylim(bottom=0)
 
-    # Ticks klarer setzen (fixiert -> verhindert Warning)
     ax.set_xticks(range(len(order)))
     ax.set_xticklabels(order, rotation=0, ha="center")
 
-    # --- Grid & style ---
     ax.grid(True, axis="y", linestyle="--", linewidth=0.4, alpha=0.5)
-    ax.tick_params(width=0.4, length=2)
+    ax.tick_params(width=0.5, length=2)
 
-    # Schwarzer Rand um Plot
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
         spine.set_color("black")
 
-    plt.tight_layout(pad=0.3)
-
-    # --- Save ---
-    output_dir = os.path.join(msm_path, "analysis", "rtt_per_continent")
-    os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, "plot_acm_style.pdf")
-
-    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=600)
+    plt.tight_layout(pad=0.4)
+    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=300, pad_inches=0.02)
     plt.close(fig)
 
     print(f"[+] ACM-style RTT violin plot saved to {output_file}")
