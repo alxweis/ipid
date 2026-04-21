@@ -699,7 +699,7 @@ def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_cr
     )
     plot_fp = os.path.join(
         TEST_RESULTS,
-        f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}.pdf",
+        f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}_{"close" if close_range else "default"}.pdf",
     )
 
     # --- Cache prüfen ---
