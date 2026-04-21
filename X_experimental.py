@@ -731,7 +731,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.0, 2.4))
+    fig, ax = plt.subplots(figsize=(5.2, 2.4))
 
     palette = {"SEQ": "#6FB8FF", "MASS": "#FF8080"}
 
@@ -746,7 +746,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         split=True,
         inner="quartile",
         density_norm="width",
-        width=1.0,
+        width=0.95,
         linewidth=0.5,
         cut=0,
         palette=palette,
