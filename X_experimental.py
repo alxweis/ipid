@@ -745,7 +745,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         split=True,
         inner="quartile",
         density_norm="width",
-        linewidth=0,          # <- kein Rand mehr
+        linewidth=0.01,          # <- kein Rand mehr
         cut=0,
         palette=palette,
         ax=ax,
