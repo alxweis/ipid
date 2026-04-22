@@ -9,12 +9,12 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
-from matplotlib.transforms import Bbox
 
 from core import TEST_RESULTS
 from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
 
 FORCE_CREATE_DATASET = False
+FORCE_RECLASSIFY = True
 
 
 class Dataset(Enum):
@@ -111,7 +111,7 @@ def create_confusion_matrix(
     dataset_fp = os.path.join(TEST_RESULTS, f"{base_name}.pkl")
     info_fp = os.path.join(TEST_RESULTS, f"{base_name}_info.txt")
     heatmap_fp = os.path.join(TEST_RESULTS, f"{base_name}_heatmap.pkl")
-    plot_fp = os.path.join(TEST_RESULTS, f"{base_name}_acm.pdf")
+    plot_fp = os.path.join(TEST_RESULTS, f"{base_name}_acm_new.pdf")
 
     # info.txt leeren
     open(info_fp, "w").close()
@@ -137,7 +137,7 @@ def create_confusion_matrix(
     order_index = {k: i for i, k in enumerate(display_map)}
 
     # --- Cache: wenn Heatmap-Daten existieren und nicht FORCE -> direkt plotten ---
-    if os.path.exists(heatmap_fp) and not FORCE_CREATE_DATASET:
+    if os.path.exists(heatmap_fp) and not FORCE_RECLASSIFY:
         log(f"Loading cached heatmap data from {heatmap_fp}")
         with open(heatmap_fp, "rb") as f:
             cache = pickle.load(f)

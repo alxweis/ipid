@@ -295,15 +295,15 @@ def runs_test(diffs: np.ndarray) -> float:
 
 
 def is_random(seq: IPIDSequence) -> bool:
-    if (chi2_test(seq.a.increments) < 1e-9 or
-            chi2_test(seq.b.increments) < 1e-9):
-        return False  # Filters REFLECTION, CONSTANT, GLOBAL, LOCAL(=1), LOCAL(>=1)
-    # z = min(chi2_test(seq.a.increments),
-    #         chi2_test(seq.b.increments),
-    #         chi2_test(seq.ap.increments),
-    #         chi2_test(seq.bp.increments))
-    # if z < 1e-9:
+    # if (chi2_test(seq.a.increments) < 1e-9 or
+    #         chi2_test(seq.b.increments) < 1e-9):
     #     return False  # Filters REFLECTION, CONSTANT, GLOBAL, LOCAL(=1), LOCAL(>=1)
+    z = min(chi2_test(seq.a.increments),
+            chi2_test(seq.b.increments),
+            chi2_test(seq.ap.increments),
+            chi2_test(seq.bp.increments))
+    if z < 1e-9:
+        return False  # Filters REFLECTION, CONSTANT, GLOBAL, LOCAL(=1), LOCAL(>=1)
 
     # clusters: list[dict[int, np.int32]] = get_clusters(seq.full.sequence, max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
     # for cluster in clusters:
