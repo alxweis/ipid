@@ -550,7 +550,7 @@ def main():
 
         # plot_time_between_requests_acm_style(str(sys.argv[2]))
         # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
-        plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.PER_BUCKET, Pattern.PER_CON])
+        plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.PER_BUCKET, Pattern.RANDOM, Pattern.PER_CPU])
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
@@ -3257,7 +3257,7 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(4.5, 3.0))
+    fig, ax = plt.subplots(figsize=(4.5, 2.5))
 
     # --- Kurven zeichnen ---
     for raw_name, increments in datasets:
