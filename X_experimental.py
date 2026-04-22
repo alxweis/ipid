@@ -1149,9 +1149,9 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, clo
     ax.set_yticks(y_minor, minor=True)
     ax.yaxis.set_minor_formatter(NullFormatter())
 
-    ax.set_ylim(0, 100)
+    ax.set_ylim(0, 105)
 
-    ax.set_xlabel(r"Minimum Chi$^2$ p-value over subsequences", labelpad=2)
+    ax.set_xlabel(r"Chi$^2$ p-value [Minimum of all Subsequences]", labelpad=2)
     ax.set_ylabel("Cumulative Percentage [%]", labelpad=2)
 
     ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
