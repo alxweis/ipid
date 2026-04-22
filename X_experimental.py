@@ -550,7 +550,8 @@ def main():
 
         # plot_time_between_requests_acm_style(str(sys.argv[2]))
         # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
-        plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.PER_BUCKET, Pattern.RANDOM, Pattern.PER_CPU])
+        plot_increment_cdfs_acm_style(str(sys.argv[2]),
+                                      [Pattern.GLOBAL, Pattern.PER_BUCKET, Pattern.RANDOM, Pattern.PER_CPU])
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
@@ -765,10 +766,10 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     #   Index 2 -> Q75  (außen, dotted)
     for i, line in enumerate(ax.lines):
         if i % 3 == 1:
-            line.set_linestyle("--")      # Median: dashed
+            line.set_linestyle("--")  # Median: dashed
             line.set_linewidth(0.4)
         else:
-            line.set_linestyle(":")       # Q25/Q75: dotted
+            line.set_linestyle(":")  # Q25/Q75: dotted
             line.set_linewidth(0.4)
         line.set_color("gray")
 
@@ -788,7 +789,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     ax.tick_params(axis="x", which="major", length=3, width=0.5)
 
     ax.grid(True, axis="y", which="major", linestyle="--", linewidth=0.4, alpha=0.5)
-    ax.grid(True, axis="y", which="minor", linestyle=":",  linewidth=0.3, alpha=0.3)
+    ax.grid(True, axis="y", which="minor", linestyle=":", linewidth=0.3, alpha=0.3)
 
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
@@ -1191,15 +1192,15 @@ def _write_chi2_cdf_info(
 ):
     """Schreibt Metadata-Info-Datei für Chi2-CDF-Plot."""
     display_map = {
-        "Mirror":     "Reflection",
-        "Constant":   "Constant",
-        "Single":     "Single",
-        "Per-Dst":    "Per-Destination",
-        "Per-Con":    "Per-Connection",
+        "Mirror": "Reflection",
+        "Constant": "Constant",
+        "Single": "Single",
+        "Per-Dst": "Per-Destination",
+        "Per-Con": "Per-Connection",
         "Per-Bucket": "Per-Bucket",
-        "Per-CPU":    "Multi",
-        "Random":     "Random",
-        "Fallback":   "Unclassified",
+        "Per-CPU": "Multi",
+        "Random": "Random",
+        "Fallback": "Unclassified",
     }
     order_index = {k: i for i, k in enumerate(display_map)}
 
@@ -3201,15 +3202,15 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
 def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
     # --- Klassen-Mapping ---
     display_map = {
-        "Mirror":     ("Reflection",      "#FFE866"),
-        "Constant":   ("Constant",        "#6FB8FF"),
-        "Single":     ("Single",          "#FF8080"),
-        "Per-Dst":    ("Per-Destination", "#B580FF"),
-        "Per-Con":    ("Per-Connection",  "#FF85C1"),
-        "Per-Bucket": ("Per-Bucket",      "#6EE66E"),
-        "Per-CPU":    ("Multi",           "#66E0E0"),
-        "Random":     ("Random",          "#FFB266"),
-        "Fallback":   ("Unclassified",    "#CCCCCC"),
+        "Mirror": ("Reflection", "#FFE866"),
+        "Constant": ("Constant", "#6FB8FF"),
+        "Single": ("Single", "#FF8080"),
+        "Per-Dst": ("Per-Destination", "#B580FF"),
+        "Per-Con": ("Per-Connection", "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket", "#6EE66E"),
+        "Per-CPU": ("Multi", "#66E0E0"),
+        "Random": ("Random", "#FFB266"),
+        "Fallback": ("Unclassified", "#CCCCCC"),
     }
     order_index = {k: i for i, k in enumerate(display_map)}
 
@@ -3289,7 +3290,7 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
     ax.set_ylabel("Cumulative Percentage [%]", labelpad=2)
 
     ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
-    ax.grid(True, which="minor", linestyle=":",  linewidth=0.3, alpha=0.3)
+    ax.grid(True, which="minor", linestyle=":", linewidth=0.3, alpha=0.3)
 
     ax.tick_params(axis="both", which="major", length=3, width=0.5)
     ax.tick_params(axis="both", which="minor", length=1.5, width=0.5)
@@ -3316,7 +3317,7 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "plot_cdf_multi_acm_style.pdf")
 
-    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=300, pad_inches=0.05)
+    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=300, pad_inches=0.02)
     plt.close(fig)
 
     print(f"[+] Multi-pattern ACM-style CDF saved to {output_file}")
