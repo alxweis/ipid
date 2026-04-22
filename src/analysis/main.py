@@ -23,7 +23,7 @@ import zstandard as zstd
 from geoip2.errors import AddressNotFoundError
 from tqdm import tqdm
 
-from core import EXP_INTERSECTIONS, TEST_RESULTS
+from core import EXP_INTERSECTIONS
 from core.classifier import IPIDSequence, Pattern, get_clusters, MULTI_GLOBAL_CLUSTER_MAX_INC
 from core.utils import config, runtime
 from postproc import GEOLITE_COUNTRY_DB
@@ -1117,10 +1117,8 @@ def start(result_dir: str):
         plot_time_between_requests(params)
         plot_avg_rtt_per_continent(params)
         plot_increment_distribution(params, Pattern.GLOBAL)
-        if "percon" in TEST_RESULTS:
-            plot_increment_distribution(params, Pattern.PER_CON)
         plot_increment_distribution(params, Pattern.PER_BUCKET)
-        plot_increment_distribution(params, Pattern.PER_CPU)
         plot_increment_distribution(params, Pattern.RANDOM)
+        plot_increment_distribution(params, Pattern.PER_CPU)
 
         print(f"Analysis finished: {runtime(start_time)} result=[{plot_output_dir}]")
