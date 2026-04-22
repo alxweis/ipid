@@ -1117,6 +1117,8 @@ def start(result_dir: str):
         plot_time_between_requests(params)
         plot_avg_rtt_per_continent(params)
         plot_increment_distribution(params, Pattern.GLOBAL)
+        plot_increment_distribution(params, Pattern.PER_DST)
+        plot_increment_distribution(params, Pattern.PER_CON)
         plot_increment_distribution(params, Pattern.PER_BUCKET)
         plot_increment_distribution(params, Pattern.RANDOM)
         plot_increment_distribution(params, Pattern.PER_CPU)
