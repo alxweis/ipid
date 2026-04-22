@@ -796,7 +796,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         spine.set_color("black")
 
     # --- Legende in Plot, oben links, mit Remapping ---
-    label_map = {"SEQ": "RTT-based", "MASS": "Fixed-Interval"}
+    label_map = {"SEQ": "RT-based", "MASS": "Fixed-Interval"}
     handles, orig_labels = ax.get_legend_handles_labels()
     new_labels = [label_map.get(l, l) for l in orig_labels]
 
@@ -2272,7 +2272,7 @@ def plot_pattern_distribution_acm_style(
     # --- Geometrie (3 Bars: von unten nach oben) ---
     # Reihenfolge: unten = msm_path_3, Mitte = msm_path_2, oben = msm_path_1
     data_sets = [values3, values2, values1]
-    labels = ["RTT-based &\nConnection-oriented", "Fixed-Interval", "RTT-based"]
+    labels = ["RT-based &\nConnection-oriented", "Fixed-Interval", "RT-based"]
     n_bars = len(data_sets)
 
     total_height = 2 * y_padding + n_bars * bar_height + max(n_bars - 1, 0) * bar_gap
@@ -2569,7 +2569,7 @@ def plot_pattern_distribution_acm_style_old(
 
     # --- Geometrie (zwei Bars: RTT-based oben, Fixed-Interval unten) ---
     data_sets = [values2, values1]  # Reihenfolge bottom -> top
-    labels = ["Fixed-Interval", "RTT-based"]  # passend zu data_sets
+    labels = ["Fixed-Interval", "RT-based"]  # passend zu data_sets
     n_bars = len(data_sets)
 
     total_height = 2 * y_padding + n_bars * bar_height + max(n_bars - 1, 0) * bar_gap
