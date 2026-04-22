@@ -775,7 +775,7 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
 
     # --- Achsen ---
     ax.set_xlabel("Continent (#IP Addr.)", labelpad=4)
-    ax.set_ylabel("RTT [ms]", labelpad=4)
+    ax.set_ylabel("Probing Interval [ms]", labelpad=4)
     ax.set_ylim(bottom=0)
 
     ax.set_xticks(range(len(order)))
@@ -1458,7 +1458,7 @@ def print_constant_pattern_distribution(msm_path: str):
 def plot_caida_os_distribution_acm_style(
         caida_itdk_path: str,
         msm_path: str,
-        show_dst_only: bool = False,
+        show_dst_only: bool = True,
         bar_height: float = 0.2,
         bar_gap: float = 0.2,
         y_padding: float = 0.1,
@@ -1573,7 +1573,7 @@ def plot_caida_os_distribution_acm_style(
     labels = ["Router"]
     if show_dst_only:
         data_sets.append(endhost_values)
-        labels.append("Dst-only")
+        labels.append("All Others")
 
     n_bars = len(data_sets)
 
@@ -2911,7 +2911,7 @@ def merge_paths(path_a: str, path_b: str, out_path: str, threads: int = os.cpu_c
 def plot_transit_endhost_distribution_acm_style(
         msm_path: str,
         name: str,
-        show_dst_only: bool = False,
+        show_dst_only: bool = True,
         bar_height: float = 0.2,
         bar_gap: float = 0.2,
         y_padding: float = 0.1,
@@ -2972,7 +2972,7 @@ def plot_transit_endhost_distribution_acm_style(
     labels = ["Router"]
     if show_dst_only:
         data_sets.append(endhost_values)
-        labels.append("Dst-only")
+        labels.append("All Others")
 
     n_bars = len(data_sets)
 
