@@ -549,8 +549,8 @@ def main():
             return
 
         # plot_time_between_requests_acm_style(str(sys.argv[2]))
-        plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
-        # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.LOCAL_GE1])
+        # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
+        plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.GLOBAL, Pattern.PER_BUCKET, Pattern.PER_CON])
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
@@ -3199,91 +3199,124 @@ def plot_avg_rtt_per_continent_acm_style(msm_path: str):
 
 
 def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
+    # --- Klassen-Mapping ---
+    display_map = {
+        "Mirror":     ("Reflection",      "#FFE866"),
+        "Constant":   ("Constant",        "#6FB8FF"),
+        "Single":     ("Single",          "#FF8080"),
+        "Per-Dst":    ("Per-Destination", "#B580FF"),
+        "Per-Con":    ("Per-Connection",  "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket",      "#6EE66E"),
+        "Per-CPU":    ("Multi",           "#66E0E0"),
+        "Random":     ("Random",          "#FFB266"),
+        "Fallback":   ("Unclassified",    "#CCCCCC"),
+    }
+    order_index = {k: i for i, k in enumerate(display_map)}
+
+    # --- Daten laden ---
+    datasets: list[tuple[str, np.ndarray]] = []  # (raw_name, increments)
+    for pattern in patterns:
+        raw_name = pattern.value
+        data_path = os.path.join(
+            msm_path, "analysis", "inc_distribution",
+            raw_name.lower().replace(" ", ""),
+            "data.npy",
+        )
+        if not os.path.exists(data_path):
+            print(f"[!] Skipping {raw_name}: no data file found.")
+            continue
+
+        increments = np.load(data_path)
+        if increments.size == 0:
+            print(f"[!] Skipping {raw_name}: empty data.")
+            continue
+
+        # 99.9-Perzentil clip (entfernt extreme Tails)
+        q = np.quantile(increments, 0.999)
+        increments = increments[increments <= q]
+        datasets.append((raw_name, increments))
+
+    if not datasets:
+        print("[!] No data to plot.")
+        return
+
+    # In Display-Map-Reihenfolge sortieren
+    datasets.sort(key=lambda d: order_index.get(d[0], 999))
+
+    # --- Plot-Style (konsistent mit den anderen ACM-Plots) ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Latin Modern Roman"],
         "mathtext.fontset": "cm",
-        "font.size": 8,
-        "axes.linewidth": 0.6,
-        "axes.labelsize": 8,
-        "xtick.labelsize": 7,
-        "ytick.labelsize": 7,
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
         "pdf.fonttype": 42,
     })
 
-    # kompakteres Format: etwas breiter, weniger hoch
-    fig, ax = plt.subplots(figsize=(2.45, 1.25))
-    colors = plt.cm.tab10.colors
+    fig, ax = plt.subplots(figsize=(4.5, 3.0))
 
-    for i, pattern in enumerate(patterns):
-        data_path = os.path.join(
-            msm_path,
-            "analysis",
-            "inc_distribution",
-            pattern.value.lower().replace(" ", ""),
-            "data.npy"
-        )
-        if not os.path.exists(data_path):
-            print(f"[!] Skipping {pattern}: no data file found.")
-            continue
-
-        increments = np.load(data_path)
-        if len(increments) == 0:
-            print(f"[!] Skipping {pattern}: empty data.")
-            continue
-
-        # 99.9%-Cut für Ausreißer
-        q = np.percentile(increments, (99.9 / 99.9) * 100)
-        increments = increments[increments <= q]
-
+    # --- Kurven zeichnen ---
+    for raw_name, increments in datasets:
+        display_name, color = display_map.get(raw_name, (raw_name, "#808080"))
         sorted_vals = np.sort(increments)
         cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
 
         ax.step(
-            sorted_vals,
-            cdf,
+            sorted_vals, cdf,
             where="post",
-            label=pattern.value,
-            linewidth=0.55,
-            color=colors[i % len(colors)]
+            label=display_name,
+            linewidth=1.4,
+            color=color,
         )
 
-    # --- Achsen / Layout ---
+    # --- Achsen ---
     ax.set_xscale("log")
     ax.set_xlim(left=1)
-    ax.set_ylim(0, 102)
-    ax.yaxis.set_minor_locator(plt.MultipleLocator(25))
-    ax.set_xlabel("IP-ID Increment")
-    ax.set_ylabel("Cum. Percentage [%]")
 
-    # kompaktere Achsen-Ticks
-    ax.tick_params(axis='x', which='major', length=2.5, width=0.35)
-    ax.tick_params(axis='x', which='minor', length=1.2, width=0.3)
-    ax.tick_params(axis='y', which='major', length=2.5, width=0.35)
-    ax.tick_params(axis='y', which='minor', length=1.2, width=0.3)
+    # Y Major-Ticks (alle 20%)
+    y_major = np.arange(0, 101, 20)
+    ax.set_yticks(y_major)
+    y_minor = y_major[:-1] + 10
+    ax.set_yticks(y_minor, minor=True)
+    ax.yaxis.set_minor_formatter(NullFormatter())
+    ax.set_ylim(0, 105)
 
-    ax.grid(True, linestyle="--", linewidth=0.3, alpha=0.45)
+    ax.set_xlabel("IP-ID Increment", labelpad=2)
+    ax.set_ylabel("Cumulative Percentage [%]", labelpad=2)
+
+    ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.grid(True, which="minor", linestyle=":",  linewidth=0.3, alpha=0.3)
+
+    ax.tick_params(axis="both", which="major", length=3, width=0.5)
+    ax.tick_params(axis="both", which="minor", length=1.5, width=0.5)
 
     for spine in ax.spines.values():
-        spine.set_linewidth(0.45)
+        spine.set_linewidth(0.5)
 
-    # Sehr kompakte Legende
+    # --- Legende oben ---
     ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.0),
+        bbox_transform=ax.transAxes,
+        ncol=4,
         frameon=False,
-        fontsize=6,
-        loc="lower right",
-        handlelength=1.05,
-        borderpad=0.15,
-        labelspacing=0.1
+        handlelength=1.0,
+        handletextpad=0.2,
+        columnspacing=0.8,
     )
 
-    plt.tight_layout(pad=0.1)
+    plt.tight_layout(pad=0.4)
 
+    # --- Speichern ---
     output_dir = os.path.join(msm_path, "analysis", "inc_distribution")
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "plot_cdf_multi_acm_style.pdf")
 
-    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=600)
+    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=300, pad_inches=0.05)
     plt.close(fig)
 
     print(f"[+] Multi-pattern ACM-style CDF saved to {output_file}")
