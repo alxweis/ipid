@@ -1016,6 +1016,10 @@ def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_cr
         TEST_RESULTS,
         f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}_{"close" if close_range else "default"}.pdf",
     )
+    info_fp = os.path.join(
+        TEST_RESULTS,
+        f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}_info.txt",
+    )
 
     # --- Cache prüfen ---
     if os.path.exists(cache_fp) and not force_create_dataset:
@@ -1050,6 +1054,7 @@ def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_cr
 
     # --- Plot ---
     _plot_chi2_cdf(pvalues_per_class, plot_fp, close_range)
+    _write_chi2_cdf_info(info_fp, pvalues_per_class, sequence_length, sequence_count_per_pattern)
 
 
 def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, close_range: bool):
@@ -1176,6 +1181,67 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, clo
     plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.05)
     plt.close(fig)
     print(f"[+] chi² CDF plot saved to {out_path}")
+
+
+def _write_chi2_cdf_info(
+        info_path: str,
+        pvalues_per_class: dict[str, list[float]],
+        sequence_length: int,
+        sequence_count_per_pattern: int,
+):
+    """Schreibt Metadata-Info-Datei für Chi2-CDF-Plot."""
+    display_map = {
+        "Mirror":     "Reflection",
+        "Constant":   "Constant",
+        "Single":     "Single",
+        "Per-Dst":    "Per-Destination",
+        "Per-Con":    "Per-Connection",
+        "Per-Bucket": "Per-Bucket",
+        "Per-CPU":    "Multi",
+        "Random":     "Random",
+        "Fallback":   "Unclassified",
+    }
+    order_index = {k: i for i, k in enumerate(display_map)}
+
+    # Schwellen, bis zu denen p-Values liegen (interessant für Classifier)
+    thresholds = [1e-60, 1e-30, 1e-12, 1e-6, 1e-3, 0.01, 0.05]
+
+    with open(info_path, "w", encoding="utf-8") as f:
+        f.write("Chi2 CDF Metadata\n")
+        f.write("=" * 60 + "\n\n")
+        f.write(f"Sequence length:            {sequence_length}\n")
+        f.write(f"Sequences per pattern:      {sequence_count_per_pattern:,}\n")
+        f.write(f"p-value = Min(Chi2-p over all 5 subsequences s, a, b, ap, bp)\n\n")
+
+        f.write("Per-Class Statistics\n")
+        f.write("-" * 60 + "\n")
+
+        ordered = sorted(pvalues_per_class.keys(),
+                         key=lambda c: order_index.get(c, 999))
+
+        for cls in ordered:
+            pvs = np.asarray(pvalues_per_class[cls], dtype=float)
+            display_name = display_map.get(cls, cls)
+
+            n = len(pvs)
+            n_zero = int(np.sum(pvs <= 0))
+            pvs_pos = pvs[pvs > 0]
+
+            f.write(f"\n{display_name} ({cls}):\n")
+            f.write(f"  Samples:            {n:,}\n")
+            f.write(f"  Exact zeros:        {n_zero:,} ({n_zero / n * 100:.2f}%)\n")
+            if pvs_pos.size:
+                f.write(f"  Min (non-zero):     {pvs_pos.min():.3e}\n")
+                f.write(f"  Max:                {pvs.max():.3e}\n")
+                f.write(f"  Median:             {np.median(pvs):.3e}\n")
+                f.write(f"  Mean:               {pvs.mean():.3e}\n")
+
+            f.write(f"  Fraction below threshold:\n")
+            for th in thresholds:
+                pct = np.sum(pvs <= th) / n * 100
+                f.write(f"    p <= {th:>9.0e}:  {pct:6.2f}%\n")
+
+    print(f"[+] Info file written to {info_path}")
 
 
 def classify_first_four_for_per_con(msm_path):
