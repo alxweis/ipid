@@ -236,7 +236,7 @@ _WANTED_TESTS = {
     "monobit",  # Frequency (monobit)
     "runs",  # Runs
     "dft",  # Discrete Fourier Transform (Spectral)
-    "cumulative_sums",  # Cumulative Sums (cusum)
+    # "cumulative_sums",  # Cumulative Sums (cusum)
 }
 
 CUSTOM_BATTERY = {

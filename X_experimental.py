@@ -284,13 +284,13 @@ def main():
         force_create_dataset = False
         reclassify_dataset = True
         sequence_count_per_pattern = 100_000
-        run_cdf(sequence_length=sequence_length,
-                sequence_count_per_pattern=sequence_count_per_pattern,
-                force_create_dataset=force_create_dataset,
-                reclassify_dataset=reclassify_dataset,
-                close_range=False,
-                test="chi2"
-                )
+        # run_cdf(sequence_length=sequence_length,
+        #         sequence_count_per_pattern=sequence_count_per_pattern,
+        #         force_create_dataset=force_create_dataset,
+        #         reclassify_dataset=reclassify_dataset,
+        #         close_range=False,
+        #         test="chi2"
+        #         )
         run_cdf(sequence_length=sequence_length,
                 sequence_count_per_pattern=sequence_count_per_pattern,
                 force_create_dataset=force_create_dataset,
