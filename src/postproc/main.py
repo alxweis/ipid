@@ -84,10 +84,10 @@ def start(result_dir: str):
     eval_csv = os.path.join(result_dir, "eval.csv.zst")
     is_mass_scan = "mass" == result_dir.split("/")[1]
 
-    num_workers = max(1, mp.cpu_count() // 4)
+    num_workers = max(1, mp.cpu_count() // 2)
     print(f"Using {num_workers} CPU cores for processing")
 
-    batch_size = 1000
+    batch_size = 5000
     chunk_size = batch_size * num_workers
 
     print(f"Counting lines in the input file...")
