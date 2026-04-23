@@ -447,14 +447,14 @@ def plot_confusion_matrix_combined(
             spine.set_color("black")
 
     # --- Layout: Platz für linkes y-Label + rechte Colorbar ---
-    fig.subplots_adjust(left=0.30, right=0.88, top=0.93, bottom=0.18, hspace=0.35)
+    fig.subplots_adjust(left=0.30, right=0.88, top=0.93, bottom=0.18, hspace=0.3)
 
     # --- Gemeinsames y-Label (zentriert über beide Subplots) ---
     top_ax_bbox = axes[0].get_position()
     bot_ax_bbox = axes[-1].get_position()
     y_center = (top_ax_bbox.y1 + bot_ax_bbox.y0) / 2
     fig.text(
-        -0.03, y_center,
+        0.03, y_center,
         "Generating IP-ID Selection Strategy",
         rotation=90, va="center", ha="left",
         fontsize=10,
@@ -475,7 +475,7 @@ def plot_confusion_matrix_combined(
     plot_fp = os.path.join(TEST_RESULTS, f"{name}.pdf")
     info_fp = os.path.join(TEST_RESULTS, f"{name}_info.txt")
 
-    plt.savefig(plot_fp, bbox_inches="tight", dpi=300, pad_inches=0.02)
+    plt.savefig(plot_fp, bbox_inches="tight", dpi=300)
     plt.close(fig)
     print(f"[+] Combined confusion matrix saved to {plot_fp}")
 
