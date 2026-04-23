@@ -675,6 +675,10 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         prefix = "udp"
     else:
         raise Exception("No protocol found")
+
+    if "connection" in msm_path_seq:
+        prefix = f"{prefix}_connection"
+
     out_dir = os.path.join(EXPERIMENTAL_RESULTS, f"{prefix}_rtt_per_region_combined")
     os.makedirs(out_dir, exist_ok=True)
     cache_fp = os.path.join(out_dir, "rtts_per_continent.parquet")

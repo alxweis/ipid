@@ -14,7 +14,7 @@ from core import TEST_RESULTS
 from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
 
 FORCE_CREATE_DATASET = False
-FORCE_RECLASSIFY = True
+FORCE_RECLASSIFY = False
 
 
 class Dataset(Enum):
@@ -333,6 +333,169 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
     plt.close(fig)
 
 
+def plot_confusion_matrix_combined(
+        sequence_length: int,
+        sequence_count_per_pattern: int,
+        name: str = None,
+):
+    """
+    Kombiniert die Lossy- und Reorder-Confusion-Matrizen (bei gegebener
+    Sequenzlänge) zu einem Plot mit geteilter x-Achse.
+
+    Erwartet, dass create_confusion_matrix() für beide Datasets bereits gelaufen
+    ist (dadurch existieren die *_heatmap.pkl-Dateien).
+
+    :param sequence_length: Sequenzlänge, mit der die CMs erzeugt wurden.
+    :param sequence_count_per_pattern: Anzahl Sequenzen pro Pattern.
+    :param name: Optionaler Dateiname (default: cm_combined_{len}_{count}).
+    """
+    if name is None:
+        name = f"cm_combined_{sequence_length}_{sequence_count_per_pattern}"
+
+    print(f"Plotting combined Confusion Matrix: {name}")
+
+    # --- Datensätze definieren: (dataset, subplot_title) ---
+    entries = [
+        (Dataset.LOSSY,   "Lossy (20% Loss)"),
+        (Dataset.REORDER, "Reorder (20% Reordered)"),
+    ]
+
+    # --- Cache-Daten laden ---
+    tables = []       # df_rel pro Dataset
+    metrics_all = []  # metrics pro Dataset (für info-Block)
+    for dataset, _ in entries:
+        base_name = f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}"
+        heatmap_fp = os.path.join(TEST_RESULTS, f"{base_name}_heatmap.pkl")
+        if not os.path.exists(heatmap_fp):
+            raise FileNotFoundError(
+                f"Missing heatmap cache: {heatmap_fp}\n"
+                f"Run create_confusion_matrix({dataset.name}, "
+                f"{sequence_length}, {sequence_count_per_pattern}) first."
+            )
+        with open(heatmap_fp, "rb") as f:
+            cache = pickle.load(f)
+        tables.append(cache["df_rel"])
+        metrics_all.append(cache["metrics"])
+
+    # --- Plot-Style ---
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Latin Modern Roman", "Times New Roman"],
+        "mathtext.fontset": "cm",
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "pdf.fonttype": 42,
+    })
+
+    # --- Figure: n Subplots untereinander, Höhenproportional zu Zeilenanzahl ---
+    n_subplots = len(tables)
+    row_counts = [len(t.index) for t in tables]
+    cell_h = 0.3   # eher größer als OS-Heatmap, da weniger Zeilen
+    fig_height = sum(row_counts) * cell_h + 1.8
+
+    fig, axes = plt.subplots(
+        n_subplots, 1,
+        figsize=(5.2, fig_height),
+        gridspec_kw={"height_ratios": row_counts},
+        sharex=True,
+    )
+    if n_subplots == 1:
+        axes = [axes]
+
+    for i, (ax, (dataset, subplot_title), rel) in enumerate(
+            zip(axes, entries, tables)
+    ):
+        is_last = (i == n_subplots - 1)
+
+        # Annotation: "-" für 0, sonst "X.X"
+        annot_matrix = rel.map(lambda v: "-" if v < 0.05 else f"{v:.1f}")
+
+        sns.heatmap(
+            rel,
+            ax=ax,
+            annot=annot_matrix,
+            fmt="",
+            cmap="Blues",
+            vmin=0, vmax=100,
+            linewidths=0.4,
+            linecolor="white",
+            cbar=False,
+        )
+
+        # y-Tick-Labels horizontal
+        ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
+        ax.set_ylabel("")
+
+        # Subplot-Titel
+        ax.set_title(subplot_title, fontsize=10, pad=5)
+
+        # x-Label nur beim untersten Subplot
+        if is_last:
+            ax.set_xlabel("Detected IP-ID Selection Strategy", labelpad=4)
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
+        else:
+            ax.set_xlabel("")
+            ax.tick_params(axis="x", which="both", labelbottom=False)
+
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_linewidth(0.5)
+            spine.set_color("black")
+
+    # --- Layout: Platz für linkes y-Label + rechte Colorbar ---
+    fig.subplots_adjust(left=0.30, right=0.88, top=0.93, bottom=0.18, hspace=0.35)
+
+    # --- Gemeinsames y-Label (zentriert über beide Subplots) ---
+    top_ax_bbox = axes[0].get_position()
+    bot_ax_bbox = axes[-1].get_position()
+    y_center = (top_ax_bbox.y1 + bot_ax_bbox.y0) / 2
+    fig.text(
+        -0.03, y_center,
+        "Generating IP-ID Selection Strategy",
+        rotation=90, va="center", ha="left",
+        fontsize=10,
+    )
+
+    # --- Gemeinsame Colorbar, vertikal zentriert ---
+    cbar_height = top_ax_bbox.y1 - bot_ax_bbox.y0
+    cbar_ax = fig.add_axes([0.90, bot_ax_bbox.y0, 0.015, cbar_height])
+
+    sm = plt.cm.ScalarMappable(cmap="Blues", norm=plt.Normalize(vmin=0, vmax=100))
+    sm.set_array([])
+    cbar = fig.colorbar(sm, cax=cbar_ax, label="Percentage [%]")
+    cbar.outline.set_linewidth(0.5)
+    cbar.outline.set_edgecolor("black")
+    cbar_ax.tick_params(width=0.5)
+
+    # --- Speichern ---
+    plot_fp = os.path.join(TEST_RESULTS, f"{name}.pdf")
+    info_fp = os.path.join(TEST_RESULTS, f"{name}_info.txt")
+
+    plt.savefig(plot_fp, bbox_inches="tight", dpi=300, pad_inches=0.02)
+    plt.close(fig)
+    print(f"[+] Combined confusion matrix saved to {plot_fp}")
+
+    # --- Info-Datei mit Metriken beider Datasets ---
+    with open(info_fp, "w", encoding="utf-8") as f:
+        f.write("Combined Confusion Matrix Metadata\n")
+        f.write("=" * 60 + "\n\n")
+        f.write(f"Sequence length:            {sequence_length}\n")
+        f.write(f"Sequences per pattern:      {sequence_count_per_pattern:,}\n\n")
+
+        for (dataset, subplot_title), metrics in zip(entries, metrics_all):
+            f.write(f"--- {subplot_title} ({dataset.value}) ---\n")
+            f.write(f"  Accuracy:        {metrics['accuracy']:.4%}\n")
+            f.write(f"  Macro Precision: {metrics['macro_precision']:.4%}\n")
+            f.write(f"  Macro Recall:    {metrics['macro_recall']:.4%}\n")
+            f.write(f"  Macro F1:        {metrics['macro_f1']:.4%}\n\n")
+
+    print(f"[+] Info file written to {info_fp}")
+
+
 class ClassifierTests(unittest.TestCase):
     def test_classifier(self):
         # raw_seq = [5792, 44723, 18963, 20717, 58444, 13978, 19507, 55507, 58988, 7239, 32934, 48768, 6880, 24762, 46105,
@@ -398,6 +561,11 @@ class ClassifierTests(unittest.TestCase):
         self.assertTrue(create_confusion_matrix(Dataset.IDEAL, 80, sequence_count_per_pattern))
         self.assertTrue(create_confusion_matrix(Dataset.LOSSY, 80, sequence_count_per_pattern))
         self.assertTrue(create_confusion_matrix(Dataset.REORDER, 80, sequence_count_per_pattern))
+
+        plot_confusion_matrix_combined(
+            sequence_length=80,
+            sequence_count_per_pattern=sequence_count_per_pattern,
+        )
 
 
 # class ConfigTests(unittest.TestCase):

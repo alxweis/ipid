@@ -303,148 +303,215 @@ def calc_intersections(target_csvs: list[str], on: str):
 
 
 def intersect_classifications(msm_path_seq: str, msm_path_b2b: str):
-    con = duckdb.connect()
+    # --- Protokoll aus Pfad ableiten ---
+    if "icmp" in msm_path_seq:
+        prefix = "icmp"
+    elif "tcp" in msm_path_seq:
+        prefix = "tcp"
+    elif "udp" in msm_path_seq:
+        prefix = "udp"
+    else:
+        raise ValueError(f"Cannot determine protocol from path: {msm_path_seq}")
 
+    if "connection" in msm_path_seq:
+        prefix = f"{prefix}_connection"
+
+    # --- Pfade ---
+    out_dir = os.path.join(EXP_INTERSECTIONS, "seq_vs_b2b", prefix)
+    os.makedirs(out_dir, exist_ok=True)
+    data_fp = os.path.join(out_dir, "data.pkl")
+    plot_fp = os.path.join(out_dir, "plot.pdf")
+    info_fp = os.path.join(out_dir, "info.txt")
+
+    # --- Klassen-Mapping (Reihenfolge = Achsen-Reihenfolge) ---
+    display_map = {
+        "Mirror":     "Reflection",
+        "Constant":   "Constant",
+        "Single":     "Single",
+        "Per-Con":    "Per-Connection",
+        "Per-Dst":    "Per-Destination",
+        "Per-Bucket": "Per-Bucket",
+        "Per-CPU":    "Multi",
+        "Random":     "Random",
+        "Fallback":   "Unclassified",
+    }
+    order_index = {k: i for i, k in enumerate(display_map)}
+
+    # --- Daten via DuckDB joinen ---
+    print(f"Intersecting classifications for {prefix.upper()}...")
+    con = duckdb.connect()
     con.execute(f"""
-        CREATE TABLE t1 AS 
-        SELECT {config.ip_col_name}, {config.ip_id_pattern_col_name} AS pattern1 
+        CREATE TABLE t1 AS
+        SELECT {config.ip_col_name}, {config.ip_id_pattern_col_name} AS pattern1
         FROM read_csv_auto('{os.path.join(msm_path_seq, "eval.csv.zst")}', compression='zstd')
     """)
-
     con.execute(f"""
-        CREATE TABLE t2 AS 
-        SELECT {config.ip_col_name}, {config.ip_id_pattern_col_name} AS pattern2 
+        CREATE TABLE t2 AS
+        SELECT {config.ip_col_name}, {config.ip_id_pattern_col_name} AS pattern2
         FROM read_csv_auto('{os.path.join(msm_path_b2b, "eval.csv.zst")}', compression='zstd')
     """)
-
     df = con.execute(f"""
         SELECT t1.pattern1, t2.pattern2
         FROM t1
         INNER JOIN t2 USING ({config.ip_col_name})
     """).fetchdf()
+    con.close()
 
-    conf_matrix = pd.crosstab(df['pattern1'], df['pattern2'], normalize='index') * 100
-    abs_matrix = pd.crosstab(df['pattern1'], df['pattern2'])
+    total_matching = len(df)
+    print(f"  {total_matching:,} matching IPs")
 
-    order = [p.value for p in Pattern]
-    rows = [p for p in order if p in conf_matrix.index]
-    cols = [p for p in order if p in conf_matrix.columns]
-    conf_matrix = conf_matrix.reindex(index=rows, columns=cols)
-    abs_matrix = abs_matrix.reindex(index=rows, columns=cols)
+    # --- Crosstabs berechnen ---
+    abs_matrix = pd.crosstab(df["pattern1"], df["pattern2"])
+    rel_matrix = pd.crosstab(df["pattern1"], df["pattern2"], normalize="index") * 100
 
-    # Save confusion matrix
-    out_dir = os.path.join(EXP_INTERSECTIONS, "seq_vs_b2b")
-    os.makedirs(out_dir, exist_ok=True)
-    with open(os.path.join(out_dir, "conf_matrix.pkl"), "wb") as f:
-        pickle.dump(conf_matrix, f)
+    # --- Reihenfolge + Umbenennung über display_map ---
+    row_order_raw = [k for k in display_map if k in abs_matrix.index]
+    col_order_raw = [k for k in display_map if k in abs_matrix.columns]
 
-    with open(os.path.join(out_dir, "info.txt"), "w", encoding="utf-8") as f:
+    abs_matrix = abs_matrix.reindex(index=row_order_raw, columns=col_order_raw)
+    rel_matrix = rel_matrix.reindex(index=row_order_raw, columns=col_order_raw)
+
+    abs_matrix = abs_matrix.rename(index=display_map, columns=display_map)
+    rel_matrix = rel_matrix.rename(index=display_map, columns=display_map)
+
+    # --- Daten cachen ---
+    with open(data_fp, "wb") as f:
+        pickle.dump({"abs": abs_matrix, "rel": rel_matrix, "total": total_matching}, f)
+    print(f"[+] Data saved to {data_fp}")
+
+    # --- Info-Datei ---
+    with open(info_fp, "w", encoding="utf-8") as f:
+        f.write("Classification Intersection Metadata\n")
+        f.write("=" * 60 + "\n\n")
+        f.write(f"Protocol:             {prefix.upper()}\n")
+        f.write(f"Sequential msm path:  {msm_path_seq}\n")
+        f.write(f"Back-to-back msm path:{msm_path_b2b}\n")
+        f.write(f"Total matching IPs:   {total_matching:,}\n\n")
         f.write("=== Absolute counts ===\n")
         f.write(abs_matrix.to_string())
         f.write("\n\n=== Percentage distribution [%] ===\n")
-        f.write(conf_matrix.round(2).to_string())
-        f.write(f"\n\nTotal matching IPs: {len(df)}")
+        f.write(rel_matrix.round(2).to_string())
+        f.write("\n")
+    print(f"[+] Info file written to {info_fp}")
 
-    # --- ACM CCR Plot Style ---
+    # --- Plot ---
+    _plot_intersection_heatmap(rel_matrix, plot_fp)
+
+
+def _plot_intersection_heatmap(df_rel: pd.DataFrame, out_path: str):
+    """Zeichnet die Intersection-Heatmap (Sequential vs Back-to-Back)."""
     plt.rcParams.update({
-        "font.family": "Times New Roman",
-        "font.size": 11,
-        "axes.titlesize": 12,
-        "axes.labelsize": 11,
+        "font.family": "serif",
+        "font.serif": ["Latin Modern Roman", "Times New Roman"],
+        "mathtext.fontset": "cm",
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
         "xtick.labelsize": 10,
         "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "pdf.fonttype": 42,
     })
 
-    plt.figure(figsize=(5.2, 3.0))
-    ax = sns.heatmap(
-        conf_matrix,
-        annot=True,
-        fmt=".1f",
+    # Annotation-Matrix: "-" für 0, sonst "X.X"
+    annot_matrix = df_rel.map(lambda v: "-" if v < 0.05 else f"{v:.1f}")
+
+    fig, ax = plt.subplots(figsize=(5.2, 2.5))
+    sns.heatmap(
+        df_rel,
+        ax=ax,
+        annot=annot_matrix,
+        fmt="",
         cmap="Blues",
-        cbar_kws={'label': 'Percentage [%]'},
+        vmin=0, vmax=100,
         linewidths=0.4,
-        linecolor='white'
+        linecolor="white",
+        cbar_kws={"label": "Percentage [%]"},
     )
 
-    ax.set_xlabel("Back-to-Back Classification", labelpad=4)
-    ax.set_ylabel("Sequential Classification", labelpad=4)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=25, ha="center")
-
-    # Schwarzer Rand
-    for _, spine in ax.spines.items():
+    for spine in ax.spines.values():
         spine.set_visible(True)
         spine.set_linewidth(0.5)
         spine.set_color("black")
 
+    cbar = ax.collections[0].colorbar
+    cbar.outline.set_linewidth(0.5)
+    cbar.outline.set_edgecolor("black")
+    cbar.ax.tick_params(width=0.5)
+
+    ax.set_xlabel("Detected IP-ID Selection Strategy using Fixed-Interval probing", labelpad=4)
+    ax.set_ylabel("Detected IP-ID Selection Strategy\nusing RT-based probing", labelpad=4)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
+
     plt.tight_layout(pad=0.4)
-    plt.savefig(os.path.join(out_dir, "plot.pdf"), bbox_inches="tight", dpi=300)
-    plt.close()
-    print(f"Saved ACM-style intersection heatmap to {out_dir}")
+    plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.02)
+    plt.close(fig)
+    print(f"[+] Intersection heatmap saved to {out_path}")
 
-    df_intersect = con.execute(f"""
-        WITH joined AS (
-            SELECT 
-                t1.{config.ip_col_name} AS IP,
-                seq_seq.IP_ID_SEQUENCE AS IP_ID_SEQUENCE_SEQ,
-                b2b_seq.IP_ID_SEQUENCE AS IP_ID_SEQUENCE_B2B,
-                t1.pattern1 AS IP_ID_PATTERN_SEQ,
-                t2.pattern2 AS IP_ID_PATTERN_B2B
-            FROM t1
-            INNER JOIN t2 USING ({config.ip_col_name})
-            INNER JOIN read_csv_auto('{os.path.join(msm_path_seq, "probing.csv.zst")}', compression='zstd') AS seq_seq
-                ON seq_seq.{config.ip_col_name} = t1.{config.ip_col_name}
-            INNER JOIN read_csv_auto('{os.path.join(msm_path_b2b, "probing.csv.zst")}', compression='zstd') AS b2b_seq
-                ON b2b_seq.{config.ip_col_name} = t1.{config.ip_col_name}
-        )
-    
-        SELECT
-            IP,
-    
-            CASE
-                WHEN IP_ID_PATTERN_SEQ = 'Fallback' AND IP_ID_PATTERN_B2B = 'Fallback'
-                    THEN IP_ID_SEQUENCE_B2B
-                WHEN IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
-                    THEN IP_ID_SEQUENCE_SEQ
-                WHEN IP_ID_PATTERN_SEQ = 'Fallback'
-                    THEN IP_ID_SEQUENCE_B2B
-                WHEN IP_ID_PATTERN_B2B = 'Fallback'
-                    THEN IP_ID_SEQUENCE_SEQ
-                ELSE NULL
-            END AS IP_ID_SEQUENCE,
-    
-            CASE
-                WHEN IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
-                    THEN IP_ID_PATTERN_SEQ
-                WHEN IP_ID_PATTERN_SEQ = 'Fallback'
-                    THEN IP_ID_PATTERN_B2B
-                WHEN IP_ID_PATTERN_B2B = 'Fallback'
-                    THEN IP_ID_PATTERN_SEQ
-                ELSE NULL
-            END AS IP_ID_PATTERN
-    
-        FROM joined
-        WHERE
-            IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
-            OR IP_ID_PATTERN_SEQ = 'Fallback'
-            OR IP_ID_PATTERN_B2B = 'Fallback'
-    """).fetchdf()
+    # df_intersect = con.execute(f"""
+    #     WITH joined AS (
+    #         SELECT
+    #             t1.{config.ip_col_name} AS IP,
+    #             seq_seq.IP_ID_SEQUENCE AS IP_ID_SEQUENCE_SEQ,
+    #             b2b_seq.IP_ID_SEQUENCE AS IP_ID_SEQUENCE_B2B,
+    #             t1.pattern1 AS IP_ID_PATTERN_SEQ,
+    #             t2.pattern2 AS IP_ID_PATTERN_B2B
+    #         FROM t1
+    #         INNER JOIN t2 USING ({config.ip_col_name})
+    #         INNER JOIN read_csv_auto('{os.path.join(msm_path_seq, "probing.csv.zst")}', compression='zstd') AS seq_seq
+    #             ON seq_seq.{config.ip_col_name} = t1.{config.ip_col_name}
+    #         INNER JOIN read_csv_auto('{os.path.join(msm_path_b2b, "probing.csv.zst")}', compression='zstd') AS b2b_seq
+    #             ON b2b_seq.{config.ip_col_name} = t1.{config.ip_col_name}
+    #     )
+    #
+    #     SELECT
+    #         IP,
+    #
+    #         CASE
+    #             WHEN IP_ID_PATTERN_SEQ = 'Fallback' AND IP_ID_PATTERN_B2B = 'Fallback'
+    #                 THEN IP_ID_SEQUENCE_B2B
+    #             WHEN IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
+    #                 THEN IP_ID_SEQUENCE_SEQ
+    #             WHEN IP_ID_PATTERN_SEQ = 'Fallback'
+    #                 THEN IP_ID_SEQUENCE_B2B
+    #             WHEN IP_ID_PATTERN_B2B = 'Fallback'
+    #                 THEN IP_ID_SEQUENCE_SEQ
+    #             ELSE NULL
+    #         END AS IP_ID_SEQUENCE,
+    #
+    #         CASE
+    #             WHEN IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
+    #                 THEN IP_ID_PATTERN_SEQ
+    #             WHEN IP_ID_PATTERN_SEQ = 'Fallback'
+    #                 THEN IP_ID_PATTERN_B2B
+    #             WHEN IP_ID_PATTERN_B2B = 'Fallback'
+    #                 THEN IP_ID_PATTERN_SEQ
+    #             ELSE NULL
+    #         END AS IP_ID_PATTERN
+    #
+    #     FROM joined
+    #     WHERE
+    #         IP_ID_PATTERN_SEQ = IP_ID_PATTERN_B2B
+    #         OR IP_ID_PATTERN_SEQ = 'Fallback'
+    #         OR IP_ID_PATTERN_B2B = 'Fallback'
+    # """).fetchdf()
+    #
+    # con.close()
+    #
+    # out_dir = os.path.join(EXP_INTERSECTIONS, "seq_vs_b2b")
+    # os.makedirs(out_dir, exist_ok=True)
+    #
+    # df_intersect.to_csv(
+    #     os.path.join(out_dir, "intersect.csv.zst"),
+    #     index=False,
+    #     compression="zstd"
+    # )
+    # print(f"Created {os.path.join(out_dir, "intersect.csv.zst")}")
 
-    con.close()
-
-    out_dir = os.path.join(EXP_INTERSECTIONS, "seq_vs_b2b")
-    os.makedirs(out_dir, exist_ok=True)
-
-    df_intersect.to_csv(
-        os.path.join(out_dir, "intersect.csv.zst"),
-        index=False,
-        compression="zstd"
-    )
-    print(f"Created {os.path.join(out_dir, "intersect.csv.zst")}")
-
-    build_gt_base_round_robin(
-        intersect_path=os.path.join(out_dir, "intersect.csv.zst"),
-        out_path=os.path.join(out_dir, "gt_base.csv.zst")
-    )
+    # build_gt_base_round_robin(
+    #     intersect_path=os.path.join(out_dir, "intersect.csv.zst"),
+    #     out_path=os.path.join(out_dir, "gt_base.csv.zst")
+    # )
 
 
 def build_gt_base_round_robin(intersect_path: str, out_path: str):
