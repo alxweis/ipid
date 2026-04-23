@@ -414,7 +414,7 @@ def _plot_intersection_heatmap(df_rel: pd.DataFrame, out_path: str):
     })
 
     # Annotation-Matrix: "-" für 0, sonst "X.X"
-    annot_matrix = df_rel.map(lambda v: "-" if v < 0.05 else f"{v:.1f}")
+    annot_matrix = df_rel.map(lambda v: "-" if v == 0 else f"{v:.1f}")
 
     fig, ax = plt.subplots(figsize=(5.2, 2.5))
     sns.heatmap(

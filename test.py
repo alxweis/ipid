@@ -283,7 +283,7 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
         "pdf.fonttype": 42,
     })
 
-    annot_matrix = df_rel.map(lambda v: "-" if v < 0.05 else f"{v:.1f}")
+    annot_matrix = df_rel.map(lambda v: "-" if v == 0 else f"{v:.1f}")
 
     fig, ax = plt.subplots(figsize=(5.2, 2.5))
     sns.heatmap(
@@ -394,12 +394,12 @@ def plot_confusion_matrix_combined(
     # --- Figure: n Subplots untereinander, Höhenproportional zu Zeilenanzahl ---
     n_subplots = len(tables)
     row_counts = [len(t.index) for t in tables]
-    cell_h = 0.3   # eher größer als OS-Heatmap, da weniger Zeilen
+    cell_h = 0.15
     fig_height = sum(row_counts) * cell_h + 1.8
 
     fig, axes = plt.subplots(
         n_subplots, 1,
-        figsize=(5.2, fig_height),
+        figsize=(5.0, fig_height),
         gridspec_kw={"height_ratios": row_counts},
         sharex=True,
     )
@@ -412,7 +412,7 @@ def plot_confusion_matrix_combined(
         is_last = (i == n_subplots - 1)
 
         # Annotation: "-" für 0, sonst "X.X"
-        annot_matrix = rel.map(lambda v: "-" if v < 0.05 else f"{v:.1f}")
+        annot_matrix = rel.map(lambda v: "-" if v == 0 else f"{v:.1f}")
 
         sns.heatmap(
             rel,
