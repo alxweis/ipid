@@ -1,5 +1,6 @@
 import math
 import random
+import warnings
 from enum import Enum
 
 import numpy as np
@@ -230,33 +231,45 @@ def chi2_test(seq: np.ndarray) -> float:
     return p_chi2
 
 
+# --- Custom Battery: nur Frequency, Runs, DFT, Cumulative Sums ---
+_WANTED_TESTS = {
+    "monobit",  # Frequency (monobit)
+    "runs",  # Runs
+    "dft",  # Discrete Fourier Transform (Spectral)
+    "cumulative_sums",  # Cumulative Sums (cusum)
+}
+
+CUSTOM_BATTERY = {
+    name: test for name, test in SP800_22R1A_BATTERY.items()
+    if name in _WANTED_TESTS
+}
+
+
 def seq_to_bits(seq: np.ndarray) -> np.ndarray:
     """
     Wandelt eine Sequenz von IP-ID-Werten (uint16) in einen Bit-Stream um.
     Big-Endian: das MSB jedes uint16 kommt zuerst.
     """
-    # uint16 als 2 Bytes darstellen (big-endian), dann zu Bits unpacken
-    seq = seq.astype(">u2")  # big-endian uint16
+    seq = seq.astype(">u2")
     return np.unpackbits(seq.view(np.uint8))
 
 
 def nist_test(values: np.ndarray) -> float:
     """
-    Führt alle NIST SP800-22 Tests auf der Bit-Repräsentation der IP-ID-Sequenz aus
-    und gibt den minimalen p-Value zurück.
+    Führt die 4 ausgewählten NIST-Tests (Monobit, Runs, DFT, CuSum) auf der
+    Bit-Repräsentation der Sequenz aus und gibt den minimalen p-Value zurück.
     """
-    # Integers (uint16) -> Bit-Stream
     bits = seq_to_bits(values)
-
-    # In das von nistrng erwartete Format (±1) packen
     bit_sequence = pack_sequence(bits)
 
-    # Eligibility check: nur Tests mit passenden Längen ausführen
-    eligible_battery = check_eligibility_all_battery(bit_sequence, SP800_22R1A_BATTERY)
+    eligible_battery = check_eligibility_all_battery(bit_sequence, CUSTOM_BATTERY)
     if not eligible_battery:
         return 1.0
 
-    results = run_all_battery(bit_sequence, eligible_battery, check_eligibility=False)
+    # Overflow-Warnings aus dem (buggy) cumulative_sums-Test unterdrücken
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        results = run_all_battery(bit_sequence, eligible_battery, check_eligibility=False)
 
     pvalues = [r[0].score for r in results if r[0].passed is not None]
     return min(pvalues) if pvalues else 1.0
