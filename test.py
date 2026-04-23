@@ -356,8 +356,8 @@ def plot_confusion_matrix_combined(
 
     # --- Datensätze definieren: (dataset, subplot_title) ---
     entries = [
-        (Dataset.LOSSY,   "Lossy (20% Loss)"),
-        (Dataset.REORDER, "Reorder (20% Reordered)"),
+        (Dataset.LOSSY,   "Lossy"),
+        (Dataset.REORDER, "Reorder"),
     ]
 
     # --- Cache-Daten laden ---
