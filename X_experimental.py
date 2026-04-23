@@ -2012,7 +2012,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     out_dir = os.path.join(msm_path, "analysis", "os_heatmap_combined")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, f"{name}.pdf")
-    plt.savefig(out_path, bbox_inches="tight", dpi=300)
+    plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.02)
     plt.close(fig)
 
     print(f"[+] Combined heatmap saved to {out_path}")

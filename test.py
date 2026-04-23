@@ -475,7 +475,7 @@ def plot_confusion_matrix_combined(
     plot_fp = os.path.join(TEST_RESULTS, f"{name}.pdf")
     info_fp = os.path.join(TEST_RESULTS, f"{name}_info.txt")
 
-    plt.savefig(plot_fp, bbox_inches="tight", dpi=300)
+    plt.savefig(plot_fp, bbox_inches="tight", dpi=300, pad_inches=0.02)
     plt.close(fig)
     print(f"[+] Combined confusion matrix saved to {plot_fp}")
 
