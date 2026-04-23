@@ -282,16 +282,19 @@ def main():
 
         sequence_length = int(sys.argv[2])
         force_create_dataset = False
+        reclassify_dataset = True
         sequence_count_per_pattern = 100_000
         run_cdf(sequence_length=sequence_length,
                 sequence_count_per_pattern=sequence_count_per_pattern,
                 force_create_dataset=force_create_dataset,
+                reclassify_dataset=reclassify_dataset,
                 close_range=False,
                 test="chi2"
                 )
         run_cdf(sequence_length=sequence_length,
                 sequence_count_per_pattern=sequence_count_per_pattern,
                 force_create_dataset=force_create_dataset,
+                reclassify_dataset=reclassify_dataset,
                 close_range=False,
                 test="nist"
                 )
@@ -1025,16 +1028,21 @@ def run_cdf(
         sequence_length: int,
         sequence_count_per_pattern: int,
         force_create_dataset: bool,
+        reclassify_dataset: bool,
         close_range: bool,
         test: str = "chi2",
 ):
     """
     Erzeugt CDF-Plot der p-Values pro Klasse.
 
+    :param force_create_dataset: Wenn True, werden die Sequenzen neu generiert
+                                 UND neu klassifiziert.
+    :param reclassify_dataset:   Wenn True, werden die Sequenzen aus dem Cache
+                                 geladen, aber neu klassifiziert. Ignoriert,
+                                 wenn force_create_dataset=True.
     :param close_range:
     :param sequence_length:
     :param sequence_count_per_pattern:
-    :param force_create_dataset:
     :param test: "chi2" oder "nist" – wählt den Statistik-Test aus.
     """
     # --- Test-Funktion auswählen ---
@@ -1049,44 +1057,68 @@ def run_cdf(
     else:
         raise ValueError(f"Unknown test: {test!r} (expected 'chi2' or 'nist')")
 
-    # --- Pfade (enthalten Test-Name, damit sich die Varianten nicht überschreiben) ---
+    # --- Pfade ---
     base_name = f"{test_label_short}_cdf_{sequence_length}_{sequence_count_per_pattern}"
     range_suffix = "close" if close_range else "default"
 
-    cache_fp = os.path.join(TEST_RESULTS, f"{base_name}.pkl")
-    plot_fp = os.path.join(TEST_RESULTS, f"{base_name}_{range_suffix}.pdf")
-    info_fp = os.path.join(TEST_RESULTS, f"{base_name}_info.txt")
+    # Sequenzen-Cache ist test-unabhängig (nur von seq_length + count)
+    sequences_fp = os.path.join(
+        TEST_RESULTS,
+        f"sequences_{sequence_length}_{sequence_count_per_pattern}.pkl",
+    )
+    # p-Value Cache ist test-spezifisch
+    pvalues_fp = os.path.join(TEST_RESULTS, f"{base_name}.pkl")
+    plot_fp    = os.path.join(TEST_RESULTS, f"{base_name}_{range_suffix}.pdf")
+    info_fp    = os.path.join(TEST_RESULTS, f"{base_name}_info.txt")
 
-    # --- Cache prüfen ---
-    if os.path.exists(cache_fp) and not force_create_dataset:
-        print(f"Loading cached {test_label_short} p-values from {cache_fp}")
-        with open(cache_fp, "rb") as f:
-            pvalues_per_class = pickle.load(f)
-    else:
-        print(f"Computing {test_label_short} p-values...")
-        pvalues_per_class: dict[str, list[float]] = {}
+    # --- Entscheidung: was muss neu gemacht werden? ---
+    need_regenerate_sequences = force_create_dataset or not os.path.exists(sequences_fp)
+    need_reclassify = force_create_dataset or reclassify_dataset or not os.path.exists(pvalues_fp)
 
+    # --- Sequenzen laden oder generieren ---
+    if need_regenerate_sequences:
+        print(f"Generating sequences (length={sequence_length}, count={sequence_count_per_pattern} per pattern)...")
+        sequences_per_class: dict[str, list] = {}
         for pattern, generator in pattern_generation_map.items():
             if generator is None:
                 continue
+            seqs = [generator(sequence_length) for _ in range(sequence_count_per_pattern)]
+            sequences_per_class[pattern.value] = seqs
+            print(f"  {pattern.value}: {len(seqs)} sequences")
 
+        with open(sequences_fp, "wb") as f:
+            pickle.dump(sequences_per_class, f)
+        print(f"Cached sequences to {sequences_fp}")
+    else:
+        print(f"Loading cached sequences from {sequences_fp}")
+        with open(sequences_fp, "rb") as f:
+            sequences_per_class = pickle.load(f)
+
+    # --- Klassifikation: p-Values berechnen oder aus Cache ---
+    if need_reclassify:
+        print(f"Computing {test_label_short} p-values...")
+        pvalues_per_class: dict[str, list[float]] = {}
+        for cls, seqs in sequences_per_class.items():
             pvalues = []
-            for _ in range(sequence_count_per_pattern):
-                seq = generator(sequence_length)
-                s = test_func(seq.s.increments)
-                a = test_func(seq.a.increments)
-                b = test_func(seq.b.increments)
+            for seq in seqs:
+                s  = test_func(seq.s.increments)
+                a  = test_func(seq.a.increments)
+                b  = test_func(seq.b.increments)
                 ap = test_func(seq.ap.increments)
                 bp = test_func(seq.bp.increments)
                 pvalues.append(min(s, a, b, ap, bp))
 
-            pvalues_per_class[pattern.value] = pvalues
-            print(f"  {pattern.value}: {len(pvalues)} samples, "
+            pvalues_per_class[cls] = pvalues
+            print(f"  {cls}: {len(pvalues)} samples, "
                   f"min={min(pvalues):.2e}, max={max(pvalues):.2e}")
 
-        with open(cache_fp, "wb") as f:
+        with open(pvalues_fp, "wb") as f:
             pickle.dump(pvalues_per_class, f)
-        print(f"Cached p-values to {cache_fp}")
+        print(f"Cached p-values to {pvalues_fp}")
+    else:
+        print(f"Loading cached {test_label_short} p-values from {pvalues_fp}")
+        with open(pvalues_fp, "rb") as f:
+            pvalues_per_class = pickle.load(f)
 
     # --- Plot + Info ---
     _plot_cdf(pvalues_per_class, plot_fp, close_range, test_label_math)
