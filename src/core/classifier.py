@@ -1,9 +1,14 @@
 import math
 import random
 from enum import Enum
-from math import erfc, sqrt, log
 
 import numpy as np
+from nistrng import (
+    SP800_22R1A_BATTERY,
+    check_eligibility_all_battery,
+    run_all_battery,
+    pack_sequence,
+)
 from scipy.stats import chisquare
 
 from core.utils import config
@@ -225,80 +230,44 @@ def chi2_test(seq: np.ndarray) -> float:
     return p_chi2
 
 
-def fft_test(diffs: np.ndarray) -> float:
-    # 1. Map to {-1, +1} (median split, robust gegen Bias)
-    median = np.median(diffs)
-    x = np.where(diffs > median, 1.0, -1.0)
-
-    n = len(x)
-
-    # 2. FFT
-    fft_vals = np.fft.fft(x)
-    mags = np.abs(fft_vals)[:n // 2]
-
-    # 3. Threshold (NIST)
-    T = sqrt(log(1 / 0.05) * n)
-
-    # 4. Expected vs observed peaks
-    N0 = 0.95 * n / 2
-    N1 = np.sum(mags < T)
-
-    # 5. Test statistic
-    d = (N1 - N0) / sqrt(n * 0.95 * 0.05 / 4)
-
-    # 6. p-value
-    p_value = erfc(abs(d) / sqrt(2))
-
-    return p_value
+def seq_to_bits(seq: np.ndarray) -> np.ndarray:
+    """
+    Wandelt eine Sequenz von IP-ID-Werten (uint16) in einen Bit-Stream um.
+    Big-Endian: das MSB jedes uint16 kommt zuerst.
+    """
+    # uint16 als 2 Bytes darstellen (big-endian), dann zu Bits unpacken
+    seq = seq.astype(">u2")  # big-endian uint16
+    return np.unpackbits(seq.view(np.uint8))
 
 
-def frequency_test(diffs: np.ndarray) -> float:
-    # Mapping to {-1, +1}
-    median = np.median(diffs)
-    x = np.where(diffs > median, 1.0, -1.0)
+def nist_test(values: np.ndarray) -> float:
+    """
+    Führt alle NIST SP800-22 Tests auf der Bit-Repräsentation der IP-ID-Sequenz aus
+    und gibt den minimalen p-Value zurück.
+    """
+    # Integers (uint16) -> Bit-Stream
+    bits = seq_to_bits(values)
 
-    n = len(x)
+    # In das von nistrng erwartete Format (±1) packen
+    bit_sequence = pack_sequence(bits)
 
-    # Test statistic
-    s_obs = abs(np.sum(x)) / sqrt(n)
+    # Eligibility check: nur Tests mit passenden Längen ausführen
+    eligible_battery = check_eligibility_all_battery(bit_sequence, SP800_22R1A_BATTERY)
+    if not eligible_battery:
+        return 1.0
 
-    # p-value
-    p_value = erfc(s_obs / sqrt(2))
+    results = run_all_battery(bit_sequence, eligible_battery, check_eligibility=False)
 
-    return p_value
-
-
-def runs_test(diffs: np.ndarray) -> float:
-    # Mapping to {0,1}
-    median = np.median(diffs)
-    x = np.where(diffs > median, 1, 0)
-
-    n = len(x)
-
-    # Proportion of ones
-    pi = np.mean(x)
-
-    # Voraussetzung prüfen (NIST)
-    if abs(pi - 0.5) >= (2 / sqrt(n)):
-        return 0.0  # fails automatically
-
-    # Anzahl Runs zählen
-    runs = 1 + np.sum(x[:-1] != x[1:])
-
-    # Erwartungswert und Varianz
-    numerator = abs(runs - 2 * n * pi * (1 - pi))
-    denominator = 2 * sqrt(2 * n) * pi * (1 - pi)
-
-    p_value = erfc(numerator / denominator)
-
-    return p_value
+    pvalues = [r[0].score for r in results if r[0].passed is not None]
+    return min(pvalues) if pvalues else 1.0
 
 
 def is_random(seq: IPIDSequence) -> bool:
     # if (chi2_test(seq.a.increments) < 1e-9 or
     #         chi2_test(seq.b.increments) < 1e-9):
     #     return False  # Filters REFLECTION, CONSTANT, GLOBAL, LOCAL(=1), LOCAL(>=1)
-    z = min(chi2_test(seq.a.increments),
+    z = min(chi2_test(seq.s.increments),
+            chi2_test(seq.a.increments),
             chi2_test(seq.b.increments),
             chi2_test(seq.ap.increments),
             chi2_test(seq.bp.increments))

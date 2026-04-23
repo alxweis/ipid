@@ -28,7 +28,7 @@ from matplotlib.ticker import MultipleLocator, NullFormatter
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS, TEST_RESULTS
-from core.classifier import pattern_generation_map, chi2_test, Pattern, IPIDSequence, get_pattern
+from core.classifier import pattern_generation_map, chi2_test, Pattern, IPIDSequence, get_pattern, nist_test
 from experimental.sequence_stable_len_analysis.main import (
     analyze_sequence_stable_lens_synthetic,
     analyze_sequence_stable_lens_natural
@@ -283,10 +283,18 @@ def main():
         sequence_length = int(sys.argv[2])
         force_create_dataset = False
         sequence_count_per_pattern = 100_000
-        run_chi2_cdf(sequence_length, sequence_count_per_pattern=sequence_count_per_pattern,
-                     force_create_dataset=force_create_dataset, close_range=False)
-        # run_chi2_cdf(sequence_length, sequence_count_per_pattern=sequence_count_per_pattern,
-        #              force_create_dataset=False, close_range=True)
+        run_cdf(sequence_length=sequence_length,
+                sequence_count_per_pattern=sequence_count_per_pattern,
+                force_create_dataset=force_create_dataset,
+                close_range=False,
+                test="chi2"
+                )
+        run_cdf(sequence_length=sequence_length,
+                sequence_count_per_pattern=sequence_count_per_pattern,
+                force_create_dataset=force_create_dataset,
+                close_range=False,
+                test="nist"
+                )
     elif mode == 11:
         if len(sys.argv) < 4:
             print_usage()
@@ -551,7 +559,8 @@ def main():
         # plot_time_between_requests_acm_style(str(sys.argv[2]))
         # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
         plot_increment_cdfs_acm_style(str(sys.argv[2]),
-                                      [Pattern.GLOBAL, Pattern.PER_BUCKET, Pattern.RANDOM, Pattern.PER_CPU, Pattern.PER_DST, Pattern.PER_CON])
+                                      [Pattern.GLOBAL, Pattern.PER_BUCKET, Pattern.RANDOM, Pattern.PER_CPU,
+                                       Pattern.PER_DST, Pattern.PER_CON])
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
@@ -1012,27 +1021,49 @@ def sample_targets(input_file: str):
     con.close()
 
 
-def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_create_dataset: bool, close_range: bool):
-    cache_fp = os.path.join(
-        TEST_RESULTS,
-        f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}.pkl",
-    )
-    plot_fp = os.path.join(
-        TEST_RESULTS,
-        f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}_{"close" if close_range else "default"}.pdf",
-    )
-    info_fp = os.path.join(
-        TEST_RESULTS,
-        f"chi2_cdf_{sequence_length}_{sequence_count_per_pattern}_info.txt",
-    )
+def run_cdf(
+        sequence_length: int,
+        sequence_count_per_pattern: int,
+        force_create_dataset: bool,
+        close_range: bool,
+        test: str = "chi2",
+):
+    """
+    Erzeugt CDF-Plot der p-Values pro Klasse.
+
+    :param close_range:
+    :param sequence_length:
+    :param sequence_count_per_pattern:
+    :param force_create_dataset:
+    :param test: "chi2" oder "nist" – wählt den Statistik-Test aus.
+    """
+    # --- Test-Funktion auswählen ---
+    if test == "chi2":
+        test_func = chi2_test
+        test_label_short = "chi2"
+        test_label_math = r"Chi$^2$"
+    elif test == "nist":
+        test_func = nist_test
+        test_label_short = "nist"
+        test_label_math = "NIST"
+    else:
+        raise ValueError(f"Unknown test: {test!r} (expected 'chi2' or 'nist')")
+
+    # --- Pfade (enthalten Test-Name, damit sich die Varianten nicht überschreiben) ---
+    base_name = f"{test_label_short}_cdf_{sequence_length}_{sequence_count_per_pattern}"
+    range_suffix = "close" if close_range else "default"
+
+    cache_fp = os.path.join(TEST_RESULTS, f"{base_name}.pkl")
+    plot_fp = os.path.join(TEST_RESULTS, f"{base_name}_{range_suffix}.pdf")
+    info_fp = os.path.join(TEST_RESULTS, f"{base_name}_info.txt")
 
     # --- Cache prüfen ---
     if os.path.exists(cache_fp) and not force_create_dataset:
-        print(f"Loading cached chi2 p-values from {cache_fp}")
+        print(f"Loading cached {test_label_short} p-values from {cache_fp}")
         with open(cache_fp, "rb") as f:
             pvalues_per_class = pickle.load(f)
     else:
-        print("Computing chi2 p-values...")
+        print(f"Computing {test_label_short} p-values...")
         pvalues_per_class: dict[str, list[float]] = {}
 
         for pattern, generator in pattern_generation_map.items():
@@ -1042,11 +1073,11 @@ def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_cr
             pvalues = []
             for _ in range(sequence_count_per_pattern):
                 seq = generator(sequence_length)
-                s = chi2_test(seq.s.increments)
-                a = chi2_test(seq.a.increments)
-                b = chi2_test(seq.b.increments)
-                ap = chi2_test(seq.ap.increments)
-                bp = chi2_test(seq.bp.increments)
+                s = test_func(seq.s.increments)
+                a = test_func(seq.a.increments)
+                b = test_func(seq.b.increments)
+                ap = test_func(seq.ap.increments)
+                bp = test_func(seq.bp.increments)
                 pvalues.append(min(s, a, b, ap, bp))
 
             pvalues_per_class[pattern.value] = pvalues
@@ -1057,13 +1088,22 @@ def run_chi2_cdf(sequence_length: int, sequence_count_per_pattern: int, force_cr
             pickle.dump(pvalues_per_class, f)
         print(f"Cached p-values to {cache_fp}")
 
-    # --- Plot ---
-    _plot_chi2_cdf(pvalues_per_class, plot_fp, close_range)
-    _write_chi2_cdf_info(info_fp, pvalues_per_class, sequence_length, sequence_count_per_pattern)
+    # --- Plot + Info ---
+    _plot_cdf(pvalues_per_class, plot_fp, close_range, test_label_math)
+    _write_cdf_info(
+        info_fp, pvalues_per_class,
+        sequence_length, sequence_count_per_pattern,
+        test_label_short, test_label_math,
+    )
 
 
-def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, close_range: bool):
-    """CDF der chi²-p-Values pro Klasse."""
+def _plot_cdf(
+        pvalues_per_class: dict[str, list[float]],
+        out_path: str,
+        close_range: bool,
+        test_label_math: str,
+):
+    """CDF der p-Values pro Klasse (Test-agnostisch)."""
     display_map = {
         "Mirror": ("Reflection", "#FFE866"),
         "Constant": ("Constant", "#6FB8FF"),
@@ -1092,25 +1132,21 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, clo
 
     fig, ax = plt.subplots(figsize=(4.5, 3.0))
 
-    # Klassen in Display-Map-Reihenfolge plotten
     ordered_classes = sorted(
         pvalues_per_class.keys(),
         key=lambda c: order_index.get(c, 999),
     )
 
-    # Kleinste positive p-Value für log-x-Achse ermitteln (0-Werte ersetzen)
     min_positive = min(
         (p for pvs in pvalues_per_class.values() for p in pvs if p > 0),
         default=1e-300,
     )
-    floor = min_positive / 10  # für 0-Ersatz
+    floor = min_positive / 10
 
     for cls in ordered_classes:
         pvs = np.asarray(pvalues_per_class[cls], dtype=float)
-        # 0 (bzw. sehr kleine Werte) für log-Plot clippen
         pvs = np.where(pvs <= 0, floor, pvs)
         pvs_sorted = np.sort(pvs)
-        # CDF in Prozent
         cdf = np.arange(1, len(pvs_sorted) + 1) / len(pvs_sorted) * 100
 
         display_name, color = display_map.get(cls, (cls, "#808080"))
@@ -1125,16 +1161,11 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, clo
     ax.set_xscale("log")
 
     if not close_range:
-        # Exponenten bestimmen
         min_exp = int(np.floor(np.log10(floor)))
         max_exp = 0
-
         step = 20
-
         start_exp = (min_exp // step) * step
-
         exponents = np.arange(start_exp, max_exp + 1, step)
-
         if exponents[-1] != 0:
             exponents = np.append(exponents, 0)
 
@@ -1150,18 +1181,17 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, clo
     else:
         ax.set_xlim(left=1e-5, right=1.0)
 
-    # Y Major-Ticks (z.B. alle 20%)
     y_major = np.arange(0, 101, 20)
     ax.set_yticks(y_major)
-
-    # Y Minor-Ticks: genau dazwischen
     y_minor = y_major[:-1] + 10
     ax.set_yticks(y_minor, minor=True)
     ax.yaxis.set_minor_formatter(NullFormatter())
-
     ax.set_ylim(0, 105)
 
-    ax.set_xlabel(r"Chi$^2$ p-value [Minimum of all Subsequences]", labelpad=2)
+    ax.set_xlabel(
+        rf"{test_label_math} p-value [Minimum of all Subsequences]",
+        labelpad=2,
+    )
     ax.set_ylabel("Cumulative Percentage [%]", labelpad=2)
 
     ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
@@ -1170,7 +1200,6 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, clo
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
 
-    # --- Legende über dem Plot ---
     ax.legend(
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
@@ -1185,16 +1214,18 @@ def _plot_chi2_cdf(pvalues_per_class: dict[str, list[float]], out_path: str, clo
     plt.tight_layout(pad=0.4)
     plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.05)
     plt.close(fig)
-    print(f"[+] chi² CDF plot saved to {out_path}")
+    print(f"[+] {test_label_math} CDF plot saved to {out_path}")
 
 
-def _write_chi2_cdf_info(
+def _write_cdf_info(
         info_path: str,
         pvalues_per_class: dict[str, list[float]],
         sequence_length: int,
         sequence_count_per_pattern: int,
+        test_label_short: str,
+        test_label_math: str,
 ):
-    """Schreibt Metadata-Info-Datei für Chi2-CDF-Plot."""
+    """Schreibt Metadata-Info-Datei für CDF-Plot (Test-agnostisch)."""
     display_map = {
         "Mirror": "Reflection",
         "Constant": "Constant",
@@ -1208,21 +1239,23 @@ def _write_chi2_cdf_info(
     }
     order_index = {k: i for i, k in enumerate(display_map)}
 
-    # Schwellen, bis zu denen p-Values liegen (interessant für Classifier)
     thresholds = [1e-60, 1e-30, 1e-12, 1e-6, 1e-3, 0.01, 0.05]
 
     with open(info_path, "w", encoding="utf-8") as f:
-        f.write("Chi2 CDF Metadata\n")
+        f.write(f"{test_label_math} CDF Metadata\n")
         f.write("=" * 60 + "\n\n")
+        f.write(f"Test:                       {test_label_short}\n")
         f.write(f"Sequence length:            {sequence_length}\n")
         f.write(f"Sequences per pattern:      {sequence_count_per_pattern:,}\n")
-        f.write(f"p-value = Min(Chi2-p over all 5 subsequences s, a, b, ap, bp)\n\n")
+        f.write(f"p-value = Min({test_label_short}-p over all 5 subsequences s, a, b, ap, bp)\n\n")
 
         f.write("Per-Class Statistics\n")
         f.write("-" * 60 + "\n")
 
-        ordered = sorted(pvalues_per_class.keys(),
-                         key=lambda c: order_index.get(c, 999))
+        ordered = sorted(
+            pvalues_per_class.keys(),
+            key=lambda c: order_index.get(c, 999),
+        )
 
         for cls in ordered:
             pvs = np.asarray(pvalues_per_class[cls], dtype=float)
