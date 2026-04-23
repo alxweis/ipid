@@ -1,15 +1,9 @@
 import math
 import random
-import warnings
 from enum import Enum
+from math import erfc, sqrt, log
 
 import numpy as np
-from nistrng import (
-    SP800_22R1A_BATTERY,
-    check_eligibility_all_battery,
-    run_all_battery,
-    pack_sequence,
-)
 from scipy.stats import chisquare
 
 from core.utils import config
@@ -231,48 +225,127 @@ def chi2_test(seq: np.ndarray) -> float:
     return p_chi2
 
 
-# --- Custom Battery: nur Frequency, Runs, DFT, Cumulative Sums ---
-_WANTED_TESTS = {
-    "monobit",  # Frequency (monobit)
-    "runs",  # Runs
-    "dft",  # Discrete Fourier Transform (Spectral)
-    # "cumulative_sums",  # Cumulative Sums (cusum)
-}
+def fft_test(diffs: np.ndarray) -> float:
+    # 1. Map to {-1, +1} (median split, robust gegen Bias)
+    median = np.median(diffs)
+    x = np.where(diffs > median, 1.0, -1.0)
 
-CUSTOM_BATTERY = {
-    name: test for name, test in SP800_22R1A_BATTERY.items()
-    if name in _WANTED_TESTS
-}
+    n = len(x)
+
+    # 2. FFT
+    fft_vals = np.fft.fft(x)
+    mags = np.abs(fft_vals)[:n // 2]
+
+    # 3. Threshold (NIST)
+    T = sqrt(log(1 / 0.05) * n)
+
+    # 4. Expected vs observed peaks
+    N0 = 0.95 * n / 2
+    N1 = np.sum(mags < T)
+
+    # 5. Test statistic
+    d = (N1 - N0) / sqrt(n * 0.95 * 0.05 / 4)
+
+    # 6. p-value
+    p_value = erfc(abs(d) / sqrt(2))
+
+    return p_value
 
 
-def seq_to_bits(seq: np.ndarray) -> np.ndarray:
-    """
-    Wandelt eine Sequenz von IP-ID-Werten (uint16) in einen Bit-Stream um.
-    Big-Endian: das MSB jedes uint16 kommt zuerst.
-    """
-    seq = seq.astype(">u2")
-    return np.unpackbits(seq.view(np.uint8))
+def frequency_test(diffs: np.ndarray) -> float:
+    # Mapping to {-1, +1}
+    median = np.median(diffs)
+    x = np.where(diffs > median, 1.0, -1.0)
+
+    n = len(x)
+
+    # Test statistic
+    s_obs = abs(np.sum(x)) / sqrt(n)
+
+    # p-value
+    p_value = erfc(s_obs / sqrt(2))
+
+    return p_value
 
 
-def nist_test(values: np.ndarray) -> float:
-    """
-    Führt die 4 ausgewählten NIST-Tests (Monobit, Runs, DFT, CuSum) auf der
-    Bit-Repräsentation der Sequenz aus und gibt den minimalen p-Value zurück.
-    """
-    bits = seq_to_bits(values)
-    bit_sequence = pack_sequence(bits)
+def runs_test(diffs: np.ndarray) -> float:
+    # Mapping to {0,1}
+    median = np.median(diffs)
+    x = np.where(diffs > median, 1, 0)
 
-    eligible_battery = check_eligibility_all_battery(bit_sequence, CUSTOM_BATTERY)
-    if not eligible_battery:
-        return 1.0
+    n = len(x)
 
-    # Overflow-Warnings aus dem (buggy) cumulative_sums-Test unterdrücken
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
-        results = run_all_battery(bit_sequence, eligible_battery, check_eligibility=False)
+    # Proportion of ones
+    pi = np.mean(x)
 
-    pvalues = [r[0].score for r in results if r[0].passed is not None]
-    return min(pvalues) if pvalues else 1.0
+    # Voraussetzung prüfen (NIST)
+    if abs(pi - 0.5) >= (2 / sqrt(n)):
+        return 0.0  # fails automatically
+
+    # Anzahl Runs zählen
+    runs = 1 + np.sum(x[:-1] != x[1:])
+
+    # Erwartungswert und Varianz
+    numerator = abs(runs - 2 * n * pi * (1 - pi))
+    denominator = 2 * sqrt(2 * n) * pi * (1 - pi)
+
+    p_value = erfc(numerator / denominator)
+
+    return p_value
+
+
+def cusum_test(diffs: np.ndarray) -> float:
+    # Mapping to {-1, +1}
+    median = np.median(diffs)
+    x = np.where(diffs > median, 1.0, -1.0)
+    n = len(x)
+
+    # Forward cumulative sum
+    cumsum_fwd = np.cumsum(x)
+    z_fwd = np.max(np.abs(cumsum_fwd))
+
+    # Backward cumulative sum
+    cumsum_bwd = np.cumsum(x[::-1])
+    z_bwd = np.max(np.abs(cumsum_bwd))
+
+    def _p_value_from_z(z: float) -> float:
+        if z == 0:
+            return 1.0
+        # Summe 1 (NIST SP800-22 Formel)
+        k_start_1 = int((-n / z + 1) / 4)
+        k_end_1 = int((n / z - 1) / 4)
+        sum1 = 0.0
+        for k in range(k_start_1, k_end_1 + 1):
+            sum1 += norm_cdf((4 * k + 1) * z / sqrt(n))
+            sum1 -= norm_cdf((4 * k - 1) * z / sqrt(n))
+
+        # Summe 2
+        k_start_2 = int((-n / z - 3) / 4)
+        k_end_2 = int((n / z - 1) / 4)
+        sum2 = 0.0
+        for k in range(k_start_2, k_end_2 + 1):
+            sum2 += norm_cdf((4 * k + 3) * z / sqrt(n))
+            sum2 -= norm_cdf((4 * k + 1) * z / sqrt(n))
+
+        return 1.0 - sum1 + sum2
+
+    p_fwd = _p_value_from_z(z_fwd)
+    p_bwd = _p_value_from_z(z_bwd)
+
+    return min(p_fwd, p_bwd)
+
+
+def norm_cdf(x: float) -> float:
+    return 0.5 * (1.0 + math.erf(x / sqrt(2)))
+
+
+def nist_test(diffs: np.ndarray) -> float:
+    return min(
+        fft_test(diffs),
+        frequency_test(diffs),
+        runs_test(diffs),
+        cusum_test(diffs),
+    )
 
 
 def is_random(seq: IPIDSequence) -> bool:

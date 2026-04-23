@@ -282,7 +282,7 @@ def main():
 
         sequence_length = int(sys.argv[2])
         force_create_dataset = False
-        reclassify_dataset = True
+        reclassify_dataset = True  # False
         sequence_count_per_pattern = 100_000
         # run_cdf(sequence_length=sequence_length,
         #         sequence_count_per_pattern=sequence_count_per_pattern,
@@ -1201,15 +1201,18 @@ def _plot_cdf(
         if exponents[-1] != 0:
             exponents = np.append(exponents, 0)
 
-        ticks = 10.0 ** exponents
-        ax.set_xticks(ticks)
+        if test_label_math != "NIST":
+            ticks = 10.0 ** exponents
+            ax.set_xticks(ticks)
 
-        minor_exponents = exponents[:-1] + step / 2
-        minor_ticks = 10.0 ** minor_exponents
-        ax.set_xticks(minor_ticks, minor=True)
-        ax.xaxis.set_minor_formatter(NullFormatter())
+            minor_exponents = exponents[:-1] + step / 2
+            minor_ticks = 10.0 ** minor_exponents
+            ax.set_xticks(minor_ticks, minor=True)
+            ax.xaxis.set_minor_formatter(NullFormatter())
 
-        ax.set_xlim(left=ticks[0], right=1.0)
+            ax.set_xlim(left=ticks[0], right=1.0)
+        else:
+            ax.set_xlim(right=1.0)
     else:
         ax.set_xlim(left=1e-5, right=1.0)
 
