@@ -416,7 +416,7 @@ def _plot_intersection_heatmap(df_rel: pd.DataFrame, out_path: str):
     # Annotation-Matrix: "-" für 0, sonst "X.X"
     annot_matrix = df_rel.map(lambda v: "-" if v == 0 else f"{v:.1f}")
 
-    fig, ax = plt.subplots(figsize=(5.2, 2.5))
+    fig, ax = plt.subplots(figsize=(5.0, 2.5))
     sns.heatmap(
         df_rel,
         ax=ax,
@@ -440,7 +440,7 @@ def _plot_intersection_heatmap(df_rel: pd.DataFrame, out_path: str):
     cbar.ax.tick_params(width=0.5)
 
     ax.set_xlabel("Detected IP-ID Selection Strategy using Fixed-Interval probing", labelpad=4)
-    ax.set_ylabel("Detected IP-ID Selection Strategy\nusing RT-based probing", labelpad=4)
+    ax.set_ylabel("Detected IP-ID Selection\nStrategy using RT-based\nprobing", labelpad=4)
     ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
 
     plt.tight_layout(pad=0.4)
