@@ -13,6 +13,7 @@ from functools import partial
 import duckdb
 import geoip2.database
 import matplotlib
+from matplotlib.colors import LinearSegmentedColormap
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -416,13 +417,18 @@ def _plot_intersection_heatmap(df_rel: pd.DataFrame, out_path: str):
     # Annotation-Matrix: "-" für 0, sonst "X.X"
     annot_matrix = df_rel.map(lambda v: "-" if v == 0 else f"{v:.1f}")
 
+    white_blues = LinearSegmentedColormap.from_list(
+        "white_blues",
+        ["#FFFFFF", "#08306B"],
+    )
+
     fig, ax = plt.subplots(figsize=(5.0, 2.5))
     sns.heatmap(
         df_rel,
         ax=ax,
         annot=annot_matrix,
         fmt="",
-        cmap="Blues",
+        cmap=white_blues,
         vmin=0, vmax=100,
         linewidths=0.4,
         linecolor="white",

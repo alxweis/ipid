@@ -9,12 +9,18 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 
 from core import TEST_RESULTS
 from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
 
 FORCE_CREATE_DATASET = False
 FORCE_RECLASSIFY = True  # False
+
+white_blues = LinearSegmentedColormap.from_list(
+    "white_blues",
+    ["#FFFFFF", "#08306B"],
+)
 
 
 class Dataset(Enum):
@@ -291,7 +297,7 @@ def _plot_confusion_matrix(df_rel: pd.DataFrame, out_path: str):
         ax=ax,
         annot=annot_matrix,
         fmt="",
-        cmap="Blues",
+        cmap=white_blues,
         vmin=0, vmax=100,
         linewidths=0.4,
         linecolor="white",
@@ -356,12 +362,12 @@ def plot_confusion_matrix_combined(
 
     # --- Datensätze definieren: (dataset, subplot_title) ---
     entries = [
-        (Dataset.LOSSY,   "Lossy"),
+        (Dataset.LOSSY, "Lossy"),
         (Dataset.REORDER, "Reorder"),
     ]
 
     # --- Cache-Daten laden ---
-    tables = []       # df_rel pro Dataset
+    tables = []  # df_rel pro Dataset
     metrics_all = []  # metrics pro Dataset (für info-Block)
     for dataset, _ in entries:
         base_name = f"{dataset.value.lower()}_cm_{sequence_length}_{sequence_count_per_pattern}"
@@ -419,7 +425,7 @@ def plot_confusion_matrix_combined(
             ax=ax,
             annot=annot_matrix,
             fmt="",
-            cmap="Blues",
+            cmap=white_blues,
             vmin=0, vmax=100,
             linewidths=0.4,
             linecolor="white",
@@ -447,7 +453,7 @@ def plot_confusion_matrix_combined(
             spine.set_color("black")
 
     # --- Layout: Platz für linkes y-Label + rechte Colorbar ---
-    fig.subplots_adjust(left=0.30, right=0.88, top=0.93, bottom=0.18, hspace=0.3)
+    fig.subplots_adjust(left=0.30, right=0.88, top=0.93, bottom=0.18, hspace=0.25)
 
     # --- Gemeinsames y-Label (zentriert über beide Subplots) ---
     top_ax_bbox = axes[0].get_position()
@@ -461,10 +467,21 @@ def plot_confusion_matrix_combined(
     )
 
     # --- Gemeinsame Colorbar, vertikal zentriert ---
-    cbar_height = top_ax_bbox.y1 - bot_ax_bbox.y0
-    cbar_ax = fig.add_axes([0.90, bot_ax_bbox.y0, 0.015, cbar_height])
+    top_ax_bbox = axes[0].get_position()
+    bot_ax_bbox = axes[-1].get_position()
+    y_center = (top_ax_bbox.y1 + bot_ax_bbox.y0) / 2
 
-    sm = plt.cm.ScalarMappable(cmap="Blues", norm=plt.Normalize(vmin=0, vmax=100))
+    cbar_height_inches = 1.5    # feste Länge, anpassbar
+    cbar_height_fig = cbar_height_inches / fig.get_figheight()
+
+    cbar_ax = fig.add_axes([
+        0.90,
+        y_center - cbar_height_fig / 2,
+        0.015,
+        cbar_height_fig,
+        ])
+
+    sm = plt.cm.ScalarMappable(cmap=white_blues, norm=plt.Normalize(vmin=0, vmax=100))
     sm.set_array([])
     cbar = fig.colorbar(sm, cax=cbar_ax, label="Percentage [%]")
     cbar.outline.set_linewidth(0.5)

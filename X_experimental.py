@@ -24,6 +24,7 @@ import pandas as pd
 import seaborn as sns
 import zstandard as zstd
 from matplotlib.collections import PolyCollection
+from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.ticker import MultipleLocator, NullFormatter
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
@@ -38,6 +39,11 @@ from hitlist.os_scan import pretty_oses, os_groups, fallback_color, soft_palette
 from postproc import GEOLITE_COUNTRY_DB
 
 filename = os.path.basename(__file__)
+
+white_blues = LinearSegmentedColormap.from_list(
+    "white_blues",
+    ["#FFFFFF", "#08306B"],
+)
 
 
 def print_usage():
@@ -1899,7 +1905,7 @@ def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], 
         pivot_table_rel,
         annot=True,
         fmt=".1f",
-        cmap="Blues",
+        cmap=white_blues,
         vmin=0,
         vmax=100,
         cbar_kws={"label": "Percentage [%]"},
@@ -2018,7 +2024,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
             ax=ax,
             annot=annot_matrix,
             fmt="",
-            cmap="Blues",
+            cmap=white_blues,
             vmin=0, vmax=100,
             linewidths=0.4,
             linecolor="white",
@@ -2050,7 +2056,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
             spine.set_color("black")
 
     # --- Layout: mehr Abstand zwischen Subplots ---
-    fig.subplots_adjust(left=0.38, right=0.88, top=0.93, bottom=0.18, hspace=0.3)
+    fig.subplots_adjust(left=0.38, right=0.88, top=0.93, bottom=0.18, hspace=0.25)
 
     # --- Gemeinsames y-Label (zentriert über beide Subplots) ---
     top_ax_bbox = axes[0].get_position()
@@ -2064,10 +2070,21 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     )
 
     # --- Gemeinsame Colorbar, vertikal zentriert ---
-    cbar_height = top_ax_bbox.y1 - bot_ax_bbox.y0
-    cbar_ax = fig.add_axes([0.90, bot_ax_bbox.y0, 0.015, cbar_height])
+    top_ax_bbox = axes[0].get_position()
+    bot_ax_bbox = axes[-1].get_position()
+    y_center = (top_ax_bbox.y1 + bot_ax_bbox.y0) / 2
 
-    sm = plt.cm.ScalarMappable(cmap="Blues", norm=plt.Normalize(vmin=0, vmax=100))
+    cbar_height_inches = 1.5    # feste Länge, anpassbar
+    cbar_height_fig = cbar_height_inches / fig.get_figheight()
+
+    cbar_ax = fig.add_axes([
+        0.90,
+        y_center - cbar_height_fig / 2,
+        0.015,
+        cbar_height_fig,
+        ])
+
+    sm = plt.cm.ScalarMappable(cmap=white_blues, norm=plt.Normalize(vmin=0, vmax=100))
     sm.set_array([])
     cbar = fig.colorbar(sm, cax=cbar_ax, label="Percentage [%]")
 

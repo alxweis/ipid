@@ -7,11 +7,16 @@ import duckdb
 import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 from tqdm import tqdm
 
 from core import EXP_SEQUENCE_STABLE_CLASSIFICATION_LEN
 from core.classifier import IPIDSequence, Pattern, get_pattern, pattern_generation_map
 
+white_blues = LinearSegmentedColormap.from_list(
+    "white_blues",
+    ["#FFFFFF", "#08306B"],
+)
 
 # We have a given sequence: (A-B-C-D-E-F-...)
 
@@ -67,7 +72,7 @@ def plot_pattern_to_min_stable_lens(pattern_to_min_stable_lens: dict[Pattern, li
             freq_matrix[row_idx, col_idx] = (count / total) * 100  # convert to percent
 
     plt.figure(figsize=(7, 7))
-    sns.heatmap(freq_matrix, annot=True, fmt=".0f", cmap="Blues",
+    sns.heatmap(freq_matrix, annot=True, fmt=".0f", cmap=white_blues,
                 xticklabels=[p.value for p in patterns],
                 yticklabels=min_stable_lens,
                 cbar_kws={'label': 'Relative Frequency (%)'})
@@ -158,7 +163,7 @@ def analyze_sequence_stable_lens_natural(probing_csv: str):
             freq_matrix[row_idx, col_idx] = (count / total) * 100
 
     plt.figure(figsize=(7, 7))
-    sns.heatmap(freq_matrix, annot=True, fmt=".0f", cmap="Blues",
+    sns.heatmap(freq_matrix, annot=True, fmt=".0f", cmap=white_blues,
                 xticklabels=[p.value for p in patterns],
                 yticklabels=min_stable_lens,
                 cbar_kws={'label': 'Relative Frequency (%)'})
