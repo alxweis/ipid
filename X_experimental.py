@@ -1656,11 +1656,15 @@ def plot_caida_os_distribution_acm_style(
     })
 
     # --- Geometrie ---
-    data_sets = [transit_values]
-    labels = ["Router"]
+    data_sets = []
+    labels = []
+
     if show_dst_only:
         data_sets.append(endhost_values)
         labels.append("All Others")
+
+    data_sets.append(transit_values)
+    labels.append("Router")
 
     n_bars = len(data_sets)
 
@@ -3066,11 +3070,15 @@ def plot_transit_endhost_distribution_acm_style(
     })
 
     # --- Geometrie ---
-    data_sets = [transit_values]
-    labels = ["Router"]
+    data_sets = []
+    labels = []
+
     if show_dst_only:
         data_sets.append(endhost_values)
         labels.append("All Others")
+
+    data_sets.append(transit_values)
+    labels.append("Router")
 
     n_bars = len(data_sets)
 
