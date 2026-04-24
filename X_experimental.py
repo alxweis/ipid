@@ -568,8 +568,8 @@ def main():
         # plot_time_between_requests_acm_style(str(sys.argv[2]))
         # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
         plot_increment_cdfs_acm_style(str(sys.argv[2]),
-                                      [Pattern.GLOBAL, Pattern.PER_BUCKET, Pattern.RANDOM, Pattern.PER_CPU,
-                                       Pattern.PER_DST, Pattern.PER_CON])
+                                      [Pattern.REFLECTION, Pattern.CONSTANT, Pattern.GLOBAL, Pattern.PER_DST,
+                                       Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU, Pattern.RANDOM])
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
