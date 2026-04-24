@@ -720,10 +720,19 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     df = df[~df["continent"].isin(["None", "Antarctica"])]
 
     # --- Reihenfolge: nach Sample-Count (descending) ---
-    order = df["continent"].value_counts().index.tolist()
+    # order = df["continent"].value_counts().index.tolist()
 
     # --- Labels mit #IPs pro Kontinent (unique IPs über beide Messungen) ---
-    ip_counts = df.groupby("continent")["ip"].nunique().to_dict()
+    ip_counts = df.dropna(subset=["ip"]).groupby("continent")["ip"].nunique().to_dict()
+
+    # --- Kontinente mit 0 IPs entfernen ---
+    valid_continents = [c for c, n in ip_counts.items() if n > 0]
+    df = df[df["continent"].isin(valid_continents)]
+
+    # --- Reihenfolge danach neu bestimmen ---
+    order = df["continent"].value_counts().index.tolist()
+
+    # --- Labels ---
     xtick_labels = [f"{c}\n({_fmt_count(ip_counts.get(c, 0))})" for c in order]
 
     # --- Downsampling für den Plot (Statistik bleibt full-scale) ---
