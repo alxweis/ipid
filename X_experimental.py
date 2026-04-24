@@ -288,7 +288,7 @@ def main():
 
         sequence_length = int(sys.argv[2])
         force_create_dataset = False
-        reclassify_dataset = True  # False
+        reclassify_dataset = False
         sequence_count_per_pattern = 100_000
         run_cdf(sequence_length=sequence_length,
                 sequence_count_per_pattern=sequence_count_per_pattern,

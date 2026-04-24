@@ -15,7 +15,7 @@ from core import TEST_RESULTS
 from core.classifier import IPIDSequence, get_pattern, Pattern, pattern_generation_map
 
 FORCE_CREATE_DATASET = False
-FORCE_RECLASSIFY = True  # False
+FORCE_RECLASSIFY = False
 
 white_blues = LinearSegmentedColormap.from_list(
     "white_blues",
