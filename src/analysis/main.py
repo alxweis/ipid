@@ -419,7 +419,17 @@ def _plot_intersection_heatmap(df_rel: pd.DataFrame, out_path: str):
 
     white_blues = LinearSegmentedColormap.from_list(
         "white_blues",
-        ["#FFFFFF", "#08306B"],
+        [
+            (0.000, "#FFFFFF"),
+            (0.125, "#DEEBF7"),
+            (0.250, "#C6DBEF"),
+            (0.375, "#9ECAE1"),
+            (0.500, "#6BAED6"),
+            (0.625, "#4292C6"),
+            (0.750, "#2171B5"),
+            (0.875, "#08519C"),
+            (1.000, "#08306B"),
+        ],
     )
 
     fig, ax = plt.subplots(figsize=(5.0, 2.5))
