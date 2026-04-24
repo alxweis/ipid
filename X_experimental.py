@@ -1712,6 +1712,7 @@ def plot_caida_os_distribution_acm_style(
     ax.set_yticks(y_positions)
     ax.set_yticklabels(labels)
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.invert_yaxis()
 
     # --- Legende ---
     legend_labels = [display_map.get(c, (c, None))[0] for c in all_classes]
@@ -3134,6 +3135,7 @@ def plot_transit_endhost_distribution_acm_style(
     ax.set_yticks(y_positions)
     ax.set_yticklabels(labels)
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.invert_yaxis()
 
     legend_labels = [display_map.get(c, (c, None))[0] for c in all_classes]
     ax.legend(
