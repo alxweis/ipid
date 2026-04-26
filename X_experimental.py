@@ -3402,7 +3402,7 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
 
     # --- Achsen ---
     ax.set_xscale("log")
-    ax.set_xlim(left=0.01)
+    ax.set_xlim(left=0.794328)
 
     # Y Major-Ticks (alle 20%)
     y_major = np.arange(0, 101, 20)
