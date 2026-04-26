@@ -35,22 +35,22 @@ class IPIDSequence:
     def __init__(self, sequence: list[int] | tuple[int, ...] | np.ndarray):
         arr = np.array(sequence, dtype=np.int32)
         self.s = IPIDSubsequence(arr)
-        idx = np.arange(len(arr)) % 6
-        self.a = IPIDSubsequence(arr[np.isin(idx, [0, 1, 4])])
-        self.b = IPIDSubsequence(arr[np.isin(idx, [2, 3, 5])])
-        self.ap = IPIDSubsequence(arr[np.isin(idx, [1, 4])])
-        self.bp = IPIDSubsequence(arr[np.isin(idx, [2, 5])])
-        # idx = np.arange(len(arr)) % 8
-        # self.a = IPIDSubsequence(arr[np.isin(idx, [0, 2, 4, 6])])
-        # self.b = IPIDSubsequence(arr[np.isin(idx, [1, 3, 5, 7])])
-        # self.ap = IPIDSubsequence(arr[np.isin(idx, [0, 4])])
-        # self.ap_no_first = IPIDSubsequence(arr[np.isin(idx, [0, 4])][1:])
-        # self.bp = IPIDSubsequence(arr[np.isin(idx, [1, 5])])
-        # self.bp_no_first = IPIDSubsequence(arr[np.isin(idx, [1, 5])][1:])
-        # self.cp = IPIDSubsequence(arr[np.isin(idx, [2, 6])])
-        # self.cp_no_first = IPIDSubsequence(arr[np.isin(idx, [2, 6])][1:])
-        # self.dp = IPIDSubsequence(arr[np.isin(idx, [3, 7])])
-        # self.dp_no_first = IPIDSubsequence(arr[np.isin(idx, [3, 7])][1:])
+        # idx = np.arange(len(arr)) % 6
+        # self.a = IPIDSubsequence(arr[np.isin(idx, [0, 1, 4])])
+        # self.b = IPIDSubsequence(arr[np.isin(idx, [2, 3, 5])])
+        # self.ap = IPIDSubsequence(arr[np.isin(idx, [1, 4])])
+        # self.bp = IPIDSubsequence(arr[np.isin(idx, [2, 5])])
+        idx = np.arange(len(arr)) % 8
+        self.a = IPIDSubsequence(arr[np.isin(idx, [0, 2, 4, 6])])
+        self.b = IPIDSubsequence(arr[np.isin(idx, [1, 3, 5, 7])])
+        self.ap = IPIDSubsequence(arr[np.isin(idx, [0, 4])])
+        self.ap_no_first = IPIDSubsequence(arr[np.isin(idx, [0, 4])][1:])
+        self.bp = IPIDSubsequence(arr[np.isin(idx, [1, 5])])
+        self.bp_no_first = IPIDSubsequence(arr[np.isin(idx, [1, 5])][1:])
+        self.cp = IPIDSubsequence(arr[np.isin(idx, [2, 6])])
+        self.cp_no_first = IPIDSubsequence(arr[np.isin(idx, [2, 6])][1:])
+        self.dp = IPIDSubsequence(arr[np.isin(idx, [3, 7])])
+        self.dp_no_first = IPIDSubsequence(arr[np.isin(idx, [3, 7])][1:])
 
     def __len__(self):
         return len(self.s.sequence)
@@ -168,21 +168,21 @@ def is_per_dst(seq: IPIDSequence) -> bool:
 
 
 def is_per_con(seq: IPIDSequence) -> bool:
-    return (seq.ap.is_increasing(min_inc=1, max_inc=1) and
-            seq.bp.is_increasing(min_inc=1, max_inc=1))
-    # return (seq.ap_no_first.is_increasing(min_inc=1, max_inc=1) and
-    #         seq.bp_no_first.is_increasing(min_inc=1, max_inc=1) and
-    #         seq.cp_no_first.is_increasing(min_inc=1, max_inc=1) and
-    #         seq.dp_no_first.is_increasing(min_inc=1, max_inc=1))
+    # return (seq.ap.is_increasing(min_inc=1, max_inc=1) and
+    #         seq.bp.is_increasing(min_inc=1, max_inc=1))
+    return (seq.ap_no_first.is_increasing(min_inc=1, max_inc=1) and
+            seq.bp_no_first.is_increasing(min_inc=1, max_inc=1) and
+            seq.cp_no_first.is_increasing(min_inc=1, max_inc=1) and
+            seq.dp_no_first.is_increasing(min_inc=1, max_inc=1))
 
 
 def is_per_bucket(seq: IPIDSequence) -> bool:
-    return (seq.ap.is_increasing(min_inc=1, max_inc=MAX_INC) and
-            seq.bp.is_increasing(min_inc=1, max_inc=MAX_INC))
     # return (seq.ap.is_increasing(min_inc=1, max_inc=MAX_INC) and
-    #         seq.bp.is_increasing(min_inc=1, max_inc=MAX_INC) and
-    #         seq.cp.is_increasing(min_inc=1, max_inc=MAX_INC) and
-    #         seq.dp.is_increasing(min_inc=1, max_inc=MAX_INC))
+    #         seq.bp.is_increasing(min_inc=1, max_inc=MAX_INC))
+    return (seq.ap.is_increasing(min_inc=1, max_inc=MAX_INC) and
+            seq.bp.is_increasing(min_inc=1, max_inc=MAX_INC) and
+            seq.cp.is_increasing(min_inc=1, max_inc=MAX_INC) and
+            seq.dp.is_increasing(min_inc=1, max_inc=MAX_INC))
 
 
 def is_global(seq: IPIDSequence) -> bool:
@@ -447,49 +447,49 @@ def per_dst_ip_id_sequence(length: int) -> IPIDSequence:
     a = random_ip_id()
     b = random_ip_id()
     for i in range(length):
-        if i % 6 in [0, 1, 4]:
-            a = increment_ip_id(a, 1)
-            seq.append(a)
-        elif i % 6 in [2, 3, 5]:
-            b = increment_ip_id(b, 1)
-            seq.append(b)
-        # if i % 8 in [0, 2, 4, 6]:
+        # if i % 6 in [0, 1, 4]:
         #     a = increment_ip_id(a, 1)
         #     seq.append(a)
-        # elif i % 8 in [1, 3, 5, 7]:
+        # elif i % 6 in [2, 3, 5]:
         #     b = increment_ip_id(b, 1)
         #     seq.append(b)
+        if i % 8 in [0, 2, 4, 6]:
+            a = increment_ip_id(a, 1)
+            seq.append(a)
+        elif i % 8 in [1, 3, 5, 7]:
+            b = increment_ip_id(b, 1)
+            seq.append(b)
     return IPIDSequence(seq)
 
 
 def per_con_ip_id_sequence(length: int) -> IPIDSequence:
-    seq = []
-    a = random_ip_id()
-    b = random_ip_id()
-    # seq = [random_ip_id() for _ in range(4)]
+    # seq = []
     # a = random_ip_id()
     # b = random_ip_id()
-    # c = random_ip_id()
-    # d = random_ip_id()
+    seq = [random_ip_id() for _ in range(4)]
+    a = random_ip_id()
+    b = random_ip_id()
+    c = random_ip_id()
+    d = random_ip_id()
     for i in range(length):
-        if i % 6 in [1, 4]:
-            a = increment_ip_id(a, 1)
-            seq.append(a)
-        elif i % 6 in [2, 5]:
-            b = increment_ip_id(b, 1)
-            seq.append(b)
-        # if i % 8 in [0, 4]:
+        # if i % 6 in [1, 4]:
         #     a = increment_ip_id(a, 1)
         #     seq.append(a)
-        # elif i % 8 in [1, 5]:
+        # elif i % 6 in [2, 5]:
         #     b = increment_ip_id(b, 1)
         #     seq.append(b)
-        # elif i % 8 in [2, 6]:
-        #     c = increment_ip_id(c, 1)
-        #     seq.append(c)
-        # elif i % 8 in [3, 7]:
-        #     d = increment_ip_id(d, 1)
-        #     seq.append(d)
+        if i % 8 in [0, 4]:
+            a = increment_ip_id(a, 1)
+            seq.append(a)
+        elif i % 8 in [1, 5]:
+            b = increment_ip_id(b, 1)
+            seq.append(b)
+        elif i % 8 in [2, 6]:
+            c = increment_ip_id(c, 1)
+            seq.append(c)
+        elif i % 8 in [3, 7]:
+            d = increment_ip_id(d, 1)
+            seq.append(d)
         else:
             r = random_ip_id()
             seq.append(r)
@@ -500,27 +500,27 @@ def per_bucket_ip_id_sequence(length: int) -> IPIDSequence:
     seq = []
     a = random_ip_id()
     b = random_ip_id()
-    # c = random_ip_id()
-    # d = random_ip_id()
+    c = random_ip_id()
+    d = random_ip_id()
     for i in range(length):
-        if i % 6 in [1, 4]:
-            a = increment_ip_id(a, random.randint(1, LOCAL_GE1_MAX_INC))
-            seq.append(a)
-        elif i % 6 in [2, 5]:
-            b = increment_ip_id(b, random.randint(1, LOCAL_GE1_MAX_INC))
-            seq.append(b)
-        # if i % 8 in [0, 4]:
+        # if i % 6 in [1, 4]:
         #     a = increment_ip_id(a, random.randint(1, LOCAL_GE1_MAX_INC))
         #     seq.append(a)
-        # elif i % 8 in [1, 5]:
+        # elif i % 6 in [2, 5]:
         #     b = increment_ip_id(b, random.randint(1, LOCAL_GE1_MAX_INC))
         #     seq.append(b)
-        # elif i % 8 in [2, 6]:
-        #     c = increment_ip_id(c, random.randint(1, LOCAL_GE1_MAX_INC))
-        #     seq.append(c)
-        # elif i % 8 in [3, 7]:
-        #     d = increment_ip_id(d, random.randint(1, LOCAL_GE1_MAX_INC))
-        #     seq.append(d)
+        if i % 8 in [0, 4]:
+            a = increment_ip_id(a, random.randint(1, LOCAL_GE1_MAX_INC))
+            seq.append(a)
+        elif i % 8 in [1, 5]:
+            b = increment_ip_id(b, random.randint(1, LOCAL_GE1_MAX_INC))
+            seq.append(b)
+        elif i % 8 in [2, 6]:
+            c = increment_ip_id(c, random.randint(1, LOCAL_GE1_MAX_INC))
+            seq.append(c)
+        elif i % 8 in [3, 7]:
+            d = increment_ip_id(d, random.randint(1, LOCAL_GE1_MAX_INC))
+            seq.append(d)
         else:
             r = random_ip_id()
             seq.append(r)
