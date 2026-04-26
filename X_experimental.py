@@ -577,9 +577,10 @@ def main():
 
         # plot_time_between_requests_acm_style(str(sys.argv[2]))
         # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
-        plot_increment_cdfs_acm_style(str(sys.argv[2]),
-                                      [Pattern.REFLECTION, Pattern.CONSTANT, Pattern.GLOBAL, Pattern.PER_DST,
-                                       Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU, Pattern.RANDOM])
+        # patterns = [Pattern.REFLECTION, Pattern.CONSTANT, Pattern.GLOBAL, Pattern.PER_DST,
+        #             Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU, Pattern.RANDOM]
+        patterns = [Pattern.GLOBAL, Pattern.PER_DST, Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU, Pattern.RANDOM]
+        plot_increment_cdfs_acm_style(str(sys.argv[2]), patterns)
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
@@ -3383,7 +3384,7 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(4.5, 2.5))
+    fig, ax = plt.subplots(figsize=(4.5, 2.0))
 
     # --- Kurven zeichnen ---
     for raw_name, increments in datasets:
@@ -3401,7 +3402,7 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
 
     # --- Achsen ---
     ax.set_xscale("log")
-    ax.set_xlim(left=1)
+    ax.set_xlim(left=0.01)
 
     # Y Major-Ticks (alle 20%)
     y_major = np.arange(0, 101, 20)
