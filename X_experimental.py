@@ -729,9 +729,6 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     # --- Kontinente filtern (None/Antarctica raus) ---
     df = df[~df["continent"].isin(["None", "Antarctica"])]
 
-    # --- Reihenfolge: nach Sample-Count (descending) ---
-    # order = df["continent"].value_counts().index.tolist()
-
     # --- Labels mit #IPs pro Kontinent (unique IPs über beide Messungen) ---
     ip_counts = df.dropna(subset=["ip"]).groupby("continent")["ip"].nunique().to_dict()
 
@@ -739,11 +736,8 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
     valid_continents = [c for c, n in ip_counts.items() if n > 0]
     df = df[df["continent"].isin(valid_continents)]
 
-    # --- Reihenfolge danach neu bestimmen ---
+    # --- Reihenfolge: nach Sample-Count (descending) ---
     order = df["continent"].value_counts().index.tolist()
-
-    # --- Labels ---
-    xtick_labels = [f"{c}\n({_fmt_count(ip_counts.get(c, 0))})" for c in order]
 
     # --- Downsampling für den Plot (Statistik bleibt full-scale) ---
     print(f"Downsampling to max {max_samples_per_group:,} per (continent, source)...")
@@ -758,6 +752,21 @@ def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
         .apply(lambda g: g[g["rtt_ms"] <= g["rtt_ms"].quantile(0.995)])
     )
     print(f"Plot dataset after P99.5 clip: {len(df_plot):,} rows")
+
+    # --- Nach Filterung & Clipping: nur Kontinente behalten, die in BEIDEN
+    # Sources mit ausreichend Samples vertreten sind ---
+    MIN_SAMPLES = 100  # Mindest-Samples pro (continent, source)
+
+    sample_counts = df_plot.groupby(["continent", "source"]).size().unstack(fill_value=0)
+    plottable_continents = sample_counts[
+        (sample_counts.get("SEQ", 0) >= MIN_SAMPLES) &
+        (sample_counts.get("MASS", 0) >= MIN_SAMPLES)
+        ].index.tolist()
+
+    df_plot = df_plot[df_plot["continent"].isin(plottable_continents)]
+    order = [c for c in order if c in plottable_continents]
+    xtick_labels = [f"{c}\n({_fmt_count(ip_counts.get(c, 0))})" for c in order]
+    print(f"Plottable continents (>= {MIN_SAMPLES} samples per source): {order}")
 
     # --- Plot-Style ---
     plt.rcParams.update({
