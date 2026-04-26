@@ -973,8 +973,16 @@ def get_increments_for_pattern(rows_batch: list[np.ndarray], pattern: Pattern) -
         ip_id_sequence = IPIDSequence(row_data)
         if pattern in {Pattern.PER_DST}:
             results.append(np.concatenate([ip_id_sequence.a.increments, ip_id_sequence.b.increments]))
-        elif pattern in {Pattern.PER_CON, Pattern.PER_BUCKET}:
-            results.append(np.concatenate([ip_id_sequence.ap.increments, ip_id_sequence.bp.increments]))
+        elif pattern in {Pattern.PER_CON}:
+            results.append(np.concatenate([ip_id_sequence.ap_no_first.increments,
+                                           ip_id_sequence.bp_no_first.increments,
+                                           ip_id_sequence.cp_no_first.increments,
+                                           ip_id_sequence.dp_no_first.increments]))
+        elif pattern in {Pattern.PER_BUCKET}:
+            results.append(np.concatenate([ip_id_sequence.ap.increments,
+                                           ip_id_sequence.bp.increments,
+                                           ip_id_sequence.cp.increments,
+                                           ip_id_sequence.dp.increments]))
         elif pattern == Pattern.PER_CPU:
             clusters: list[dict[int, np.int32]] = get_clusters(ip_id_sequence.s.sequence,
                                                                max_diff=MULTI_GLOBAL_CLUSTER_MAX_INC)
