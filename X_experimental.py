@@ -1218,7 +1218,7 @@ def _plot_cdf(
         key=lambda c: order_index.get(c, 999),
     )
 
-    log_left = 1e-5 if close_range else 1e-300
+    log_left = 1e-5
 
     for cls in ordered_classes:
         pvs = np.asarray(pvalues_per_class[cls], dtype=float)
