@@ -1332,7 +1332,7 @@ def _plot_cdf(
 
     ax.legend(
         loc="lower center",
-        bbox_to_anchor=(0.48, 0.92),
+        bbox_to_anchor=(0.50, 0.90),
         bbox_transform=fig.transFigure,
         ncol=4,
         frameon=False,
