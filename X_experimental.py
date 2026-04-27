@@ -1209,7 +1209,7 @@ def _plot_cdf(
     )
 
     # --- Figure mit zwei Subplots: schmal links (p=0), breit rechts (log) ---
-    fig = plt.figure(figsize=(4.5, 3.0))
+    fig = plt.figure(figsize=(4.5, 2.4))
     gs = gridspec.GridSpec(
         1, 2,
         width_ratios=[1, 22],
