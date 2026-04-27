@@ -25,7 +25,7 @@ import seaborn as sns
 import zstandard as zstd
 from matplotlib.collections import PolyCollection
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.ticker import MultipleLocator, NullFormatter
+from matplotlib.ticker import MultipleLocator, NullFormatter, LogLocator, LogFormatterMathtext
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS, TEST_RESULTS
@@ -1204,29 +1204,18 @@ def _plot_cdf(
         key=lambda c: order_index.get(c, 999),
     )
 
-    # --- Trenne 0-Werte von positiven, bestimme Skalen-Range ---
-    positive_values = [
-        p for pvs in pvalues_per_class.values() for p in pvs if p > 0
-    ]
-    has_zeros = any(
-        p <= 0 for pvs in pvalues_per_class.values() for p in pvs
+    # Echte Nullen auf eine Dekade unter min_positive setzen, damit sie
+    # auf der Log-Achse darstellbar sind.
+    min_positive = min(
+        (p for pvs in pvalues_per_class.values() for p in pvs if p > 0),
+        default=1e-300,
     )
+    floor = min_positive / 10
 
-    min_positive = min(positive_values, default=1e-300)
-
-    # Reservierte x-Position für echte Nullen, eine Dekade links
-    # der kleinsten positiven Beobachtung.
-    zero_slot_x = min_positive / 10.0
-
-    # --- Plotte CDFs ---
     for cls in ordered_classes:
         pvs = np.asarray(pvalues_per_class[cls], dtype=float)
-
-        # Echte Nullen bekommen die reservierte Slot-Position,
-        # alle anderen Werte bleiben unverändert.
-        pvs_plot = np.where(pvs <= 0, zero_slot_x, pvs)
-
-        pvs_sorted = np.sort(pvs_plot)
+        pvs = np.where(pvs <= 0, floor, pvs)
+        pvs_sorted = np.sort(pvs)
         cdf = np.arange(1, len(pvs_sorted) + 1) / len(pvs_sorted) * 100
 
         display_name, color = display_map.get(cls, (cls, "#808080"))
@@ -1243,40 +1232,15 @@ def _plot_cdf(
     if close_range:
         ax.set_xlim(left=1e-5, right=1.0)
     else:
-        min_exp = int(np.floor(np.log10(min_positive)))
-        max_exp = 0
-        step = 20
-        start_exp = (min_exp // step) * step
-        exponents = np.arange(start_exp, max_exp + 1, step)
-        if exponents[-1] != 0:
-            exponents = np.append(exponents, 0)
+        ax.set_xlim(left=floor, right=1.0)
 
-        major_ticks = 10.0 ** exponents
-        major_labels = [rf"$10^{{{e}}}$" for e in exponents]
-
-        # Nur wenn echte Nullen vorhanden sind: "0"-Slot ergänzen
-        if has_zeros and test_label_math == "NIST":
-            major_ticks = np.concatenate(([zero_slot_x], major_ticks))
-            major_labels = ["0"] + major_labels
-            left_lim = zero_slot_x / 3.0  # etwas Platz links vom 0-Tick
-
-            # Visuelle Trennung zwischen "0"-Slot und Rest der Achse
-            sep_x = zero_slot_x * np.sqrt(10)  # geometrisches Mittel
-            ax.axvline(sep_x, color="black", linewidth=0.4,
-                       linestyle=(0, (2, 2)), alpha=0.6)
-        else:
-            left_lim = major_ticks[0]
-
-        ax.set_xticks(major_ticks)
-        ax.set_xticklabels(major_labels)
-
-        # Minor-Ticks zwischen den Major-Ticks (nur im positiven Bereich)
-        minor_exponents = exponents[:-1] + step / 2
-        minor_ticks = 10.0 ** minor_exponents
-        ax.set_xticks(minor_ticks, minor=True)
-        ax.xaxis.set_minor_formatter(NullFormatter())
-
-        ax.set_xlim(left=left_lim, right=1.0)
+    # Major-Ticks auf jeder Dekade, Minor-Ticks bei 2..9 jeder Dekade.
+    ax.xaxis.set_major_locator(LogLocator(base=10.0, numticks=20))
+    ax.xaxis.set_minor_locator(
+        LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=200)
+    )
+    ax.xaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
+    ax.xaxis.set_minor_formatter(NullFormatter())
 
     # --- Y-Achse ---
     y_major = np.arange(0, 101, 20)
