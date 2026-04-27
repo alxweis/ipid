@@ -1204,8 +1204,17 @@ def _plot_cdf(
         key=lambda c: order_index.get(c, 999),
     )
 
+    # Echte Nullen auf eine Dekade unter min_positive setzen, damit sie
+    # auf der Log-Achse darstellbar sind.
+    min_positive = min(
+        (p for pvs in pvalues_per_class.values() for p in pvs if p > 0),
+        default=1e-300,
+    )
+    floor = min_positive / 10
+
     for cls in ordered_classes:
         pvs = np.asarray(pvalues_per_class[cls], dtype=float)
+        pvs = np.where(pvs <= 0, floor, pvs)
         pvs_sorted = np.sort(pvs)
         cdf = np.arange(1, len(pvs_sorted) + 1) / len(pvs_sorted) * 100
 
@@ -1217,16 +1226,20 @@ def _plot_cdf(
             linewidth=1.4,
         )
 
-    # --- X-Achse (linear, 0..1) ---
-    if close_range:
-        ax.set_xlim(left=0.0, right=1e-5)
-    else:
-        ax.set_xlim(left=0.0, right=1.0)
+    # --- X-Achse ---
+    ax.set_xscale("log")
 
-    x_major = np.arange(0.0, 1.01, 0.2)
-    ax.set_xticks(x_major)
-    x_minor = np.arange(0.0, 1.01, 0.1)
-    ax.set_xticks(x_minor, minor=True)
+    if close_range:
+        ax.set_xlim(left=1e-5, right=1.0)
+    else:
+        ax.set_xlim(left=floor, right=1.0)
+
+    # Major-Ticks auf jeder Dekade, Minor-Ticks bei 2..9 jeder Dekade.
+    ax.xaxis.set_major_locator(LogLocator(base=10.0, numticks=20))
+    ax.xaxis.set_minor_locator(
+        LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=200)
+    )
+    ax.xaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
     ax.xaxis.set_minor_formatter(NullFormatter())
 
     # --- Y-Achse ---
