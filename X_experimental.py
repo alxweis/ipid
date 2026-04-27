@@ -1170,7 +1170,7 @@ def _plot_cdf(
         close_range: bool,
         test_label_math: str,
 ):
-    """CDF der p-Values pro Klasse mit optionalem Achsen-Break bei 0."""
+    """CDF der p-Values pro Klasse (Test-agnostisch)."""
     display_map = {
         "Mirror": ("Reflection", "#FFE866"),
         "Constant": ("Constant", "#6FB8FF"),
@@ -1197,132 +1197,83 @@ def _plot_cdf(
         "pdf.fonttype": 42,
     })
 
-    has_zeros = any(
-        p <= 0 for pvs in pvalues_per_class.values() for p in pvs
-    )
-
-    # Zwei Subplots: schmaler "0"-Slot links + Log-Skala rechts.
-    # Wenn keine Nullen: nur ein Subplot.
-    if has_zeros:
-        fig, (ax0, ax) = plt.subplots(
-            1, 2, figsize=(4.5, 3.0),
-            gridspec_kw={"width_ratios": [1, 14], "wspace": 0.10},
-            sharey=True,
-            layout="constrained",
-        )
-    else:
-        fig, ax = plt.subplots(figsize=(4.5, 3.0), layout="constrained")
-        ax0 = None
+    fig, ax = plt.subplots(figsize=(4.5, 3.0))
 
     ordered_classes = sorted(
         pvalues_per_class.keys(),
         key=lambda c: order_index.get(c, 999),
     )
 
-    log_left = 1e-5
+    min_positive = min(
+        (p for pvs in pvalues_per_class.values() for p in pvs if p > 0),
+        default=1e-300,
+    )
+    floor = min_positive / 10
 
     for cls in ordered_classes:
         pvs = np.asarray(pvalues_per_class[cls], dtype=float)
+        pvs = np.where(pvs <= 0, floor, pvs)
+        pvs_sorted = np.sort(pvs)
+        cdf = np.arange(1, len(pvs_sorted) + 1) / len(pvs_sorted) * 100
+
         display_name, color = display_map.get(cls, (cls, "#808080"))
+        ax.plot(
+            pvs_sorted, cdf,
+            label=display_name,
+            color=color,
+            linewidth=1.4,
+        )
 
-        positives = pvs[pvs > 0]
-        zeros_count = int(np.sum(pvs <= 0))
-        n_total = len(pvs)
-
-        if ax0 is not None:
-            # Anteil der Nullen für diese Klasse als horizontaler Strich
-            # bei x=0 (linker Slot). Geht von 0 bis (#zeros / #total) * 100.
-            zero_pct = zeros_count / n_total * 100
-            if zero_pct > 0:
-                ax0.plot(
-                    [0, 0], [0, zero_pct],
-                    color=color, linewidth=1.4,
-                )
-
-        # Positive Werte als CDF auf der Log-Achse, beginnend beim
-        # kumulativen Prozent, das die Nullen schon "verbraucht" haben.
-        if len(positives) > 0:
-            positives_sorted = np.sort(positives)
-            base_pct = zeros_count / n_total * 100
-            cdf = (
-                    np.arange(1, len(positives_sorted) + 1) / n_total * 100
-                    + base_pct
-            )
-            ax.plot(
-                positives_sorted, cdf,
-                label=display_name,
-                color=color, linewidth=1.4,
-            )
-        else:
-            # Klasse hat nur Nullen: trotzdem für die Legende eintragen.
-            ax.plot([], [], label=display_name, color=color, linewidth=1.4)
-
-    # --- Linker Subplot: "0"-Slot ---
-    if ax0 is not None:
-        ax0.set_xticks([0])
-        ax0.set_xticklabels(["0"])
-        ax0.set_xlim(-0.5, 0.5)
-        ax0.set_ylim(0, 105)
-        ax0.spines["right"].set_visible(False)
-        ax0.tick_params(axis="x", which="minor", bottom=False)
-        ax0.grid(True, axis="y", which="major",
-                 linestyle="--", linewidth=0.4, alpha=0.5)
-        ax0.grid(True, axis="y", which="minor",
-                 linestyle=":", linewidth=0.3, alpha=0.3)
-
-        # Achsen-Bruch: zwei diagonale Striche
-        d = 0.015
-        kwargs = dict(transform=ax0.transAxes, color="black",
-                      clip_on=False, linewidth=0.6)
-        ax0.plot((1 - d, 1 + d), (-d, +d), **kwargs)
-        ax0.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
-
-        kwargs.update(transform=ax.transAxes)
-        ax.plot((-d / 14, d / 14), (-d, +d), **kwargs)
-        ax.plot((-d / 14, d / 14), (1 - d, 1 + d), **kwargs)
-
-        ax.spines["left"].set_visible(False)
-        ax.tick_params(axis="y", which="both", left=False, labelleft=False)
-
-    # --- Rechter Subplot: Log-Skala ---
+    # --- Achsen ---
     ax.set_xscale("log")
-    ax.set_xlim(left=log_left, right=1.0)
-    ax.xaxis.set_major_locator(LogLocator(base=10.0, numticks=20))
-    ax.xaxis.set_minor_locator(
-        LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=200)
-    )
-    ax.xaxis.set_major_formatter(LogFormatterMathtext(base=10.0))
-    ax.xaxis.set_minor_formatter(NullFormatter())
 
-    # Y-Achse (gemeinsam, gesetzt am Haupt-Subplot)
-    y_target = ax0 if ax0 is not None else ax
+    if not close_range:
+        min_exp = int(np.floor(np.log10(floor)))
+        max_exp = 0
+        step = 20
+        start_exp = (min_exp // step) * step
+        exponents = np.arange(start_exp, max_exp + 1, step)
+        if exponents[-1] != 0:
+            exponents = np.append(exponents, 0)
+
+        if test_label_math != "NIST":
+            ticks = 10.0 ** exponents
+            ax.set_xticks(ticks)
+
+            minor_exponents = exponents[:-1] + step / 2
+            minor_ticks = 10.0 ** minor_exponents
+            ax.set_xticks(minor_ticks, minor=True)
+            ax.xaxis.set_minor_formatter(NullFormatter())
+
+            ax.set_xlim(left=ticks[0], right=1.0)
+        else:
+            ax.set_xlim(right=1.0)
+    else:
+        ax.set_xlim(left=1e-5, right=1.0)
+
     y_major = np.arange(0, 101, 20)
-    y_target.set_yticks(y_major)
+    ax.set_yticks(y_major)
     y_minor = y_major[:-1] + 10
-    y_target.set_yticks(y_minor, minor=True)
-    y_target.yaxis.set_minor_formatter(NullFormatter())
-    y_target.set_ylim(0, 105)
+    ax.set_yticks(y_minor, minor=True)
+    ax.yaxis.set_minor_formatter(NullFormatter())
+    ax.set_ylim(0, 105)
+
+    ax.set_xlabel(
+        rf"{test_label_math} p-value [Minimum of all Subsequences]",
+        labelpad=2,
+    )
+    ax.set_ylabel("Cumulative Percentage [%]", labelpad=2)
 
     ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
     ax.grid(True, which="minor", linestyle=":", linewidth=0.3, alpha=0.3)
 
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
-    if ax0 is not None:
-        for spine in ax0.spines.values():
-            spine.set_linewidth(0.5)
-
-    # Gemeinsames x-Label, zentriert über beide Subplots
-    fig.supxlabel(
-        rf"{test_label_math} p-value [Minimum of all Subsequences]",
-        fontsize=10,
-    )
-    y_target.set_ylabel("Cumulative Percentage [%]", labelpad=2)
 
     ax.legend(
         loc="lower center",
-        bbox_to_anchor=(0.5, 1.0) if ax0 is None else (0.45, 1.0),
-        bbox_transform=fig.transFigure if ax0 is not None else ax.transAxes,
+        bbox_to_anchor=(0.5, 1.0),
+        bbox_transform=ax.transAxes,
         ncol=4,
         frameon=False,
         handlelength=1.0,
@@ -1330,6 +1281,7 @@ def _plot_cdf(
         columnspacing=0.8,
     )
 
+    plt.tight_layout(pad=0.4)
     plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.05)
     plt.close(fig)
     print(f"[+] {test_label_math} CDF plot saved to {out_path}")
