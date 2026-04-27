@@ -1206,7 +1206,7 @@ def _plot_cdf(
     if has_zeros:
         fig, (ax0, ax) = plt.subplots(
             1, 2, figsize=(4.5, 3.0),
-            gridspec_kw={"width_ratios": [1, 18], "wspace": 0.04},
+            gridspec_kw={"width_ratios": [1, 14], "wspace": 0.10},
             sharey=True,
         )
     else:
@@ -1277,8 +1277,8 @@ def _plot_cdf(
         ax0.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
 
         kwargs.update(transform=ax.transAxes)
-        ax.plot((-d / 18, d / 18), (-d, +d), **kwargs)
-        ax.plot((-d / 18, d / 18), (1 - d, 1 + d), **kwargs)
+        ax.plot((-d / 14, d / 14), (-d, +d), **kwargs)
+        ax.plot((-d / 14, d / 14), (1 - d, 1 + d), **kwargs)
 
         ax.spines["left"].set_visible(False)
         ax.tick_params(axis="y", which="both", left=False, labelleft=False)
@@ -1314,7 +1314,7 @@ def _plot_cdf(
     # Gemeinsames x-Label, zentriert über beide Subplots
     fig.supxlabel(
         rf"{test_label_math} p-value [Minimum of all Subsequences]",
-        fontsize=10, y=0.02,
+        fontsize=10, y=0.04,
     )
     y_target.set_ylabel("Cumulative Percentage [%]", labelpad=2)
 
@@ -1329,7 +1329,7 @@ def _plot_cdf(
         columnspacing=0.8,
     )
 
-    plt.tight_layout(pad=0.4, rect=(0, 0.03, 1, 1))
+    plt.tight_layout(pad=0.4, rect=(0, 0.05, 1, 0.92))
     plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.05)
     plt.close(fig)
     print(f"[+] {test_label_math} CDF plot saved to {out_path}")
