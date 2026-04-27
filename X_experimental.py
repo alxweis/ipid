@@ -1171,7 +1171,12 @@ def _plot_cdf(
         close_range: bool,
         test_label_math: str,
 ):
-    """CDF der p-Values pro Klasse (Test-agnostisch)."""
+    """CDF der p-Values pro Klasse (Test-agnostisch).
+
+    Linker Mini-Subplot:  einzige x-Position = 0  (für p-Values == 0)
+    Rechter Subplot:      log-Skala 1e-5 .. 1     (mit minor xticks)
+    Dazwischen:           Bruch-Markierung (//)
+    """
     display_map = {
         "Mirror": ("Reflection", "#FFE866"),
         "Constant": ("Constant", "#6FB8FF"),
@@ -1203,208 +1208,138 @@ def _plot_cdf(
         key=lambda c: order_index.get(c, 999),
     )
 
-    if close_range:
-        # --- Gebrochene Achse: schmaler Slot für p=0, dann log 1e-5..1 ---
-        fig = plt.figure(figsize=(4.5, 3.0))
-        gs = gridspec.GridSpec(
-            1, 2,
-            width_ratios=[1, 18],
-            wspace=0.04,
-        )
-        ax_zero = fig.add_subplot(gs[0, 0])
-        ax = fig.add_subplot(gs[0, 1], sharey=ax_zero)
+    # --- Figure mit zwei Subplots: schmal links (p=0), breit rechts (log) ---
+    fig = plt.figure(figsize=(4.5, 3.0))
+    gs = gridspec.GridSpec(
+        1, 2,
+        width_ratios=[1, 22],
+        wspace=0.12,
+    )
+    ax_zero = fig.add_subplot(gs[0, 0])
+    ax = fig.add_subplot(gs[0, 1])
 
-        x_min_log = 1e-5
-        x_max_log = 1.0
+    x_min_log = 1e-5
+    x_max_log = 1.0
 
-        for cls in ordered_classes:
-            pvs = np.asarray(pvalues_per_class[cls], dtype=float)
-            n = len(pvs)
-            if n == 0:
-                continue
+    for cls in ordered_classes:
+        pvs = np.asarray(pvalues_per_class[cls], dtype=float)
+        n = len(pvs)
+        if n == 0:
+            continue
 
-            display_name, color = display_map.get(cls, (cls, "#808080"))
+        display_name, color = display_map.get(cls, (cls, "#808080"))
 
-            pvs_sorted = np.sort(pvs)
+        pvs_sorted = np.sort(pvs)
 
-            # Anteil der echten Nullen (für die Zero-Spalte)
-            zero_mask = pvs_sorted <= 0
-            num_zero = int(np.sum(zero_mask))
-            zero_pct = num_zero / n * 100
+        # Anteil echter Nullen
+        zero_mask = pvs_sorted <= 0
+        num_zero = int(np.sum(zero_mask))
+        zero_pct = num_zero / n * 100
 
-            # Linker Abschnitt: senkrechte Linie bei x=0 von 0 bis zero_pct
+        # Linker Teil: senkrechter Strich bei x=0 von 0% bis zero_pct%
+        if zero_pct > 0:
+            ax_zero.plot(
+                [0, 0], [0, zero_pct],
+                color=color, linewidth=1.4, solid_capstyle="butt",
+            )
+
+        # Rechter Teil: nur positive Werte, CDF um zero_pct nach oben versetzt
+        pos_sorted = pvs_sorted[~zero_mask]
+        if len(pos_sorted) > 0:
+            pos_cdf = np.arange(1, len(pos_sorted) + 1) / n * 100 + zero_pct
+            # horizontale Verbindung von zero_pct beim ersten positiven Wert
             if zero_pct > 0:
-                ax_zero.plot(
-                    [0, 0], [0, zero_pct],
+                ax.plot(
+                    [pos_sorted[0], pos_sorted[0]],
+                    [zero_pct, pos_cdf[0]],
                     color=color, linewidth=1.4,
                 )
-
-            # Rechter Abschnitt: nur Werte > 0 plotten
-            pos_sorted = pvs_sorted[~zero_mask]
-            if len(pos_sorted) > 0:
-                # CDF des positiven Teils beginnt bei zero_pct (Versatz),
-                # damit der Übergang von der Zero-Spalte nahtlos ist.
-                pos_cdf = np.arange(1, len(pos_sorted) + 1) / n * 100 + zero_pct
-                ax.plot(
-                    pos_sorted, pos_cdf,
-                    label=display_name,
-                    color=color,
-                    linewidth=1.4,
-                )
-            else:
-                # Klasse hat nur Nullen -> trotzdem in Legende auftauchen
-                ax.plot(
-                    [], [],
-                    label=display_name,
-                    color=color,
-                    linewidth=1.4,
-                )
-
-        # --- Linke Mini-Achse (p = 0) ---
-        ax_zero.set_xlim(-0.5, 0.5)
-        ax_zero.set_xticks([0])
-        ax_zero.set_xticklabels(["$0$"])
-        ax_zero.tick_params(axis="x", which="minor", bottom=False, top=False)
-
-        # rechte Spine entfernen, kleiner Bruch-Marker
-        ax_zero.spines["right"].set_visible(False)
-        ax.spines["left"].set_visible(False)
-        ax.tick_params(axis="y", which="both", left=False, labelleft=False)
-
-        # Bruch-Markierung (//) zwischen den beiden Achsen
-        d = 0.015
-        kwargs = dict(transform=ax_zero.transAxes, color="k",
-                      clip_on=False, linewidth=0.8)
-        ax_zero.plot((1 - d, 1 + d), (-d, +d), **kwargs)
-        ax_zero.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
-        kwargs.update(transform=ax.transAxes)
-        ax.plot((-d * 0.05 * 18, +d * 0.05 * 18), (-d, +d), **kwargs)
-        ax.plot((-d * 0.05 * 18, +d * 0.05 * 18), (1 - d, 1 + d), **kwargs)
-
-        # --- Rechte (Haupt-)Achse: log 1e-5..1 ---
-        ax.set_xscale("log")
-        ax.set_xlim(left=x_min_log, right=x_max_log)
-
-        major_locator = LogLocator(base=10.0, subs=(1.0,), numticks=10)
-        minor_locator = LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1,
-                                   numticks=100)
-        ax.xaxis.set_major_locator(major_locator)
-        ax.xaxis.set_minor_locator(minor_locator)
-        ax.xaxis.set_minor_formatter(NullFormatter())
-
-        # y-Achse auf der linken Mini-Achse beschriften
-        y_major = np.arange(0, 101, 20)
-        ax_zero.set_yticks(y_major)
-        y_minor = y_major[:-1] + 10
-        ax_zero.set_yticks(y_minor, minor=True)
-        ax_zero.yaxis.set_minor_formatter(NullFormatter())
-        ax_zero.set_ylim(0, 105)
-        ax_zero.set_ylabel("Cumulative Percentage [%]", labelpad=2)
-
-        # Grids
-        ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
-        ax.grid(True, which="minor", linestyle=":", linewidth=0.3, alpha=0.3)
-        ax_zero.grid(True, which="major", axis="y",
-                     linestyle="--", linewidth=0.4, alpha=0.5)
-        ax_zero.grid(True, which="minor", axis="y",
-                     linestyle=":", linewidth=0.3, alpha=0.3)
-
-        for spine in ax.spines.values():
-            spine.set_linewidth(0.5)
-        for spine in ax_zero.spines.values():
-            spine.set_linewidth(0.5)
-
-        # Gemeinsames x-Label mittig unter der Hauptachse
-        ax.set_xlabel(
-            rf"{test_label_math} p-value [Minimum of all Subsequences]",
-            labelpad=2,
-        )
-
-        ax.legend(
-            loc="lower center",
-            bbox_to_anchor=(0.45, 1.0),
-            bbox_transform=fig.transFigure,
-            ncol=4,
-            frameon=False,
-            handlelength=1.0,
-            handletextpad=0.2,
-            columnspacing=0.8,
-        )
-
-    else:
-        # --- Originalpfad (volle log-Range, inkl. floor für p=0) ---
-        fig, ax = plt.subplots(figsize=(4.5, 3.0))
-
-        min_positive = min(
-            (p for pvs in pvalues_per_class.values() for p in pvs if p > 0),
-            default=1e-300,
-        )
-        floor = min_positive / 10
-
-        for cls in ordered_classes:
-            pvs = np.asarray(pvalues_per_class[cls], dtype=float)
-            pvs = np.where(pvs <= 0, floor, pvs)
-            pvs_sorted = np.sort(pvs)
-            cdf = np.arange(1, len(pvs_sorted) + 1) / len(pvs_sorted) * 100
-
-            display_name, color = display_map.get(cls, (cls, "#808080"))
             ax.plot(
-                pvs_sorted, cdf,
+                pos_sorted, pos_cdf,
                 label=display_name,
                 color=color,
                 linewidth=1.4,
             )
-
-        ax.set_xscale("log")
-
-        min_exp = int(np.floor(np.log10(floor)))
-        max_exp = 0
-        step = 20
-        start_exp = (min_exp // step) * step
-        exponents = np.arange(start_exp, max_exp + 1, step)
-        if exponents[-1] != 0:
-            exponents = np.append(exponents, 0)
-
-        if test_label_math != "NIST":
-            ticks = 10.0 ** exponents
-            ax.set_xticks(ticks)
-            minor_exponents = exponents[:-1] + step / 2
-            minor_ticks = 10.0 ** minor_exponents
-            ax.set_xticks(minor_ticks, minor=True)
-            ax.xaxis.set_minor_formatter(NullFormatter())
-            ax.set_xlim(left=ticks[0], right=1.0)
         else:
-            ax.set_xlim(right=1.0)
+            # Klasse hat ausschliesslich Nullen -> trotzdem in Legende
+            ax.plot([], [], label=display_name, color=color, linewidth=1.4)
 
-        y_major = np.arange(0, 101, 20)
-        ax.set_yticks(y_major)
-        y_minor = y_major[:-1] + 10
-        ax.set_yticks(y_minor, minor=True)
-        ax.yaxis.set_minor_formatter(NullFormatter())
-        ax.set_ylim(0, 105)
+    # === Linke Mini-Achse (p = 0) ===========================================
+    ax_zero.set_xlim(-1, 1)
+    ax_zero.set_xticks([0])
+    ax_zero.set_xticklabels(["$0$"])
+    ax_zero.tick_params(axis="x", which="minor", bottom=False, top=False)
+    ax_zero.set_ylim(0, 105)
 
-        ax.set_xlabel(
-            rf"{test_label_math} p-value [Minimum of all Subsequences]",
-            labelpad=2,
-        )
-        ax.set_ylabel("Cumulative Percentage [%]", labelpad=2)
+    y_major = np.arange(0, 101, 20)
+    ax_zero.set_yticks(y_major)
+    y_minor = y_major[:-1] + 10
+    ax_zero.set_yticks(y_minor, minor=True)
+    ax_zero.yaxis.set_minor_formatter(NullFormatter())
+    ax_zero.set_ylabel("Cumulative Percentage [%]", labelpad=2)
 
-        ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
-        ax.grid(True, which="minor", linestyle=":", linewidth=0.3, alpha=0.3)
+    # === Rechte (Haupt-)Achse: log 1e-5 .. 1 ================================
+    ax.set_xscale("log")
+    ax.set_xlim(left=x_min_log, right=x_max_log)
+    ax.set_ylim(0, 105)
 
-        for spine in ax.spines.values():
-            spine.set_linewidth(0.5)
+    major_locator = LogLocator(base=10.0, subs=(1.0,), numticks=10)
+    minor_locator = LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1,
+                               numticks=100)
+    ax.xaxis.set_major_locator(major_locator)
+    ax.xaxis.set_minor_locator(minor_locator)
+    ax.xaxis.set_minor_formatter(NullFormatter())
 
-        ax.legend(
-            loc="lower center",
-            bbox_to_anchor=(0.5, 1.0),
-            bbox_transform=ax.transAxes,
-            ncol=4,
-            frameon=False,
-            handlelength=1.0,
-            handletextpad=0.2,
-            columnspacing=0.8,
-        )
+    ax.set_yticks(y_major)
+    ax.set_yticks(y_minor, minor=True)
+    ax.yaxis.set_minor_formatter(NullFormatter())
+    ax.tick_params(axis="y", which="both", left=False, labelleft=False)
+
+    # === Bruch-Optik ========================================================
+    ax_zero.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+
+    # diagonale Bruch-Marker (//) zwischen den Achsen
+    d = 0.02
+    kwargs = dict(transform=ax_zero.transAxes, color="k",
+                  clip_on=False, linewidth=0.8)
+    ax_zero.plot((1 - d, 1 + d), (-d, +d), **kwargs)
+    ax_zero.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)
+    # Skalierung des Markers fuer die schmalere linke Achse (Verhaeltnis 1:22)
+    d_r = d / 22
+    kwargs.update(transform=ax.transAxes)
+    ax.plot((-d_r, +d_r), (-d, +d), **kwargs)
+    ax.plot((-d_r, +d_r), (1 - d, 1 + d), **kwargs)
+
+    # === Grids & Spines =====================================================
+    ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.grid(True, which="minor", linestyle=":", linewidth=0.3, alpha=0.3)
+    ax_zero.grid(True, which="major", axis="y",
+                 linestyle="--", linewidth=0.4, alpha=0.5)
+    ax_zero.grid(True, which="minor", axis="y",
+                 linestyle=":", linewidth=0.3, alpha=0.3)
+
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.5)
+    for spine in ax_zero.spines.values():
+        spine.set_linewidth(0.5)
+
+    # === Labels & Legend ====================================================
+    ax.set_xlabel(
+        rf"{test_label_math} p-value [Minimum of all Subsequences]",
+        labelpad=2,
+    )
+
+    ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.45, 0.92),
+        bbox_transform=fig.transFigure,
+        ncol=4,
+        frameon=False,
+        handlelength=1.0,
+        handletextpad=0.2,
+        columnspacing=0.8,
+    )
 
     plt.savefig(out_path, bbox_inches="tight", dpi=300, pad_inches=0.05)
     plt.close(fig)
