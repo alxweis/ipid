@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +27,7 @@ import zstandard as zstd
 from matplotlib import gridspec
 from matplotlib.collections import PolyCollection
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.ticker import MultipleLocator, NullFormatter, LogLocator, LogFormatterMathtext
+from matplotlib.ticker import MultipleLocator, NullFormatter, LogLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
 from core import EXPERIMENTAL_RESULTS, TEST_RESULTS
@@ -580,7 +581,8 @@ def main():
         # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
         # patterns = [Pattern.REFLECTION, Pattern.CONSTANT, Pattern.GLOBAL, Pattern.PER_DST,
         #             Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU, Pattern.RANDOM]
-        patterns = [Pattern.GLOBAL, Pattern.PER_DST, Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU, Pattern.RANDOM]
+        patterns = [Pattern.GLOBAL, Pattern.PER_DST, Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU,
+                    Pattern.RANDOM]
         plot_increment_cdfs_acm_style(str(sys.argv[2]), patterns)
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
@@ -681,8 +683,136 @@ def main():
         msm_path_mass = str(sys.argv[3])
 
         plot_rtt_per_region_acm(msm_path_seq, msm_path_mass)
+    elif mode == 31:
+        analyze_ipid_outliers(sys.argv[1], sys.argv[2])
     else:
         print_usage()
+
+
+def _count_outliers(seq_str: str, pattern: str) -> int:
+    """Parse the IP_ID_SEQUENCE string and count outlier increments per pattern."""
+    if not seq_str:
+        return 0
+    # Robust parse: split on comma, strip, ignore empties
+    try:
+        values = np.fromstring(seq_str, dtype=np.int32, sep=",")
+    except Exception:
+        # Fallback if numpy can't parse it directly
+        values = np.array(
+            [int(x) for x in seq_str.split(",") if x.strip()], dtype=np.int32
+        )
+    if values.size < 2:
+        return 0
+
+    ipid = IPIDSequence(values)
+
+    if pattern == "Single":
+        incs = ipid.s.increments
+        threshold = 21845
+        return int(np.sum(incs > threshold))
+    elif pattern == "Per-Dst":
+        threshold = 1
+        return int(
+            np.sum(ipid.a.increments > threshold)
+            + np.sum(ipid.b.increments > threshold)
+        )
+    elif pattern == "Per-Bucket":
+        threshold = 21845
+        return int(
+            np.sum(ipid.ap.increments > threshold)
+            + np.sum(ipid.bp.increments > threshold)
+        )
+    else:
+        raise ValueError(f"Unknown pattern: {pattern}")
+
+
+def analyze_ipid_outliers(msm_path_seq: str | Path, msm_path_mass: str | Path) -> None:
+    """
+    1. Extract IPs by pattern from mass measurement's eval.csv.zst.
+    2. For each IP found in step 1, fetch its IP_ID_SEQUENCE from the seq
+       measurement's probing.csv.zst.
+    3. Build IPIDSequence, count threshold-exceeding increments on the
+       pattern-specific subsequences, and print the outlier distribution.
+    """
+    msm_path_seq = Path(msm_path_seq)
+    msm_path_mass = Path(msm_path_mass)
+
+    eval_path = msm_path_mass / "eval.csv.zst"
+    probing_path = msm_path_seq / "probing.csv.zst"
+
+    if not eval_path.exists():
+        raise FileNotFoundError(eval_path)
+    if not probing_path.exists():
+        raise FileNotFoundError(probing_path)
+
+    # In-memory DB, read-only mode: nothing is written to disk anywhere.
+    con = duckdb.connect(":memory:", read_only=False)
+    # `read_only=False` is required because we create a TEMP TABLE in memory,
+    # but the input files themselves are only opened for reading by
+    # read_csv_auto. No output files, no spill, no disk writes.
+    con.execute("PRAGMA memory_limit='100GB'")
+    con.execute("PRAGMA threads=16")
+
+    # 1) Pull the (IP, pattern) pairs we care about from the mass eval file.
+    #    read_csv with auto_detect handles zstd-compressed csv transparently.
+    print(f"[*] Reading patterns from {eval_path} ...")
+    con.execute(
+        f"""
+        CREATE TEMP TABLE wanted AS
+        SELECT IP, IP_ID_PATTERN AS pattern
+        FROM read_csv_auto('{eval_path.as_posix()}', compression='zstd')
+        WHERE IP_ID_PATTERN IN ('Single', 'Per-Dst', 'Per-Bucket')
+        """
+    )
+
+    counts = con.execute(
+        "SELECT pattern, COUNT(*) FROM wanted GROUP BY pattern ORDER BY pattern"
+    ).fetchall()
+    for p, c in counts:
+        print(f"    {p}: {c} IPs")
+
+    # 2) Join against the seq probing file. Stream the result so we never
+    #    materialize a 30GB CSV in memory.
+    print(f"[*] Joining with {probing_path} (streaming) ...")
+    con.execute(
+        f"""
+        CREATE TEMP VIEW probing AS
+        SELECT IP, IP_ID_SEQUENCE
+        FROM read_csv_auto('{probing_path.as_posix()}', compression='zstd')
+        """
+    )
+
+    cur = con.execute(
+        """
+        SELECT w.pattern, p.IP_ID_SEQUENCE
+        FROM wanted w
+        JOIN probing p USING (IP)
+        """
+    )
+
+    # 3) Walk results in chunks, count outliers per IP, accumulate distribution.
+    dist: Counter[int] = Counter()
+    total = 0
+    CHUNK = 50_000
+    while True:
+        rows = cur.fetchmany(CHUNK)
+        if not rows:
+            break
+        for pattern, seq_str in rows:
+            n_out = _count_outliers(seq_str, pattern)
+            dist[n_out] += 1
+            total += 1
+
+    # 4) Print results.
+    print()
+    print(f"total: {total} IPs")
+    print("outlier distribution:")
+    if total == 0:
+        print("    (no IPs matched)")
+        return
+    for k in sorted(dist):
+        pct = dist[k] / total * 100
+        print(f"    {k}: {pct:.3f}% {dist[k]}")
 
 
 def plot_rtt_per_region_acm(msm_path_seq: str, msm_path_mass: str,
@@ -1104,8 +1234,8 @@ def run_cdf(
     )
     # p-Value Cache ist test-spezifisch
     pvalues_fp = os.path.join(TEST_RESULTS, f"{base_name}.pkl")
-    plot_fp    = os.path.join(TEST_RESULTS, f"{base_name}_{range_suffix}.pdf")
-    info_fp    = os.path.join(TEST_RESULTS, f"{base_name}_info.txt")
+    plot_fp = os.path.join(TEST_RESULTS, f"{base_name}_{range_suffix}.pdf")
+    info_fp = os.path.join(TEST_RESULTS, f"{base_name}_info.txt")
 
     # --- Entscheidung: was muss neu gemacht werden? ---
     need_regenerate_sequences = force_create_dataset or not os.path.exists(sequences_fp)
@@ -1137,9 +1267,9 @@ def run_cdf(
         for cls, seqs in sequences_per_class.items():
             pvalues = []
             for seq in seqs:
-                s  = test_func(seq.s.increments)
-                a  = test_func(seq.a.increments)
-                b  = test_func(seq.b.increments)
+                s = test_func(seq.s.increments)
+                a = test_func(seq.a.increments)
+                b = test_func(seq.b.increments)
                 ap = test_func(seq.ap.increments)
                 bp = test_func(seq.bp.increments)
                 pvalues.append(min(s, a, b, ap, bp))
@@ -2166,7 +2296,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
     bot_ax_bbox = axes[-1].get_position()
     y_center = (top_ax_bbox.y1 + bot_ax_bbox.y0) / 2
 
-    cbar_height_inches = 1.5    # feste Länge, anpassbar
+    cbar_height_inches = 1.5  # feste Länge, anpassbar
     cbar_height_fig = cbar_height_inches / fig.get_figheight()
 
     cbar_ax = fig.add_axes([
@@ -2174,7 +2304,7 @@ def plot_os_heatmap_combined(msm_path: str, idents: list[tuple[str, str]], name:
         y_center - cbar_height_fig / 2,
         0.015,
         cbar_height_fig,
-        ])
+    ])
 
     sm = plt.cm.ScalarMappable(cmap=white_blues, norm=plt.Normalize(vmin=0, vmax=100))
     sm.set_array([])
