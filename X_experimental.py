@@ -684,7 +684,11 @@ def main():
 
         plot_rtt_per_region_acm(msm_path_seq, msm_path_mass)
     elif mode == 31:
-        analyze_ipid_outliers(sys.argv[1], sys.argv[2])
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        analyze_ipid_outliers(sys.argv[2], sys.argv[3])
     else:
         print_usage()
 
