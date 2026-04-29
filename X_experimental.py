@@ -3882,7 +3882,7 @@ def plot_increment_cdfs_acm_style_combined(
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
         bbox_transform=ax.transAxes,
-        ncol=4,
+        ncol=3,
         frameon=False,
         handlelength=1.6,
         handletextpad=0.4,
