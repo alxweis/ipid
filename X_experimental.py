@@ -7,6 +7,7 @@ import math
 import os
 import pickle
 import random
+import re
 import shutil
 import string
 import subprocess
@@ -1821,6 +1822,7 @@ def print_constant_pattern_distribution(msm_path: str):
         print(f"{k}: {v} ({v / s * 100:.6f}%)")
 
 
+####
 def plot_caida_os_distribution_acm_style(
         caida_itdk_path: str,
         msm_path: str,
@@ -3297,22 +3299,96 @@ def plot_transit_endhost_distribution_acm_style(
         bar_gap: float = 0.2,
         y_padding: float = 0.1,
 ):
-    # --- Load data ---
-    transit_path = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution", "data.pkl")
-    endhost_path = os.path.join(msm_path, "analysis", "end-device_pattern_distribution", "data.pkl")
+    import warnings
 
-    with open(Path(transit_path), "rb") as f:
-        transit_data = pickle.load(f)
-    with open(Path(endhost_path), "rb") as f:
-        endhost_data = pickle.load(f)
+    # --- Pfade ---
+    transit_dir = os.path.join(msm_path, "analysis", "transit-hop_pattern_distribution")
+    transit_pkl = os.path.join(transit_dir, "data.pkl")
+    transit_info = os.path.join(transit_dir, "info.txt")
+    eval_file = os.path.join(msm_path, "eval.csv.zst")
 
-    # --- Normalize DataFrame input ---
-    if isinstance(transit_data, pd.DataFrame):
-        transit_data = dict(zip(transit_data["class"], transit_data["relative"]))
-    if isinstance(endhost_data, pd.DataFrame):
-        endhost_data = dict(zip(endhost_data["class"], endhost_data["relative"]))
+    # --- Router-Daten laden (relative + absolute) ---
+    with open(Path(transit_pkl), "rb") as f:
+        transit_obj = pickle.load(f)
 
-    # --- Map classes ---
+    # data.pkl ist laut analyze_traceroute_device_behavior ein DataFrame
+    # mit Spalten class, absolute, relative -> behalten wir so
+    if isinstance(transit_obj, pd.DataFrame):
+        transit_df = transit_obj.copy()
+        transit_rel = dict(zip(transit_df["class"], transit_df["relative"]))
+        if "absolute" in transit_df.columns:
+            transit_abs = dict(zip(transit_df["class"], transit_df["absolute"].astype(int)))
+        else:
+            transit_abs = None
+    else:
+        # Fallback: dict {class: relative}
+        transit_rel = dict(transit_obj)
+        transit_abs = None
+
+    # Falls keine absoluten Werte im pkl: aus info.txt rekonstruieren
+    if transit_abs is None:
+        with open(transit_info, "r", encoding="utf-8") as f:
+            info_text = f.read()
+        m = re.search(r"Total Absolute:\s*(\d+)", info_text)
+        if not m:
+            raise RuntimeError(
+                f"Could not determine absolute counts for Router from {transit_info}"
+            )
+        total_router = int(m.group(1))
+        transit_abs = {
+            cls: int(round(rel / 100.0 * total_router))
+            for cls, rel in transit_rel.items()
+        }
+
+    # --- Gesamtverteilung live aus eval.csv.zst zählen (streaming via DuckDB) ---
+    con = duckdb.connect()
+    df_total = con.execute(f"""
+        select IP_ID_PATTERN as class, count(*) as absolute
+        from read_csv_auto('{eval_file}', compression='zstd')
+        group by IP_ID_PATTERN
+    """).df()
+    con.close()
+
+    total_abs = dict(zip(df_total["class"], df_total["absolute"].astype(int)))
+
+    # --- seq-Fallback-Merge identisch zu analyze_traceroute_device_behavior ---
+    # Wirkt auf total_abs; transit_abs ist beim Erzeugen seiner pkl bereits gemerged worden,
+    # falls msm_path "seq" enthält, also passt die Klassenmenge nach dem Merge zueinander.
+    if "seq" in msm_path.lower():
+        merged = {}
+        seq_fallback_classes = {
+            Pattern.PER_CPU.value,
+            Pattern.RANDOM.value,
+            Pattern.FALLBACK.value,
+        }
+        for cls, val in total_abs.items():
+            target = Pattern.FALLBACK.value if cls in seq_fallback_classes else cls
+            merged[target] = merged.get(target, 0) + val
+        total_abs = merged
+
+    # --- Differenz: All Others = total - router ---
+    all_classes_abs = set(total_abs.keys()) | set(transit_abs.keys())
+    others_abs = {}
+    for cls in all_classes_abs:
+        diff = total_abs.get(cls, 0) - transit_abs.get(cls, 0)
+        if diff < 0:
+            warnings.warn(
+                f"[plot_transit_endhost_distribution_acm_style] "
+                f"Negative count for class {cls!r}: total={total_abs.get(cls, 0)}, "
+                f"router={transit_abs.get(cls, 0)} -> clamped to 0."
+            )
+            diff = 0
+        others_abs[cls] = diff
+
+    others_total = sum(others_abs.values())
+    if others_total > 0:
+        endhost_data = {cls: v / others_total * 100.0 for cls, v in others_abs.items()}
+    else:
+        endhost_data = {cls: 0.0 for cls in others_abs}
+
+    transit_data = transit_rel  # schon in Prozent
+
+    # --- Mapping & Reihenfolge (unverändert) ---
     display_map = {
         "Mirror": ("Reflection", "#FFE866"),
         "Constant": ("Constant", "#6FB8FF"),
@@ -3335,6 +3411,7 @@ def plot_transit_endhost_distribution_acm_style(
     transit_values = [float(transit_data.get(c, 0.0)) for c in all_classes]
     endhost_values = [float(endhost_data.get(c, 0.0)) for c in all_classes]
 
+    # --- Ab hier identisch zur bisherigen Funktion ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Latin Modern Roman"],
@@ -3348,7 +3425,6 @@ def plot_transit_endhost_distribution_acm_style(
         "pdf.fonttype": 42,
     })
 
-    # --- Geometrie ---
     data_sets = []
     labels = []
 
@@ -3360,8 +3436,6 @@ def plot_transit_endhost_distribution_acm_style(
     labels.append("Router")
 
     n_bars = len(data_sets)
-
-    # bar_gap wirkt nur zwischen Bars -> max(n_bars - 1, 0)
     total_height = 2 * y_padding + n_bars * bar_height + max(n_bars - 1, 0) * bar_gap
 
     y_positions = [
@@ -3369,8 +3443,6 @@ def plot_transit_endhost_distribution_acm_style(
         for i in range(n_bars)
     ]
 
-    # --- Figure: feste Breite, Höhe direkt = total_height in Zoll ---
-    # Damit entsprechen bar_height/bar_gap/y_padding exakt Zoll in der Figure
     fig_width = 5.0
     fig, ax = plt.subplots(figsize=(fig_width, total_height))
 
@@ -3399,12 +3471,10 @@ def plot_transit_endhost_distribution_acm_style(
             left += val
         bars = current_bars
 
-    # --- Achsen ---
     ax.set_xlim(0, 100)
     ax.set_ylim(0, total_height)
 
     ax.set_xlabel("IP-ID Selection Strategy [%]")
-    # y-Label horizontal, damit es die Achsenhöhe nicht aufdehnt
     ax.set_ylabel("Device Type", rotation=90, labelpad=6)
 
     ax.xaxis.set_minor_locator(MultipleLocator(5))
@@ -3428,8 +3498,7 @@ def plot_transit_endhost_distribution_acm_style(
         columnspacing=0.8,
     )
 
-    # KEIN tight_layout -> sonst wird die Achsenhöhe wieder verändert
-    output_path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_transit_endhost_distribution.pdf")
+    output_path = os.path.join(EXPERIMENTAL_RESULTS, f"{name}_transit_endhost_distribution_fixed.pdf")
     plt.savefig(output_path, format="pdf", bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
