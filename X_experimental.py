@@ -585,7 +585,7 @@ def main():
         patterns = [Pattern.GLOBAL, Pattern.PER_DST, Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU,
                     Pattern.RANDOM]
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), patterns)
-        plot_increment_cdfs_acm_style_two(str(sys.argv[2]), str(sys.argv[3]), patterns)
+        plot_increment_cdfs_acm_style_combined(str(sys.argv[2]), str(sys.argv[3]), patterns)
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
@@ -3717,8 +3717,8 @@ def _darken(hex_color: str, factor: float = 0.65) -> str:
 
 
 def plot_increment_cdfs_acm_style_combined(
-        msm_mass: str,
         msm_seq: str,
+        msm_mass: str,
         patterns,  # list[Pattern]
 ):
     # --- Klassen-Mapping (msm_seq = Original) ---
