@@ -138,7 +138,6 @@ def create_confusion_matrix(
             f.write(msg + "\n")
 
     # --- Klassen-Mapping (Reihenfolge = Achsen-Reihenfolge der Heatmap) ---
-    # raw_name -> display_name
     display_map = {
         "Mirror": "Reflection",
         "Constant": "Constant",
@@ -152,6 +151,44 @@ def create_confusion_matrix(
     }
     order_index = {k: i for i, k in enumerate(display_map)}
 
+    def _log_heatmap_table(df_rel: pd.DataFrame,
+                           row_labels: list[str], col_labels: list[str]):
+        """Write the heatmap as an ASCII table to info.txt.
+        Rows = generating (true), columns = detected (predicted).
+        Each cell: "<rel>%" with 3 decimals.
+        """
+        cells = [
+            [f"{df_rel.iat[i, j]:.3f}%"
+             for j in range(df_rel.shape[1])]
+            for i in range(df_rel.shape[0])
+        ]
+        col_w = [
+            max(len(col_labels[j]),
+                max((len(cells[i][j]) for i in range(len(cells))), default=0))
+            for j in range(len(col_labels))
+        ]
+        row_label_w = max((len(r) for r in row_labels), default=0)
+        row_label_w = max(row_label_w, len("Generating \\ Detected"))
+
+        sep = "-" * (row_label_w + 2 + sum(w + 3 for w in col_w))
+
+        log()
+        log("=== Confusion Matrix ===")
+        log("Rows: Generating (true) | Columns: Detected (predicted)")
+        log("Cell: row-normalized percentage")
+        log(sep)
+        header = "Generating \\ Detected".ljust(row_label_w) + "  " + "   ".join(
+            col_labels[j].ljust(col_w[j]) for j in range(len(col_labels))
+        )
+        log(header)
+        log(sep)
+        for i, r in enumerate(row_labels):
+            line = r.ljust(row_label_w) + "  " + "   ".join(
+                cells[i][j].ljust(col_w[j]) for j in range(len(col_labels))
+            )
+            log(line)
+        log(sep)
+
     # --- Cache: wenn Heatmap-Daten existieren und nicht FORCE -> direkt plotten ---
     if os.path.exists(heatmap_fp) and not FORCE_RECLASSIFY:
         log(f"Loading cached heatmap data from {heatmap_fp}")
@@ -163,6 +200,11 @@ def create_confusion_matrix(
         log(f"Macro Precision: {metrics['macro_precision']:.4%}")
         log(f"Macro Recall:    {metrics['macro_recall']:.4%}")
         log(f"Macro F1:        {metrics['macro_f1']:.4%}")
+        _log_heatmap_table(
+            df_rel,
+            row_labels=list(df_rel.index),
+            col_labels=list(df_rel.columns),
+        )
         _plot_confusion_matrix(df_rel, plot_fp)
         return True
 
@@ -209,7 +251,6 @@ def create_confusion_matrix(
 
     log("\n=== Overall Evaluation ===")
     for true_label, inner_dict in confusion_matrix.items():
-        # Spezialfall: Per-CPU und Random bei non-mass-scan -> als Fallback gezählt
         if not is_mass_scan and true_label in (Pattern.PER_CPU.value, Pattern.RANDOM.value):
             tp = confusion_matrix[true_label][Pattern.FALLBACK.value]
             fp = sum(
@@ -278,6 +319,13 @@ def create_confusion_matrix(
     with open(heatmap_fp, "wb") as f:
         pickle.dump({"df_rel": df_rel, "metrics": metrics}, f)
     log(f"Heatmap data saved to {heatmap_fp}")
+
+    # --- Heatmap-Tabelle in info.txt ---
+    _log_heatmap_table(
+        df_rel,
+        row_labels=list(df_rel.index),
+        col_labels=list(df_rel.columns),
+    )
 
     # --- Plot ---
     _plot_confusion_matrix(df_rel, plot_fp)
