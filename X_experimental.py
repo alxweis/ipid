@@ -3782,7 +3782,7 @@ def plot_increment_cdfs_acm_style_combined(
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.0, 2.5))
+    fig, ax = plt.subplots(figsize=(5.5, 2.0))
 
     # Track handles per pattern so we can interleave seq/mass in the legend.
     seq_by_pat: dict = {}
@@ -3807,19 +3807,22 @@ def plot_increment_cdfs_acm_style_combined(
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
             x, y = _downsample_cdf(sorted_vals, cdf, max_points=4000)
 
+            # IMPORTANT: use ax.plot, NOT ax.step. ax.step emits many short
+            # horizontal/vertical segments, and matplotlib resets the dash
+            # phase at every segment vertex — this produces the visible
+            # "glitches" you noticed in dotted/dashed curves on plateaus.
+            # ax.plot draws a single continuous Path so dashes flow evenly.
             if linestyle == "--":
-                (line,) = ax.step(
-                    x, y, where="post",
+                (line,) = ax.plot(
+                    x, y,
                     color=color, linewidth=1.4,
                     linestyle="--", dashes=(4, 2.0),
                     dash_capstyle="butt", dash_joinstyle="miter",
                     label=display_name,
                 )
             else:
-                # Dotted: rendered as a regular step. With ~4000 points the
-                # vertical jumps are tiny so the dot phase still reads cleanly.
-                (line,) = ax.step(
-                    x, y, where="post",
+                (line,) = ax.plot(
+                    x, y,
                     color=color, linewidth=1.4,
                     linestyle=":", dashes=(1, 1.6),
                     dash_capstyle="butt", dash_joinstyle="miter",
@@ -3880,7 +3883,7 @@ def plot_increment_cdfs_acm_style_combined(
         pattern_labels.append(disp)
 
     handles = [rt_proxy, fi_proxy] + pattern_handles
-    labels = ["RT-based", "Fixed-Interval"] + pattern_labels
+    labels = pattern_labels + ["RT-based", "Fixed-Interval"]
 
     ax.legend(
         handles, labels,
