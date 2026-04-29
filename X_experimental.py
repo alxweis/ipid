@@ -3742,11 +3742,11 @@ def plot_increment_cdfs_acm_style_combined(
         return rf"$\text{{{disp}}}_{{{sub}}}$"
 
     display_map_seq = {
-        raw: (_label(disp, "1"), _shift(color, 1.20))
+        raw: (_label(disp, "RT"), _shift(color, 1.20))
         for raw, (disp, color) in base_map.items()
     }
     display_map_mass = {
-        raw: (_label(disp, "2"), _shift(color, 0.65))
+        raw: (_label(disp, "FI"), _shift(color, 0.65))
         for raw, (disp, color) in base_map.items()
     }
     order_index = {k: i for i, k in enumerate(base_map)}
@@ -3798,7 +3798,7 @@ def plot_increment_cdfs_acm_style_combined(
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(4.5, 2.0))
+    fig, ax = plt.subplots(figsize=(5.0, 2.5))
 
     # Order matters for legend: seq first, then mass.
     seq_handles, mass_handles = [], []
