@@ -629,7 +629,7 @@ class ClassifierTests(unittest.TestCase):
 
         sequence_count_per_pattern = 100_000
 
-        # self.assertTrue(create_confusion_matrix(Dataset.IDEAL, 16, sequence_count_per_pattern))
+        self.assertTrue(create_confusion_matrix(Dataset.IDEAL, 16, sequence_count_per_pattern))
         # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, 16, sequence_count_per_pattern))
         # self.assertTrue(create_confusion_matrix(Dataset.REORDER, 16, sequence_count_per_pattern))
 
@@ -637,10 +637,10 @@ class ClassifierTests(unittest.TestCase):
         # self.assertTrue(create_confusion_matrix(Dataset.LOSSY, 80, sequence_count_per_pattern))
         # self.assertTrue(create_confusion_matrix(Dataset.REORDER, 80, sequence_count_per_pattern))
 
-        plot_confusion_matrix_combined(
-            sequence_length=80,
-            sequence_count_per_pattern=sequence_count_per_pattern,
-        )
+        # plot_confusion_matrix_combined(
+        #     sequence_length=80,
+        #     sequence_count_per_pattern=sequence_count_per_pattern,
+        # )
 
 
 # class ConfigTests(unittest.TestCase):
