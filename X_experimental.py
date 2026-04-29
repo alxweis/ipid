@@ -584,8 +584,8 @@ def main():
         #             Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU, Pattern.RANDOM]
         patterns = [Pattern.GLOBAL, Pattern.PER_DST, Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU,
                     Pattern.RANDOM]
-        # plot_increment_cdfs_acm_style(str(sys.argv[2]), patterns)
-        plot_increment_cdfs_acm_style_combined(str(sys.argv[2]), str(sys.argv[3]), patterns)
+        plot_increment_cdfs_acm_style(str(sys.argv[2]), patterns)
+        # plot_increment_cdfs_acm_style_combined(str(sys.argv[2]), str(sys.argv[3]), patterns)
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
