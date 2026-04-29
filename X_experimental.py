@@ -3707,38 +3707,42 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
 
 
 def _darken(hex_color: str, factor: float = 0.65) -> str:
-    """Multiply RGB channels by `factor` (0..1) to get a darker shade."""
-    r, g, b = to_rgb(hex_color)
-    return to_hex((r * factor, g * factor, b * factor))
+    """Multiply RGB channels by `factor` (<1 darker, >1 lighter). Returns #RRGGBB."""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
+    r = max(0, min(255, int(r * factor)))
+    g = max(0, min(255, int(g * factor)))
+    b = max(0, min(255, int(b * factor)))
+    return f"#{r:02X}{g:02X}{b:02X}"
 
 
-def plot_increment_cdfs_acm_style_two(
-        msm_path_seq: str,
-        msm_path_mass: str,
-        patterns,
+def plot_increment_cdfs_acm_style_combined(
+        msm_mass: str,
+        msm_seq: str,
+        patterns,  # list[Pattern]
 ):
-    # --- Klassen-Mapping (seq = original) ---
+    # --- Klassen-Mapping (msm_seq = Original) ---
     display_map_seq = {
-        "Mirror": ("Reflection", "#FFE866"),
-        "Constant": ("Constant", "#6FB8FF"),
-        "Single": ("Single", "#FF8080"),
-        "Per-Dst": ("Per-Destination", "#B580FF"),
-        "Per-Con": ("Per-Connection", "#FF85C1"),
-        "Per-Bucket": ("Per-Bucket", "#6EE66E"),
-        "Per-CPU": ("Multi", "#66E0E0"),
-        "Random": ("Random", "#FFB266"),
-        "Fallback": ("Unclassified", "#CCCCCC"),
+        "Mirror":     ("Reflection",      "#FFE866"),
+        "Constant":   ("Constant",        "#6FB8FF"),
+        "Single":     ("Single",          "#FF8080"),
+        "Per-Dst":    ("Per-Destination", "#B580FF"),
+        "Per-Con":    ("Per-Connection",  "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket",      "#6EE66E"),
+        "Per-CPU":    ("Multi",           "#66E0E0"),
+        "Random":     ("Random",          "#FFB266"),
+        "Fallback":   ("Unclassified",    "#CCCCCC"),
     }
-    # mass = labels mit "_2", Farben abgedunkelt
+    # msm_mass: dunkler + Suffix "_2" am Pattern-Namen.
     display_map_mass = {
-        k: (f"{label}_2", _darken(color, 0.6))
-        for k, (label, color) in display_map_seq.items()
+        raw: (f"{disp}_2", _darken(color, 0.65))
+        for raw, (disp, color) in display_map_seq.items()
     }
     order_index = {k: i for i, k in enumerate(display_map_seq)}
 
     # --- Daten laden für eine msm ---
-    def _load(msm_path):
-        out = []
+    def _load(msm_path: str):
+        out = []  # (raw_name, increments)
         for pattern in patterns:
             raw_name = pattern.value
             data_path = os.path.join(
@@ -3747,23 +3751,27 @@ def plot_increment_cdfs_acm_style_two(
                 "data.npy",
             )
             if not os.path.exists(data_path):
-                print(f"[!] Skipping {raw_name} for {msm_path}: no data file.")
+                print(f"[!] {msm_path}: skipping {raw_name}: no data file found.")
                 continue
             increments = np.load(data_path)
             if increments.size == 0:
-                print(f"[!] Skipping {raw_name} for {msm_path}: empty data.")
+                print(f"[!] {msm_path}: skipping {raw_name}: empty data.")
                 continue
-            # 99.9-Perzentil clip
+            # Wichtig: Anteile <1000 / <2000 BEFORE clipping berechnen.
+            n_total = increments.size
+            n_lt_1000 = int(np.sum(increments < 1000))
+            n_lt_2000 = int(np.sum(increments < 2000))
+            # 99.9-Perzentil clip nur für die Plot-Kurve.
             q = np.quantile(increments, 0.999)
-            increments = increments[increments <= q]
-            out.append((raw_name, increments))
+            clipped = increments[increments <= q]
+            out.append((raw_name, clipped, n_total, n_lt_1000, n_lt_2000))
         out.sort(key=lambda d: order_index.get(d[0], 999))
         return out
 
-    datasets_mass = _load(msm_path_mass)
-    datasets_seq = _load(msm_path_seq)
+    datasets_seq = _load(msm_seq)
+    datasets_mass = _load(msm_mass)
 
-    if not datasets_mass and not datasets_seq:
+    if not datasets_seq and not datasets_mass:
         print("[!] No data to plot.")
         return
 
@@ -3783,9 +3791,8 @@ def plot_increment_cdfs_acm_style_two(
 
     fig, ax = plt.subplots(figsize=(4.5, 2.0))
 
-    # --- Kurven zeichnen: seq (solid), dann mass (dashed, dunkler) ---
-    def _plot(datasets, dmap, linestyle):
-        for raw_name, increments in datasets:
+    def _draw(datasets, dmap, linestyle="-"):
+        for raw_name, increments, *_ in datasets:
             display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
             sorted_vals = np.sort(increments)
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
@@ -3798,20 +3805,27 @@ def plot_increment_cdfs_acm_style_two(
                 linestyle=linestyle,
             )
 
-    _plot(datasets_seq, display_map_seq, "-")
-    _plot(datasets_mass, display_map_mass, "--")
+    # seq erst (heller, durchgezogen), mass danach (dunkler, gestrichelt — leichte
+    # zusätzliche Differenzierung über Linestyle, damit sich überlappende Kurven
+    # unterscheidbar bleiben). Falls du ausschließlich Farbunterschiede willst,
+    # entferne die linestyle-Argumente.
+    _draw(datasets_seq, display_map_seq, linestyle="-")
+    _draw(datasets_mass, display_map_mass, linestyle="--")
 
     # --- Achsen ---
     ax.set_xscale("log")
     ax.set_xlim(left=0.891251)
+
     y_major = np.arange(0, 101, 20)
     ax.set_yticks(y_major)
     y_minor = y_major[:-1] + 10
     ax.set_yticks(y_minor, minor=True)
     ax.yaxis.set_minor_formatter(NullFormatter())
     ax.set_ylim(0, 105)
+
     ax.set_xlabel("IP-ID Increment", labelpad=2)
     ax.set_ylabel("Cumulative Percentage [%]", labelpad=2)
+
     ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
     ax.grid(True, which="minor", linestyle=":", linewidth=0.3, alpha=0.3)
     ax.tick_params(axis="both", which="major", length=3, width=0.5)
@@ -3819,41 +3833,48 @@ def plot_increment_cdfs_acm_style_two(
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
 
-    n_labels = len(datasets_seq) + len(datasets_mass)
+    # --- Legende oben ---
+    # Bei zwei Messungen werden's schnell viele Einträge -> ncol nach Anzahl.
+    n_entries = len(datasets_seq) + len(datasets_mass)
+    ncol = 4 if n_entries <= 8 else min(5, max(3, (n_entries + 1) // 2))
     ax.legend(
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
         bbox_transform=ax.transAxes,
-        ncol=min(4, max(1, n_labels)),
+        ncol=ncol,
         frameon=False,
-        handlelength=1.4,
-        handletextpad=0.3,
+        handlelength=1.0,
+        handletextpad=0.2,
         columnspacing=0.8,
     )
+
     plt.tight_layout(pad=0.4)
 
-    # --- Speichern (in mass-Pfad) ---
-    output_dir = os.path.join(msm_path_mass, "analysis", "inc_distribution")
+    # --- Speichern in msm_seq ---
+    output_dir = os.path.join(msm_seq, "analysis", "inc_distribution")
     os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, "plot_cdf_multi_acm_style_two.pdf")
+    output_file = os.path.join(output_dir, "plot_cdf_multi_acm_style_combined.pdf")
     plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=300, pad_inches=0.02)
     plt.close(fig)
-    print(f"[+] Multi-pattern (mass+seq) ACM-style CDF saved to {output_file}")
+    print(f"[+] Combined ACM-style CDF saved to {output_file}")
 
-    # --- Anteile <1000 und <2000 ---
+    # --- Anteil <1000 / <2000 printen ---
     def _print_portions(label, datasets):
         if not datasets:
             return
-        print(f"\n[{label}] portion of increments < 1000 / < 2000 (after 99.9% clip):")
-        for raw_name, incs in datasets:
-            n = incs.size
-            p1k = np.sum(incs < 1000) / n * 100
-            p2k = np.sum(incs < 2000) / n * 100
-            print(f"    {raw_name:<11s} (n={n:>10,d})  "
-                  f"<1000: {p1k:7.3f}%   <2000: {p2k:7.3f}%")
+        print(f"\n[{label}] portion of increments below threshold:")
+        for raw_name, _clipped, n_total, n_lt_1000, n_lt_2000 in datasets:
+            disp = display_map_seq.get(raw_name, (raw_name,))[0]
+            p1 = n_lt_1000 / n_total
+            p2 = n_lt_2000 / n_total
+            print(
+                f"    {disp:18s} (n={n_total}): "
+                f"<1000 = {p1:.4f} ({n_lt_1000}), "
+                f"<2000 = {p2:.4f} ({n_lt_2000})"
+            )
 
-    _print_portions("seq", datasets_seq)
-    _print_portions("mass", datasets_mass)
+    _print_portions("msm_seq", datasets_seq)
+    _print_portions("msm_mass", datasets_mass)
 
 
 if __name__ == "__main__":
