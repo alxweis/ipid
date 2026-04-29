@@ -574,12 +574,12 @@ def main():
 
         plot_pattern_distribution_acm_style_old(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
     elif mode == 18:
-        if len(sys.argv) < 3:
-            print_usage()
-            return
-        # if len(sys.argv) < 4:
+        # if len(sys.argv) < 3:
         #     print_usage()
         #     return
+        if len(sys.argv) < 4:
+            print_usage()
+            return
 
         # plot_time_between_requests_acm_style(str(sys.argv[2]))
         # plot_avg_rtt_per_continent_acm_style(str(sys.argv[2]))
@@ -587,8 +587,8 @@ def main():
         #             Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU, Pattern.RANDOM]
         patterns = [Pattern.GLOBAL, Pattern.PER_DST, Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU,
                     Pattern.RANDOM]
-        plot_increment_cdfs_acm_style(str(sys.argv[2]), patterns)
-        # plot_increment_cdfs_acm_style_combined(str(sys.argv[2]), str(sys.argv[3]), patterns)
+        # plot_increment_cdfs_acm_style(str(sys.argv[2]), patterns)
+        plot_increment_cdfs_acm_style_combined(str(sys.argv[2]), str(sys.argv[3]), patterns)
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
