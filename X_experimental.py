@@ -3706,16 +3706,6 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
     print(f"[+] Multi-pattern ACM-style CDF saved to {output_file}")
 
 
-def _shift(hex_color: str, factor: float) -> str:
-    """Multiply RGB channels. <1 darker, >1 lighter (clamped to [0,255])."""
-    h = hex_color.lstrip("#")
-    r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
-    r = max(0, min(255, int(round(r * factor))))
-    g = max(0, min(255, int(round(g * factor))))
-    b = max(0, min(255, int(round(b * factor))))
-    return f"#{r:02X}{g:02X}{b:02X}"
-
-
 def plot_increment_cdfs_acm_style_combined(
         msm_seq: str,
         msm_mass: str,
@@ -3736,7 +3726,7 @@ def plot_increment_cdfs_acm_style_combined(
     def _label(disp: str, sub: str) -> str:
         return rf"$\text{{{disp}}}_{{\text{{{sub}}}}}$"
 
-    # Same color for both — only linestyle distinguishes msm.
+    # Same color for both; only linestyle distinguishes msm.
     display_map_seq = {
         raw: (_label(disp, "RT"), color)
         for raw, (disp, color) in base_map.items()
@@ -3747,7 +3737,6 @@ def plot_increment_cdfs_acm_style_combined(
     }
     order_index = {k: i for i, k in enumerate(base_map)}
 
-    # --- Daten laden für eine msm ---
     def _load(msm_path: str):
         out = []
         for pattern in patterns:
@@ -3795,31 +3784,32 @@ def plot_increment_cdfs_acm_style_combined(
 
     fig, ax = plt.subplots(figsize=(5.5, 2.5))
 
-    # Stash handles per pattern so we can interleave seq/mass in the legend.
+    # Track handles per pattern so we can interleave seq/mass in the legend.
     seq_by_pat: dict = {}
     mass_by_pat: dict = {}
 
-    def _draw(datasets, dmap, sink, linestyle):
-        for raw_name, increments, n_total, *_ in datasets:
+    def _draw(datasets, dmap, linestyle, sink):
+        for raw_name, increments, *_ in datasets:
             display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
-            # Append n=... to the legend label.
-            label = rf"{display_name} (n={n_total})"
             sorted_vals = np.sort(increments)
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
             (line,) = ax.step(
                 sorted_vals, cdf,
                 where="post",
-                label=label,
+                label=display_name,
                 linewidth=1.4,
                 color=color,
                 linestyle=linestyle,
             )
             sink[raw_name] = line
 
-    _draw(datasets_seq, display_map_seq, seq_by_pat, linestyle="-")
-    _draw(datasets_mass, display_map_mass, mass_by_pat, linestyle=":")
+    _draw(datasets_seq, display_map_seq, "-", seq_by_pat)
+    _draw(datasets_mass, display_map_mass, ":", mass_by_pat)
 
-    # --- Achsen ---
+    # Tighten dot spacing so ":" reads as clearly dotted at 1.4pt linewidth.
+    for ln in mass_by_pat.values():
+        ln.set_dashes((1, 1.4))   # 1pt dot, 1.4pt gap
+
     ax.set_xscale("log")
     ax.set_xlim(left=0.891251)
 
@@ -3840,34 +3830,31 @@ def plot_increment_cdfs_acm_style_combined(
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
 
-    # --- Legende: für jedes Pattern abwechselnd RT (seq) dann FI (mass) ---
-    ordered_handles = []
-    all_pats = sorted(
-        set(seq_by_pat) | set(mass_by_pat),
-        key=lambda p: order_index.get(p, 999),
-        )
-    for pat in all_pats:
+    # --- Legende: pro Pattern abwechselnd seq, mass ---
+    ordered_handles, ordered_labels = [], []
+    for pat in sorted(set(seq_by_pat) | set(mass_by_pat),
+                      key=lambda p: order_index.get(p, 999)):
         if pat in seq_by_pat:
             ordered_handles.append(seq_by_pat[pat])
+            ordered_labels.append(seq_by_pat[pat].get_label())
         if pat in mass_by_pat:
             ordered_handles.append(mass_by_pat[pat])
-    ordered_labels = [h.get_label() for h in ordered_handles]
+            ordered_labels.append(mass_by_pat[pat].get_label())
 
     ax.legend(
         ordered_handles, ordered_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
         bbox_transform=ax.transAxes,
-        ncol=2,
+        ncol=4,
         frameon=False,
-        handlelength=1.6,        # a bit longer so dotted vs solid is visible
-        handletextpad=0.4,
-        columnspacing=0.8,
+        handlelength=1.4,
+        handletextpad=0.3,
+        columnspacing=0.9,
     )
 
     plt.tight_layout(pad=0.4)
 
-    # --- Speichern in msm_seq ---
     output_dir = os.path.join(msm_seq, "analysis", "inc_distribution")
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, "plot_cdf_multi_acm_style_combined.pdf")
@@ -3875,7 +3862,6 @@ def plot_increment_cdfs_acm_style_combined(
     plt.close(fig)
     print(f"[+] Combined ACM-style CDF saved to {output_file}")
 
-    # --- Anteil <1000 / <2000 printen ---
     def _print_portions(label, datasets):
         if not datasets:
             return
