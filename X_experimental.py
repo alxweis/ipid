@@ -3788,64 +3788,46 @@ def plot_increment_cdfs_acm_style_combined(
     seq_by_pat: dict = {}
     mass_by_pat: dict = {}
 
+    def _downsample_cdf(x: np.ndarray, y: np.ndarray, max_points: int = 4000):
+        """Subsample (x, y) for plotting. CDFs are monotone in y so a regular
+        sample over y-percentiles preserves the shape near-perfectly.
+        Always keeps the first and last point."""
+        n = x.size
+        if n <= max_points:
+            return x, y
+        # Pick max_points indices roughly evenly spaced in y.
+        idx = np.linspace(0, n - 1, max_points).astype(np.int64)
+        idx = np.unique(idx)
+        return x[idx], y[idx]
+
     def _draw(datasets, dmap, linestyle, sink):
         for raw_name, increments, *_ in datasets:
             display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
             sorted_vals = np.sort(increments)
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
-            x = sorted_vals
-            y = cdf
+            x, y = _downsample_cdf(sorted_vals, cdf, max_points=4000)
 
-            if linestyle == "-":
-                # Standard step-post curve, single connected path.
-                xs = np.repeat(x, 2)[1:]
-                ys = np.repeat(y, 2)[:-1]
-                (line,) = ax.plot(
-                    xs, ys, color=color, linewidth=1.4,
-                    linestyle="-", solid_capstyle="butt",
+            if linestyle == "--":
+                (line,) = ax.step(
+                    x, y, where="post",
+                    color=color, linewidth=1.4,
+                    linestyle="--", dashes=(4, 2.0),
+                    dash_capstyle="butt", dash_joinstyle="miter",
                     label=display_name,
                 )
             else:
-                # Dotted step-post: do NOT include the vertical jumps in the
-                # dotted path (long verticals + dot phase = visible glitch
-                # at every jump). Instead:
-                #   1) draw one connected DOTTED polyline with uniform dot phase
-                #   2) overlay SOLID vertical line segments at each jump so
-                #      the visual still reads as a step function.
-                # The dashed path:
-                #   start: (x[0], y[0])
-                #   then for i in 1..n-1: (x[i], y[i-1]), (x[i], y[i])
-                # We feed this as a single np.array to ax.plot — matplotlib
-                # advances the dash phase smoothly along the whole polyline
-                # and the verticals overlay them cleanly.
-                xs = np.repeat(x, 2)[1:]
-                ys = np.repeat(y, 2)[:-1]
-                (line,) = ax.plot(
-                    xs, ys, color=color, linewidth=1.4,
+                # Dotted: rendered as a regular step. With ~4000 points the
+                # vertical jumps are tiny so the dot phase still reads cleanly.
+                (line,) = ax.step(
+                    x, y, where="post",
+                    color=color, linewidth=1.4,
                     linestyle=":", dashes=(1, 1.6),
                     dash_capstyle="butt", dash_joinstyle="miter",
                     label=display_name,
                 )
-                # Solid vertical overlays at each jump, in the same color,
-                # so the eye doesn't see a "broken dot" where the curve
-                # jumps. zorder slightly above the dotted path.
-                if x.size >= 2:
-                    from matplotlib.collections import LineCollection
-                    vert = np.stack(
-                        [np.column_stack([x[1:], y[:-1]]),
-                         np.column_stack([x[1:], y[1:]])],
-                        axis=1,
-                    )
-                    lc_v = LineCollection(
-                        vert, colors=color, linewidths=1.4,
-                        linestyles="solid", capstyle="butt",
-                        zorder=line.get_zorder() + 0.1,
-                    )
-                    ax.add_collection(lc_v)
-
             sink[raw_name] = line
 
-    _draw(datasets_seq, display_map_seq, "-", seq_by_pat)
+    _draw(datasets_seq, display_map_seq, "--", seq_by_pat)
     _draw(datasets_mass, display_map_mass, ":", mass_by_pat)
 
     ax.set_xscale("log")
@@ -3875,7 +3857,9 @@ def plot_increment_cdfs_acm_style_combined(
 
     style_color = "#808080"
     rt_proxy = Line2D([0], [0], color=style_color, linewidth=1.4,
-                      linestyle="-", label="RT-based")
+                      linestyle="--", dashes=(4, 2.0),
+                      dash_capstyle="butt",
+                      label="RT-based")
     fi_proxy = Line2D([0], [0], color=style_color, linewidth=1.4,
                       linestyle=":", dashes=(1, 1.6),
                       dash_capstyle="butt",
