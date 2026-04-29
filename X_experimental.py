@@ -27,7 +27,6 @@ import zstandard as zstd
 from matplotlib import gridspec
 from matplotlib.collections import PolyCollection
 from matplotlib.colors import LinearSegmentedColormap
-from matplotlib.colors import to_rgb, to_hex
 from matplotlib.ticker import MultipleLocator, NullFormatter, LogLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
@@ -3715,15 +3714,15 @@ def plot_increment_cdfs_acm_style_combined(
         patterns,  # list[Pattern]
 ):
     base_map = {
-        "Mirror":     ("Reflection",      "#FFE866"),
-        "Constant":   ("Constant",        "#6FB8FF"),
-        "Single":     ("Single",          "#FF8080"),
-        "Per-Dst":    ("Per-Destination", "#B580FF"),
-        "Per-Con":    ("Per-Connection",  "#FF85C1"),
-        "Per-Bucket": ("Per-Bucket",      "#6EE66E"),
-        "Per-CPU":    ("Multi",           "#66E0E0"),
-        "Random":     ("Random",          "#FFB266"),
-        "Fallback":   ("Unclassified",    "#CCCCCC"),
+        "Mirror": ("Reflection", "#FFE866"),
+        "Constant": ("Constant", "#6FB8FF"),
+        "Single": ("Single", "#FF8080"),
+        "Per-Dst": ("Per-Destination", "#B580FF"),
+        "Per-Con": ("Per-Connection", "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket", "#6EE66E"),
+        "Per-CPU": ("Multi", "#66E0E0"),
+        "Random": ("Random", "#FFB266"),
+        "Fallback": ("Unclassified", "#CCCCCC"),
     }
 
     def _label(disp: str, sub: str) -> str:
@@ -3758,9 +3757,16 @@ def plot_increment_cdfs_acm_style_combined(
             n_total = increments.size
             n_lt_1000 = int(np.sum(increments < 1000))
             n_lt_2000 = int(np.sum(increments < 2000))
+
+            # Quantile auf den UNgeclippten Originaldaten
+            q80, q90, q95, q99 = np.quantile(increments, [0.80, 0.90, 0.95, 0.99])
+
             q = np.quantile(increments, 0.999)
             clipped = increments[increments <= q]
-            out.append((raw_name, clipped, n_total, n_lt_1000, n_lt_2000))
+            out.append((
+                raw_name, clipped, n_total, n_lt_1000, n_lt_2000,
+                q80, q90, q95, q99,
+            ))
         out.sort(key=lambda d: order_index.get(d[0], 999))
         return out
 
@@ -3810,9 +3816,9 @@ def plot_increment_cdfs_acm_style_combined(
             # IMPORTANT: ax.plot, NOT ax.step — ax.step resets dash phase at
             # every step vertex which breaks the pattern on plateaus.
             if linestyle == "--":
-                pattern = (4.0, 2.0)            # dash on, gap
+                pattern = (4.0, 2.0)  # dash on, gap
             else:
-                pattern = (1.0, 1.6)            # dot on, gap
+                pattern = (1.0, 1.6)  # dot on, gap
             period = sum(pattern)
             # Spread offsets evenly across one period: with N curves, phases
             # land at 0, period/N, 2·period/N, …
@@ -3821,7 +3827,7 @@ def plot_increment_cdfs_acm_style_combined(
             (line,) = ax.plot(
                 x, y,
                 color=color, linewidth=1.4,
-                linestyle=(offset, pattern),    # (offset, (on, off))
+                linestyle=(offset, pattern),  # (offset, (on, off))
                 dash_capstyle="butt", dash_joinstyle="miter",
                 label=display_name,
             )
@@ -3904,15 +3910,18 @@ def plot_increment_cdfs_acm_style_combined(
     def _print_portions(label, datasets):
         if not datasets:
             return
-        print(f"\n[{label}] portion of increments below threshold:")
-        for raw_name, _clipped, n_total, n_lt_1000, n_lt_2000 in datasets:
+        print(f"\n[{label}] portion of increments below threshold and quantiles:")
+        for (raw_name, _clipped, n_total, n_lt_1000, n_lt_2000,
+             q80, q90, q95, q99) in datasets:
             disp = base_map.get(raw_name, (raw_name,))[0]
             p1 = n_lt_1000 / n_total
             p2 = n_lt_2000 / n_total
             print(
                 f"    {disp:18s} (n={n_total}): "
                 f"<1000 = {p1:.4f} ({n_lt_1000}), "
-                f"<2000 = {p2:.4f} ({n_lt_2000})"
+                f"<2000 = {p2:.4f} ({n_lt_2000}) | "
+                f"P80={q80:>10.2f}  P90={q90:>10.2f}  "
+                f"P95={q95:>10.2f}  P99={q99:>10.2f}"
             )
 
     _print_portions("msm_seq", datasets_seq)
