@@ -689,8 +689,73 @@ def main():
             return
 
         analyze_ipid_outliers(sys.argv[2], sys.argv[3])
+    elif mode == 32:
+        if len(sys.argv) < 4:
+            print_usage()
+            return
+
+        analyze_constant_zero_prefix(sys.argv[2], sys.argv[3])
     else:
         print_usage()
+
+
+def analyze_constant_zero_prefix(msm_default: str | Path, msm_con: str | Path) -> None:
+    msm_default = Path(msm_default)
+    msm_con = Path(msm_con)
+
+    eval_path = msm_default / "eval.csv.zst"
+    probing_path = msm_con / "probing.csv.zst"
+
+    if not eval_path.exists():
+        raise FileNotFoundError(eval_path)
+    if not probing_path.exists():
+        raise FileNotFoundError(probing_path)
+
+    con = duckdb.connect(":memory:")
+    con.execute("PRAGMA memory_limit='100GB'")
+    con.execute("PRAGMA threads=16")
+
+    # 1) Constant IPs from msm_default's eval.csv.zst -> small in-memory table.
+    print(f"[*] Reading Constant IPs from {eval_path} ...")
+    con.execute(
+        f"""
+        CREATE TEMP TABLE wanted AS
+        SELECT IP
+        FROM read_csv_auto('{eval_path.as_posix()}', compression='zstd')
+        WHERE IP_ID_PATTERN = 'Constant'
+        """
+    )
+    n_wanted = con.execute("SELECT COUNT(*) FROM wanted").fetchone()[0]
+    print(f"    {n_wanted} Constant IPs")
+
+    # 2) Stream-join against msm_con's probing.csv.zst. Do the prefix check
+    #    inside DuckDB so we never pull full sequences into Python.
+    #    split_part(s, ',', k) returns the k-th comma-separated field.
+    #    A leading "0,0,0,0,..." is the only way all four prefix fields are '0'.
+    print(f"[*] Joining with {probing_path} ...")
+    total, zeros = con.execute(
+        f"""
+        SELECT
+            COUNT(*),
+            COUNT(*) FILTER (
+                WHERE split_part(IP_ID_SEQUENCE, ',', 1) = '0'
+                  AND split_part(IP_ID_SEQUENCE, ',', 2) = '0'
+                  AND split_part(IP_ID_SEQUENCE, ',', 3) = '0'
+                  AND split_part(IP_ID_SEQUENCE, ',', 4) = '0'
+            )
+        FROM read_csv_auto('{probing_path.as_posix()}', compression='zstd') p
+        JOIN wanted w USING (IP)
+        """
+    ).fetchone()
+
+    print()
+    print(f"#IPs (Constant ∩ probing): {total}")
+    print(f"counter (first 4 values == 0): {zeros}")
+    if total == 0:
+        print("ratio: n/a (no IPs matched)")
+        return
+    ratio = zeros / total
+    print(f"ratio: {zeros} / {total} = {ratio:.6f}")
 
 
 def _count_outliers(seq_str: str, pattern: str) -> int:
