@@ -3839,13 +3839,13 @@ def plot_increment_cdfs_acm_style_combined(
             n_lt_2000 = int(np.sum(increments < 2000))
 
             # Quantile auf den UNgeclippten Originaldaten
-            q80, q90, q95, q99 = np.quantile(increments, [0.80, 0.90, 0.95, 0.99])
+            q50, q80, q90, q95, q99 = np.quantile(increments, [0.50, 0.80, 0.90, 0.95, 0.99])
 
             q = np.quantile(increments, 0.999)
             clipped = increments[increments <= q]
             out.append((
                 raw_name, clipped, n_total, n_lt_1000, n_lt_2000,
-                q80, q90, q95, q99,
+                q50, q80, q90, q95, q99,
             ))
         out.sort(key=lambda d: order_index.get(d[0], 999))
         return out
@@ -3992,7 +3992,7 @@ def plot_increment_cdfs_acm_style_combined(
             return
         print(f"\n[{label}] portion of increments below threshold and quantiles:")
         for (raw_name, _clipped, n_total, n_lt_1000, n_lt_2000,
-             q80, q90, q95, q99) in datasets:
+             q50, q80, q90, q95, q99) in datasets:
             disp = base_map.get(raw_name, (raw_name,))[0]
             p1 = n_lt_1000 / n_total
             p2 = n_lt_2000 / n_total
@@ -4000,7 +4000,7 @@ def plot_increment_cdfs_acm_style_combined(
                 f"    {disp:18s} (n={n_total}): "
                 f"<1000 = {p1:.4f} ({n_lt_1000}), "
                 f"<2000 = {p2:.4f} ({n_lt_2000}) | "
-                f"P80={q80:>10.2f}  P90={q90:>10.2f}  "
+                f"P50={q50:>10.2f}  P80={q80:>10.2f}  P90={q90:>10.2f}  "
                 f"P95={q95:>10.2f}  P99={q99:>10.2f}"
             )
 
