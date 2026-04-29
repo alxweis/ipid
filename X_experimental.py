@@ -712,19 +712,16 @@ def _count_outliers(seq_str: str, pattern: str) -> int:
 
     if pattern == "Single":
         incs = ipid.s.increments
-        threshold = 21845
-        return int(np.sum(incs > threshold))
+        return int(np.sum((incs < 1) | (incs > 21845)))
     elif pattern == "Per-Dst":
-        threshold = 1
         return int(
-            np.sum(ipid.a.increments > threshold)
-            + np.sum(ipid.b.increments > threshold)
+            np.sum((ipid.a.increments < 1) | (ipid.a.increments > 1))
+            + np.sum((ipid.b.increments < 1) | (ipid.b.increments > 1))
         )
     elif pattern == "Per-Bucket":
-        threshold = 21845
         return int(
-            np.sum(ipid.ap.increments > threshold)
-            + np.sum(ipid.bp.increments > threshold)
+            np.sum((ipid.ap.increments < 1) | (ipid.ap.increments > 21845))
+            + np.sum((ipid.bp.increments < 1) | (ipid.bp.increments > 21845))
         )
     else:
         raise ValueError(f"Unknown pattern: {pattern}")
