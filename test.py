@@ -158,7 +158,7 @@ def create_confusion_matrix(
         Each cell: "<rel>%" with 3 decimals.
         """
         cells = [
-            [f"{df_rel.iat[i, j]:.3f}%"
+            [f"{df_rel.iat[i, j]:.6f}%"
              for j in range(df_rel.shape[1])]
             for i in range(df_rel.shape[0])
         ]
