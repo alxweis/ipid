@@ -3706,13 +3706,13 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
     print(f"[+] Multi-pattern ACM-style CDF saved to {output_file}")
 
 
-def _darken(hex_color: str, factor: float = 0.65) -> str:
-    """Multiply RGB channels by `factor` (<1 darker, >1 lighter). Returns #RRGGBB."""
+def _shift(hex_color: str, factor: float) -> str:
+    """Multiply RGB channels. <1 darker, >1 lighter (clamped to [0,255])."""
     h = hex_color.lstrip("#")
     r, g, b = (int(h[i : i + 2], 16) for i in (0, 2, 4))
-    r = max(0, min(255, int(r * factor)))
-    g = max(0, min(255, int(g * factor)))
-    b = max(0, min(255, int(b * factor)))
+    r = max(0, min(255, int(round(r * factor))))
+    g = max(0, min(255, int(round(g * factor))))
+    b = max(0, min(255, int(round(b * factor))))
     return f"#{r:02X}{g:02X}{b:02X}"
 
 
@@ -3721,8 +3721,8 @@ def plot_increment_cdfs_acm_style_combined(
         msm_mass: str,
         patterns,  # list[Pattern]
 ):
-    # --- Klassen-Mapping (msm_seq = Original) ---
-    display_map_seq = {
+    # Base colors (the originals from the single-msm version).
+    base_map = {
         "Mirror":     ("Reflection",      "#FFE866"),
         "Constant":   ("Constant",        "#6FB8FF"),
         "Single":     ("Single",          "#FF8080"),
@@ -3733,16 +3733,27 @@ def plot_increment_cdfs_acm_style_combined(
         "Random":     ("Random",          "#FFB266"),
         "Fallback":   ("Unclassified",    "#CCCCCC"),
     }
-    # msm_mass: dunkler + Suffix "_2" am Pattern-Namen.
-    display_map_mass = {
-        raw: (f"{disp}_2", _darken(color, 0.65))
-        for raw, (disp, color) in display_map_seq.items()
+    # seq = lighter + subscript "_1"
+    # mass = darker  + subscript "_2"
+    # Subscript via mathtext: $name_{1}$  (escape spaces/hyphens with \mathrm).
+    def _label(disp: str, sub: str) -> str:
+        # \text{...} renders upright text in mathtext and handles spaces/hyphens
+        # naturally (no escaping needed).
+        return rf"$\text{{{disp}}}_{{{sub}}}$"
+
+    display_map_seq = {
+        raw: (_label(disp, "1"), _shift(color, 1.20))
+        for raw, (disp, color) in base_map.items()
     }
-    order_index = {k: i for i, k in enumerate(display_map_seq)}
+    display_map_mass = {
+        raw: (_label(disp, "2"), _shift(color, 0.65))
+        for raw, (disp, color) in base_map.items()
+    }
+    order_index = {k: i for i, k in enumerate(base_map)}
 
     # --- Daten laden für eine msm ---
     def _load(msm_path: str):
-        out = []  # (raw_name, increments)
+        out = []
         for pattern in patterns:
             raw_name = pattern.value
             data_path = os.path.join(
@@ -3757,11 +3768,9 @@ def plot_increment_cdfs_acm_style_combined(
             if increments.size == 0:
                 print(f"[!] {msm_path}: skipping {raw_name}: empty data.")
                 continue
-            # Wichtig: Anteile <1000 / <2000 BEFORE clipping berechnen.
             n_total = increments.size
             n_lt_1000 = int(np.sum(increments < 1000))
             n_lt_2000 = int(np.sum(increments < 2000))
-            # 99.9-Perzentil clip nur für die Plot-Kurve.
             q = np.quantile(increments, 0.999)
             clipped = increments[increments <= q]
             out.append((raw_name, clipped, n_total, n_lt_1000, n_lt_2000))
@@ -3791,26 +3800,26 @@ def plot_increment_cdfs_acm_style_combined(
 
     fig, ax = plt.subplots(figsize=(4.5, 2.0))
 
-    def _draw(datasets, dmap, linestyle="-"):
+    # Order matters for legend: seq first, then mass.
+    seq_handles, mass_handles = [], []
+
+    def _draw(datasets, dmap, sink):
         for raw_name, increments, *_ in datasets:
             display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
             sorted_vals = np.sort(increments)
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
-            ax.step(
+            (line,) = ax.step(
                 sorted_vals, cdf,
                 where="post",
                 label=display_name,
                 linewidth=1.4,
                 color=color,
-                linestyle=linestyle,
+                linestyle="-",   # solid for both — only color encodes msm.
             )
+            sink.append(line)
 
-    # seq erst (heller, durchgezogen), mass danach (dunkler, gestrichelt — leichte
-    # zusätzliche Differenzierung über Linestyle, damit sich überlappende Kurven
-    # unterscheidbar bleiben). Falls du ausschließlich Farbunterschiede willst,
-    # entferne die linestyle-Argumente.
-    _draw(datasets_seq, display_map_seq, linestyle="-")
-    _draw(datasets_mass, display_map_mass, linestyle="--")
+    _draw(datasets_seq, display_map_seq, seq_handles)
+    _draw(datasets_mass, display_map_mass, mass_handles)
 
     # --- Achsen ---
     ax.set_xscale("log")
@@ -3833,15 +3842,15 @@ def plot_increment_cdfs_acm_style_combined(
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
 
-    # --- Legende oben ---
-    # Bei zwei Messungen werden's schnell viele Einträge -> ncol nach Anzahl.
-    n_entries = len(datasets_seq) + len(datasets_mass)
-    ncol = 4 if n_entries <= 8 else min(5, max(3, (n_entries + 1) // 2))
+    # --- Legende: 2 Zeilen, 4 Spalten, seq zuerst dann mass ---
+    ordered_handles = seq_handles + mass_handles
+    ordered_labels = [h.get_label() for h in ordered_handles]
     ax.legend(
+        ordered_handles, ordered_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
         bbox_transform=ax.transAxes,
-        ncol=ncol,
+        ncol=4,
         frameon=False,
         handlelength=1.0,
         handletextpad=0.2,
@@ -3864,7 +3873,7 @@ def plot_increment_cdfs_acm_style_combined(
             return
         print(f"\n[{label}] portion of increments below threshold:")
         for raw_name, _clipped, n_total, n_lt_1000, n_lt_2000 in datasets:
-            disp = display_map_seq.get(raw_name, (raw_name,))[0]
+            disp = base_map.get(raw_name, (raw_name,))[0]
             p1 = n_lt_1000 / n_total
             p2 = n_lt_2000 / n_total
             print(
