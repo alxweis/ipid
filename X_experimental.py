@@ -1830,6 +1830,18 @@ def plot_caida_os_distribution_acm_style(
         bar_gap: float = 0.2,
         y_padding: float = 0.1,
 ):
+    import time
+
+    def _log(msg, t0=None):
+        now = time.time()
+        if t0 is None:
+            print(f"[caida-os] {msg}", flush=True)
+        else:
+            print(f"[caida-os] {msg} (took {now - t0:.1f}s)", flush=True)
+        return now
+
+    t_global = _log("starting")
+
     # --- Pfade ---
     ip_to_node_file = os.path.join(caida_itdk_path, "ip_to_node.csv.zst")
     targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
@@ -1838,71 +1850,116 @@ def plot_caida_os_distribution_acm_style(
     out_dir = os.path.join(msm_path, "analysis", "caida_os_distribution")
     os.makedirs(out_dir, exist_ok=True)
 
-    # --- Daten laden via DuckDB ---
+    _log(f"ip_to_node:  {ip_to_node_file}")
+    _log(f"targets_os:  {targets_os_file}")
+    _log(f"eval:        {eval_file}")
+    _log(f"out_dir:     {out_dir}")
+
+    # --- DuckDB ---
     con = duckdb.connect(database=":memory:")
-    con.execute(f"""
-        CREATE VIEW ip_to_node AS
-        SELECT IP, T, D FROM read_csv_auto('{ip_to_node_file}', compression='zstd');
-    """)
-    con.execute(f"""
-        CREATE VIEW targets_os AS
-        SELECT IP, OS FROM read_csv_auto('{targets_os_file}', compression='zstd');
-    """)
-    con.execute(f"""
-        CREATE VIEW eval_ips AS
-        SELECT IP FROM read_csv_auto('{eval_file}', compression='zstd');
-    """)
+    con.execute("PRAGMA enable_progress_bar")  # zeigt Fortschritt während Queries
 
-    # Router: T=1 aus ip_to_node, OS via JOIN, OS muss vorhanden sein
-    # All Others: eval.csv.zst MINUS T=1 (anti-join), OS via JOIN, OS muss vorhanden sein
-    df_joined = con.execute("""
-        SELECT 'router' AS GROUP_TAG, t.OS
-        FROM ip_to_node n
-        JOIN targets_os t ON n.IP = t.IP
-        WHERE n.T = 1 AND t.OS IS NOT NULL
+    # --- Schritt 1: Router-IPs einmal materialisieren ---
+    t = _log("materializing router_ips table (T=1 from ip_to_node) ...")
+    con.execute(f"""
+        CREATE TABLE router_ips AS
+        SELECT IP
+        FROM read_csv_auto('{ip_to_node_file}', compression='zstd')
+        WHERE T = 1
+    """)
+    n_router_ips = con.execute("SELECT COUNT(*) FROM router_ips").fetchone()[0]
+    _log(f"router_ips materialized: {n_router_ips:,} rows", t)
 
-        UNION ALL
+    # Index auf IP für schnelle Anti-Join-Lookups
+    t = _log("creating index on router_ips(IP) ...")
+    con.execute("CREATE INDEX idx_router_ips ON router_ips(IP)")
+    _log("index created", t)
 
-        SELECT 'others' AS GROUP_TAG, t.OS
-        FROM eval_ips e
-        JOIN targets_os t ON e.IP = t.IP
-        WHERE t.OS IS NOT NULL
-          AND NOT EXISTS (
-              SELECT 1 FROM ip_to_node n
-              WHERE n.IP = e.IP AND n.T = 1
-          )
+    # --- Schritt 2: targets_os einmal materialisieren ---
+    t = _log("materializing targets_os table ...")
+    con.execute(f"""
+        CREATE TABLE targets_os_tbl AS
+        SELECT IP, OS
+        FROM read_csv_auto('{targets_os_file}', compression='zstd')
+        WHERE OS IS NOT NULL
+    """)
+    n_targets_os = con.execute("SELECT COUNT(*) FROM targets_os_tbl").fetchone()[0]
+    _log(f"targets_os materialized: {n_targets_os:,} rows", t)
+
+    t = _log("creating index on targets_os_tbl(IP) ...")
+    con.execute("CREATE INDEX idx_targets_os ON targets_os_tbl(IP)")
+    _log("index created", t)
+
+    # --- Schritt 3: Router-Verteilung aggregieren ---
+    t = _log("aggregating Router OS distribution ...")
+    df_router = con.execute("""
+        SELECT LOWER(t.OS) AS OS, COUNT(*) AS cnt
+        FROM router_ips r
+        JOIN targets_os_tbl t ON r.IP = t.IP
+        GROUP BY LOWER(t.OS)
     """).fetch_df()
+    _log(f"Router aggregated: {len(df_router):,} distinct OS, "
+         f"{int(df_router['cnt'].sum()):,} total rows", t)
+
+    # --- Schritt 4: Others-Verteilung aggregieren (anti-join) ---
+    t = _log("aggregating All-Others OS distribution (anti-join via LEFT JOIN ... IS NULL) ...")
+    df_others = con.execute(f"""
+        SELECT LOWER(t.OS) AS OS, COUNT(*) AS cnt
+        FROM read_csv_auto('{eval_file}', compression='zstd') e
+        JOIN targets_os_tbl t ON e.IP = t.IP
+        LEFT JOIN router_ips r ON e.IP = r.IP
+        WHERE r.IP IS NULL
+        GROUP BY LOWER(t.OS)
+    """).fetch_df()
+    _log(f"All-Others aggregated: {len(df_others):,} distinct OS, "
+         f"{int(df_others['cnt'].sum()):,} total rows", t)
+
     con.close()
 
-    df_joined["OS"] = df_joined["OS"].astype(str).str.lower()
+    # --- Schritt 5: Pandas-Verarbeitung ---
+    t = _log("post-processing aggregated frames ...")
+    df_router["GROUP_TAG"] = "router"
+    df_others["GROUP_TAG"] = "others"
 
-    # --- OS -> Gruppe/Raw mapping ---
+    df_agg = pd.concat([df_router, df_others], ignore_index=True)
+
+    # OS -> LABEL
     def map_os_to_group_or_raw(os_str):
         for group, (members, _) in os_groups.items():
             if os_str in members:
                 return group
         return os_str
 
-    df_joined["LABEL"] = df_joined["OS"].apply(map_os_to_group_or_raw)
+    df_agg["LABEL"] = df_agg["OS"].apply(map_os_to_group_or_raw)
+    _log("LABEL mapping done", t)
 
-    # Save CSV (jetzt mit GROUP_TAG statt T/D)
-    df_joined.to_csv(os.path.join(out_dir, "caida_os.csv.zst"),
-                     index=False, compression="zstd")
+    # CSV exportieren (jetzt aggregiert, klein)
+    t = _log("writing aggregated CSV ...")
+    df_agg.to_csv(os.path.join(out_dir, "caida_os.csv.zst"),
+                  index=False, compression="zstd")
+    _log("CSV written", t)
 
     # --- Distributions ---
-    transit = df_joined[df_joined["GROUP_TAG"] == "router"]
-    endhost = df_joined[df_joined["GROUP_TAG"] == "others"]
+    transit_total = df_agg.loc[df_agg["GROUP_TAG"] == "router", "cnt"].sum()
+    endhost_total = df_agg.loc[df_agg["GROUP_TAG"] == "others", "cnt"].sum()
+    _log(f"transit_total = {int(transit_total):,}, endhost_total = {int(endhost_total):,}")
 
-    transit_dist = transit["LABEL"].value_counts(normalize=True) * 100
-    endhost_dist = endhost["LABEL"].value_counts(normalize=True) * 100
+    transit_abs = (df_agg[df_agg["GROUP_TAG"] == "router"]
+                   .groupby("LABEL")["cnt"].sum())
+    endhost_abs = (df_agg[df_agg["GROUP_TAG"] == "others"]
+                   .groupby("LABEL")["cnt"].sum())
 
-    # --- Display-Map bauen (Reihenfolge = Sortier- und Legendenreihenfolge) ---
+    transit_dist = transit_abs / transit_total * 100 if transit_total else transit_abs * 0.0
+    endhost_dist = endhost_abs / endhost_total * 100 if endhost_total else endhost_abs * 0.0
+
+    # --- Display-Map ---
+    t = _log("building display_map ...")
     display_map = {
         grp: (grp, col) for grp, (_, col) in os_groups.items()
     }
 
     extra_labels = sorted(
-        lbl for lbl in set(df_joined["LABEL"])
+        lbl for lbl in set(df_agg["LABEL"])
         if lbl not in os_groups
         and (transit_dist.get(lbl, 0) > 1 or endhost_dist.get(lbl, 0) > 1)
     )
@@ -1918,8 +1975,9 @@ def plot_caida_os_distribution_acm_style(
         display_map["Fallback"] = ("Unclassified", display_map["Fallback"][1])
 
     display_map["Other"] = ("Other", fallback_color)
+    _log(f"display_map ready, {len(display_map)} entries", t)
 
-    # --- Gefilterte Klassen (>1% in mindestens einem Datensatz) + Other ---
+    # --- Klassen ---
     all_classes = [
         cls for cls in display_map
         if cls != "Other" and (
@@ -1948,7 +2006,6 @@ def plot_caida_os_distribution_acm_style(
         "pdf.fonttype": 42,
     })
 
-    # --- Geometrie ---
     data_sets = []
     labels = []
 
@@ -1991,7 +2048,6 @@ def plot_caida_os_distribution_acm_style(
             left += val
         bars = current_bars
 
-    # --- Achsen ---
     ax.set_xlim(0, 100)
     ax.set_ylim(0, total_height)
 
@@ -2005,7 +2061,6 @@ def plot_caida_os_distribution_acm_style(
     ax.set_yticklabels(labels)
     ax.grid(axis="x", linestyle="--", linewidth=0.4, alpha=0.5)
 
-    # --- Legende ---
     legend_labels = [display_map.get(c, (c, None))[0] for c in all_classes]
     ncol = int(math.ceil(len(legend_labels) / 2))
     ax.legend(
@@ -2021,36 +2076,43 @@ def plot_caida_os_distribution_acm_style(
         columnspacing=0.8,
     )
 
+    t = _log("saving PDF ...")
     out_file = os.path.join(out_dir, "os_distribution_acm_style_fixed.pdf")
     plt.savefig(out_file, format="pdf", bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
-
-    print(f"[+] CAIDA OS distribution saved to {out_file}")
+    _log(f"PDF saved to {out_file}", t)
 
     # --- Metadata export ---
-    _write_caida_os_info(
+    t = _log("writing info.txt ...")
+    _write_caida_os_info_aggregated(
         os.path.join(out_dir, "info.txt"),
-        transit, endhost,
+        transit_abs, endhost_abs,
         transit_dist, endhost_dist,
         all_classes,
         transit_other=transit_values[-1],
         endhost_other=endhost_values[-1],
+        transit_total=int(transit_total),
+        endhost_total=int(endhost_total),
     )
+    _log("info.txt written", t)
+
+    _log("all done", t_global)
 
 
-def _write_caida_os_info(info_path, transit, endhost,
-                         transit_dist, endhost_dist,
-                         ordered_labels,
-                         transit_other, endhost_other):
-    """Schreibt Metadata-Info-Datei für die CAIDA OS Distribution."""
-    transit_abs = transit["LABEL"].value_counts()
-    endhost_abs = endhost["LABEL"].value_counts()
-
+def _write_caida_os_info_aggregated(
+        info_path,
+        transit_abs, endhost_abs,
+        transit_dist, endhost_dist,
+        ordered_labels,
+        transit_other, endhost_other,
+        transit_total, endhost_total,
+):
+    """Schreibt Metadata-Info-Datei für die aggregierte CAIDA OS Distribution."""
     with open(info_path, "w") as f:
         f.write("CAIDA OS Distribution Metadata\n")
         f.write("=====================================\n\n")
-        f.write(f"Total Transit-hops: {len(transit)}\n")
-        f.write(f"Total End-hosts:    {len(endhost)}\n\n")
+        f.write(f"Total Router rows:     {transit_total}\n")
+        f.write(f"Total All-Others rows: {endhost_total}\n\n")
         f.write("Per-OS Statistics (absolute and percentage)\n")
         f.write("--------------------------------------------------\n")
 
@@ -2058,69 +2120,19 @@ def _write_caida_os_info(info_path, transit, endhost,
             if lbl == "Other":
                 pct_t = transit_other
                 pct_e = endhost_other
-                abs_t = ""  # kein sauberer Absolutwert für "Other"
+                abs_t = ""
                 abs_e = ""
             else:
                 pct_t = transit_dist.get(lbl, 0)
                 pct_e = endhost_dist.get(lbl, 0)
-                abs_t = transit_abs.get(lbl, 0)
-                abs_e = endhost_abs.get(lbl, 0)
+                abs_t = int(transit_abs.get(lbl, 0))
+                abs_e = int(endhost_abs.get(lbl, 0))
 
             f.write(
                 f"{lbl}:\n"
-                f"  Transit:  {abs_t}  ({pct_t:.2f}%)\n"
-                f"  End-host: {abs_e}  ({pct_e:.2f}%)\n\n"
+                f"  Router:     {abs_t}  ({pct_t:.2f}%)\n"
+                f"  All Others: {abs_e}  ({pct_e:.2f}%)\n\n"
             )
-
-
-def plot_random_ipid_sequence(msm_path: str, pattern_name: str, count: int = 10):
-    probing_path = os.path.join(msm_path, "probing.csv.zst")
-    eval_path = os.path.join(msm_path, "eval.csv.zst")
-
-    con = duckdb.connect()
-
-    rows = con.execute(f"""
-        WITH eval AS (
-            SELECT IP
-            FROM read_csv_auto('{eval_path}', compression='zstd')
-            WHERE TRIM(IP_ID_PATTERN) = '{pattern_name}'
-            ORDER BY RANDOM()
-            LIMIT {count}
-        )
-        SELECT e.IP, p.IP_ID_SEQUENCE
-        FROM eval e
-        JOIN read_csv_auto('{probing_path}', compression='zstd') p
-        ON e.IP = p.IP
-    """).fetchall()
-
-    if not rows:
-        print(f"No entries found for pattern '{pattern_name}'")
-        return
-
-    for ip, seq in rows:
-        if not seq:
-            print(f"No IPID sequence found for IP {ip}")
-            continue
-
-        y = list(map(int, seq.split(',')))
-
-        plt.figure()
-        plt.plot(range(1, len(y) + 1), y, marker="o")
-        plt.xlabel("Index")
-        plt.ylabel("IPID Value")
-        plt.title(f"{pattern_name} – {ip}")
-        plt.grid(True)
-
-        print(f"{ip} : {seq}")
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        suffix = ''.join(random.choices(string.ascii_lowercase, k=3))
-        fn = f"plot_{pattern_name.replace(' ', '_')}_{timestamp}_{suffix}.png"
-
-        plt.savefig(fn, dpi=200, bbox_inches="tight")
-        plt.close()
-
-        print(f"Plot saved as {fn}")
 
 
 def plot_os_heatmap(msm_path: str, ident: str, os_groups: list[tuple[list[str], str]]):
