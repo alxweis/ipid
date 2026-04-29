@@ -3782,7 +3782,7 @@ def plot_increment_cdfs_acm_style_combined(
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 2.5))
+    fig, ax = plt.subplots(figsize=(5.0, 2.5))
 
     # Track handles per pattern so we can interleave seq/mass in the legend.
     seq_by_pat: dict = {}
@@ -3793,13 +3793,18 @@ def plot_increment_cdfs_acm_style_combined(
             display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
             sorted_vals = np.sort(increments)
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
-            (line,) = ax.step(
-                sorted_vals, cdf,
-                where="post",
+            xs = np.repeat(sorted_vals, 2)[1:]
+            ys = np.repeat(cdf, 2)[:-1]
+            (line,) = ax.plot(
+                xs, ys,
                 label=display_name,
                 linewidth=1.4,
                 color=color,
                 linestyle=linestyle,
+                solid_capstyle="butt",
+                dash_capstyle="butt",
+                dash_joinstyle="miter",
+                solid_joinstyle="miter",
             )
             sink[raw_name] = line
 
@@ -3808,7 +3813,7 @@ def plot_increment_cdfs_acm_style_combined(
 
     # Tighten dot spacing so ":" reads as clearly dotted at 1.4pt linewidth.
     for ln in mass_by_pat.values():
-        ln.set_dashes((1, 1.4))   # 1pt dot, 1.4pt gap
+        ln.set_dashes((1, 2.0))   # 1pt dot, 2pt gap — uniform across the curve
 
     ax.set_xscale("log")
     ax.set_xlim(left=0.891251)
