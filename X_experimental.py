@@ -3726,7 +3726,6 @@ def plot_increment_cdfs_acm_style_combined(
     def _label(disp: str, sub: str) -> str:
         return rf"$\text{{{disp}}}_{{\text{{{sub}}}}}$"
 
-    # Same color for both; only linestyle distinguishes msm.
     display_map_seq = {
         raw: (_label(disp, "RT"), color)
         for raw, (disp, color) in base_map.items()
@@ -3784,50 +3783,45 @@ def plot_increment_cdfs_acm_style_combined(
 
     fig, ax = plt.subplots(figsize=(5.5, 2.0))
 
-    # Track handles per pattern so we can interleave seq/mass in the legend.
     seq_by_pat: dict = {}
     mass_by_pat: dict = {}
 
     def _downsample_cdf(x: np.ndarray, y: np.ndarray, max_points: int = 4000):
-        """Subsample (x, y) for plotting. CDFs are monotone in y so a regular
-        sample over y-percentiles preserves the shape near-perfectly.
-        Always keeps the first and last point."""
         n = x.size
         if n <= max_points:
             return x, y
-        # Pick max_points indices roughly evenly spaced in y.
         idx = np.linspace(0, n - 1, max_points).astype(np.int64)
         idx = np.unique(idx)
         return x[idx], y[idx]
 
     def _draw(datasets, dmap, linestyle, sink):
-        for raw_name, increments, *_ in datasets:
+        # Each curve in `datasets` gets its own dash phase (offset) so that
+        # overlapping curves don't perfectly hide each other — the dashes of
+        # different curves interleave instead of stacking.
+        for i, (raw_name, increments, *_) in enumerate(datasets):
             display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
             sorted_vals = np.sort(increments)
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
             x, y = _downsample_cdf(sorted_vals, cdf, max_points=4000)
 
-            # IMPORTANT: use ax.plot, NOT ax.step. ax.step emits many short
-            # horizontal/vertical segments, and matplotlib resets the dash
-            # phase at every segment vertex — this produces the visible
-            # "glitches" you noticed in dotted/dashed curves on plateaus.
-            # ax.plot draws a single continuous Path so dashes flow evenly.
+            # IMPORTANT: ax.plot, NOT ax.step — ax.step resets dash phase at
+            # every step vertex which breaks the pattern on plateaus.
             if linestyle == "--":
-                (line,) = ax.plot(
-                    x, y,
-                    color=color, linewidth=1.4,
-                    linestyle="--", dashes=(4, 2.0),
-                    dash_capstyle="butt", dash_joinstyle="miter",
-                    label=display_name,
-                )
+                pattern = (4.0, 2.0)            # dash on, gap
             else:
-                (line,) = ax.plot(
-                    x, y,
-                    color=color, linewidth=1.4,
-                    linestyle=":", dashes=(1, 1.6),
-                    dash_capstyle="butt", dash_joinstyle="miter",
-                    label=display_name,
-                )
+                pattern = (1.0, 1.6)            # dot on, gap
+            period = sum(pattern)
+            # Spread offsets evenly across one period: with N curves, phases
+            # land at 0, period/N, 2·period/N, …
+            offset = (i / max(1, len(datasets))) * period
+
+            (line,) = ax.plot(
+                x, y,
+                color=color, linewidth=1.4,
+                linestyle=(offset, pattern),    # (offset, (on, off))
+                dash_capstyle="butt", dash_joinstyle="miter",
+                label=display_name,
+            )
             sink[raw_name] = line
 
     _draw(datasets_seq, display_map_seq, "--", seq_by_pat)
@@ -3854,8 +3848,6 @@ def plot_increment_cdfs_acm_style_combined(
         spine.set_linewidth(0.5)
 
     # --- Legende ---
-    # Erste 2 Einträge: Style-Erklärung in grau (RT = solid, FI = dotted).
-    # Danach: 1 Eintrag pro Pattern in Pattern-Farbe (solid) — kein Suffix.
     from matplotlib.lines import Line2D
 
     style_color = "#808080"
@@ -3883,7 +3875,7 @@ def plot_increment_cdfs_acm_style_combined(
         pattern_labels.append(disp)
 
     handles = [rt_proxy, fi_proxy] + pattern_handles
-    labels = pattern_labels + ["RT-based", "Fixed-Interval"]
+    labels = ["RT-based", "Fixed-Interval"] + pattern_labels
 
     ax.legend(
         handles, labels,
