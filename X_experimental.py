@@ -27,6 +27,7 @@ import zstandard as zstd
 from matplotlib import gridspec
 from matplotlib.collections import PolyCollection
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import to_rgb, to_hex
 from matplotlib.ticker import MultipleLocator, NullFormatter, LogLocator
 
 from analysis.main import plot_response_rate, calc_intersections, intersect_classifications, filter_ips_by_class
@@ -573,7 +574,7 @@ def main():
 
         plot_pattern_distribution_acm_style_old(str(sys.argv[2]), str(sys.argv[3]), str(sys.argv[4]))
     elif mode == 18:
-        if len(sys.argv) < 3:
+        if len(sys.argv) < 4:
             print_usage()
             return
 
@@ -583,7 +584,8 @@ def main():
         #             Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU, Pattern.RANDOM]
         patterns = [Pattern.GLOBAL, Pattern.PER_DST, Pattern.PER_CON, Pattern.PER_BUCKET, Pattern.PER_CPU,
                     Pattern.RANDOM]
-        plot_increment_cdfs_acm_style(str(sys.argv[2]), patterns)
+        # plot_increment_cdfs_acm_style(str(sys.argv[2]), patterns)
+        plot_increment_cdfs_acm_style_two(str(sys.argv[2]), str(sys.argv[3]), patterns)
         # plot_increment_cdfs_acm_style(str(sys.argv[2]), [Pattern.MULTI_GLOBAL, Pattern.RANDOM])
     elif mode == 19:
         if len(sys.argv) < 4:
@@ -3702,6 +3704,156 @@ def plot_increment_cdfs_acm_style(msm_path: str, patterns: list[Pattern]):
     plt.close(fig)
 
     print(f"[+] Multi-pattern ACM-style CDF saved to {output_file}")
+
+
+def _darken(hex_color: str, factor: float = 0.65) -> str:
+    """Multiply RGB channels by `factor` (0..1) to get a darker shade."""
+    r, g, b = to_rgb(hex_color)
+    return to_hex((r * factor, g * factor, b * factor))
+
+
+def plot_increment_cdfs_acm_style_two(
+        msm_path_seq: str,
+        msm_path_mass: str,
+        patterns,
+):
+    # --- Klassen-Mapping (seq = original) ---
+    display_map_seq = {
+        "Mirror": ("Reflection", "#FFE866"),
+        "Constant": ("Constant", "#6FB8FF"),
+        "Single": ("Single", "#FF8080"),
+        "Per-Dst": ("Per-Destination", "#B580FF"),
+        "Per-Con": ("Per-Connection", "#FF85C1"),
+        "Per-Bucket": ("Per-Bucket", "#6EE66E"),
+        "Per-CPU": ("Multi", "#66E0E0"),
+        "Random": ("Random", "#FFB266"),
+        "Fallback": ("Unclassified", "#CCCCCC"),
+    }
+    # mass = labels mit "_2", Farben abgedunkelt
+    display_map_mass = {
+        k: (f"{label}_2", _darken(color, 0.6))
+        for k, (label, color) in display_map_seq.items()
+    }
+    order_index = {k: i for i, k in enumerate(display_map_seq)}
+
+    # --- Daten laden für eine msm ---
+    def _load(msm_path):
+        out = []
+        for pattern in patterns:
+            raw_name = pattern.value
+            data_path = os.path.join(
+                msm_path, "analysis", "inc_distribution",
+                raw_name.lower().replace(" ", ""),
+                "data.npy",
+            )
+            if not os.path.exists(data_path):
+                print(f"[!] Skipping {raw_name} for {msm_path}: no data file.")
+                continue
+            increments = np.load(data_path)
+            if increments.size == 0:
+                print(f"[!] Skipping {raw_name} for {msm_path}: empty data.")
+                continue
+            # 99.9-Perzentil clip
+            q = np.quantile(increments, 0.999)
+            increments = increments[increments <= q]
+            out.append((raw_name, increments))
+        out.sort(key=lambda d: order_index.get(d[0], 999))
+        return out
+
+    datasets_mass = _load(msm_path_mass)
+    datasets_seq = _load(msm_path_seq)
+
+    if not datasets_mass and not datasets_seq:
+        print("[!] No data to plot.")
+        return
+
+    # --- Plot-Style ---
+    plt.rcParams.update({
+        "font.family": "serif",
+        "font.serif": ["Latin Modern Roman"],
+        "mathtext.fontset": "cm",
+        "font.size": 10,
+        "axes.linewidth": 0.8,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+        "legend.fontsize": 9,
+        "pdf.fonttype": 42,
+    })
+
+    fig, ax = plt.subplots(figsize=(4.5, 2.0))
+
+    # --- Kurven zeichnen: seq (solid), dann mass (dashed, dunkler) ---
+    def _plot(datasets, dmap, linestyle):
+        for raw_name, increments in datasets:
+            display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
+            sorted_vals = np.sort(increments)
+            cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
+            ax.step(
+                sorted_vals, cdf,
+                where="post",
+                label=display_name,
+                linewidth=1.4,
+                color=color,
+                linestyle=linestyle,
+            )
+
+    _plot(datasets_seq, display_map_seq, "-")
+    _plot(datasets_mass, display_map_mass, "--")
+
+    # --- Achsen ---
+    ax.set_xscale("log")
+    ax.set_xlim(left=0.891251)
+    y_major = np.arange(0, 101, 20)
+    ax.set_yticks(y_major)
+    y_minor = y_major[:-1] + 10
+    ax.set_yticks(y_minor, minor=True)
+    ax.yaxis.set_minor_formatter(NullFormatter())
+    ax.set_ylim(0, 105)
+    ax.set_xlabel("IP-ID Increment", labelpad=2)
+    ax.set_ylabel("Cumulative Percentage [%]", labelpad=2)
+    ax.grid(True, which="major", linestyle="--", linewidth=0.4, alpha=0.5)
+    ax.grid(True, which="minor", linestyle=":", linewidth=0.3, alpha=0.3)
+    ax.tick_params(axis="both", which="major", length=3, width=0.5)
+    ax.tick_params(axis="both", which="minor", length=1.5, width=0.5)
+    for spine in ax.spines.values():
+        spine.set_linewidth(0.5)
+
+    n_labels = len(datasets_seq) + len(datasets_mass)
+    ax.legend(
+        loc="lower center",
+        bbox_to_anchor=(0.5, 1.0),
+        bbox_transform=ax.transAxes,
+        ncol=min(4, max(1, n_labels)),
+        frameon=False,
+        handlelength=1.4,
+        handletextpad=0.3,
+        columnspacing=0.8,
+    )
+    plt.tight_layout(pad=0.4)
+
+    # --- Speichern (in mass-Pfad) ---
+    output_dir = os.path.join(msm_path_mass, "analysis", "inc_distribution")
+    os.makedirs(output_dir, exist_ok=True)
+    output_file = os.path.join(output_dir, "plot_cdf_multi_acm_style_two.pdf")
+    plt.savefig(output_file, format="pdf", bbox_inches="tight", dpi=300, pad_inches=0.02)
+    plt.close(fig)
+    print(f"[+] Multi-pattern (mass+seq) ACM-style CDF saved to {output_file}")
+
+    # --- Anteile <1000 und <2000 ---
+    def _print_portions(label, datasets):
+        if not datasets:
+            return
+        print(f"\n[{label}] portion of increments < 1000 / < 2000 (after 99.9% clip):")
+        for raw_name, incs in datasets:
+            n = incs.size
+            p1k = np.sum(incs < 1000) / n * 100
+            p2k = np.sum(incs < 2000) / n * 100
+            print(f"    {raw_name:<11s} (n={n:>10,d})  "
+                  f"<1000: {p1k:7.3f}%   <2000: {p2k:7.3f}%")
+
+    _print_portions("seq", datasets_seq)
+    _print_portions("mass", datasets_mass)
 
 
 if __name__ == "__main__":
