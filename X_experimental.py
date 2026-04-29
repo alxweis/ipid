@@ -3793,6 +3793,10 @@ def plot_increment_cdfs_acm_style_combined(
             display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
             sorted_vals = np.sort(increments)
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
+            # Build a "step-post" path manually so the whole curve is one
+            # continuous Path. ax.step() emits many sub-segments, which makes
+            # dotted/dashed line styles reset at every segment boundary and
+            # produces uneven spacing on long horizontal plateaus.
             xs = np.repeat(sorted_vals, 2)[1:]
             ys = np.repeat(cdf, 2)[:-1]
             (line,) = ax.plot(
@@ -3809,11 +3813,11 @@ def plot_increment_cdfs_acm_style_combined(
             sink[raw_name] = line
 
     _draw(datasets_seq, display_map_seq, "-", seq_by_pat)
-    _draw(datasets_mass, display_map_mass, ":", mass_by_pat)
+    _draw(datasets_mass, display_map_mass, "--", mass_by_pat)
 
-    # Tighten dot spacing so ":" reads as clearly dotted at 1.4pt linewidth.
+    # Tune dash spacing so it reads as clearly dashed at 1.4pt linewidth.
     for ln in mass_by_pat.values():
-        ln.set_dashes((1, 2.0))   # 1pt dot, 2pt gap — uniform across the curve
+        ln.set_dashes((4, 2.0))   # 4pt dash, 2pt gap — uniform across the curve
 
     ax.set_xscale("log")
     ax.set_xlim(left=0.891251)
