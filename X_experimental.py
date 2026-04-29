@@ -3793,31 +3793,60 @@ def plot_increment_cdfs_acm_style_combined(
             display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
             sorted_vals = np.sort(increments)
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
-            # Build a "step-post" path manually so the whole curve is one
-            # continuous Path. ax.step() emits many sub-segments, which makes
-            # dotted/dashed line styles reset at every segment boundary and
-            # produces uneven spacing on long horizontal plateaus.
-            xs = np.repeat(sorted_vals, 2)[1:]
-            ys = np.repeat(cdf, 2)[:-1]
-            (line,) = ax.plot(
-                xs, ys,
-                label=display_name,
-                linewidth=1.4,
-                color=color,
-                linestyle=linestyle,
-                solid_capstyle="butt",
-                dash_capstyle="butt",
-                dash_joinstyle="miter",
-                solid_joinstyle="miter",
-            )
+            x = sorted_vals
+            y = cdf
+
+            if linestyle == "-":
+                # Standard step-post curve, single connected path.
+                xs = np.repeat(x, 2)[1:]
+                ys = np.repeat(y, 2)[:-1]
+                (line,) = ax.plot(
+                    xs, ys, color=color, linewidth=1.4,
+                    linestyle="-", solid_capstyle="butt",
+                    label=display_name,
+                )
+            else:
+                # Dotted step-post: do NOT include the vertical jumps in the
+                # dotted path (long verticals + dot phase = visible glitch
+                # at every jump). Instead:
+                #   1) draw one connected DOTTED polyline with uniform dot phase
+                #   2) overlay SOLID vertical line segments at each jump so
+                #      the visual still reads as a step function.
+                # The dashed path:
+                #   start: (x[0], y[0])
+                #   then for i in 1..n-1: (x[i], y[i-1]), (x[i], y[i])
+                # We feed this as a single np.array to ax.plot — matplotlib
+                # advances the dash phase smoothly along the whole polyline
+                # and the verticals overlay them cleanly.
+                xs = np.repeat(x, 2)[1:]
+                ys = np.repeat(y, 2)[:-1]
+                (line,) = ax.plot(
+                    xs, ys, color=color, linewidth=1.4,
+                    linestyle=":", dashes=(1, 1.6),
+                    dash_capstyle="butt", dash_joinstyle="miter",
+                    label=display_name,
+                )
+                # Solid vertical overlays at each jump, in the same color,
+                # so the eye doesn't see a "broken dot" where the curve
+                # jumps. zorder slightly above the dotted path.
+                if x.size >= 2:
+                    from matplotlib.collections import LineCollection
+                    vert = np.stack(
+                        [np.column_stack([x[1:], y[:-1]]),
+                         np.column_stack([x[1:], y[1:]])],
+                        axis=1,
+                    )
+                    lc_v = LineCollection(
+                        vert, colors=color, linewidths=1.4,
+                        linestyles="solid", capstyle="butt",
+                        zorder=line.get_zorder() + 0.1,
+                    )
+                    ax.add_collection(lc_v)
+
             sink[raw_name] = line
 
     _draw(datasets_seq, display_map_seq, "-", seq_by_pat)
-    _draw(datasets_mass, display_map_mass, "--", mass_by_pat)
-
-    # Tune dash spacing so it reads as clearly dashed at 1.4pt linewidth.
-    for ln in mass_by_pat.values():
-        ln.set_dashes((4, 2.0))   # 4pt dash, 2pt gap — uniform across the curve
+    _draw(datasets_mass, display_map_mass, ":", mass_by_pat)
 
     ax.set_xscale("log")
     ax.set_xlim(left=0.891251)
@@ -3839,26 +3868,45 @@ def plot_increment_cdfs_acm_style_combined(
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
 
-    # --- Legende: pro Pattern abwechselnd seq, mass ---
-    ordered_handles, ordered_labels = [], []
+    # --- Legende ---
+    # Erste 2 Einträge: Style-Erklärung in grau (RT = solid, FI = dotted).
+    # Danach: 1 Eintrag pro Pattern in Pattern-Farbe (solid) — kein Suffix.
+    from matplotlib.lines import Line2D
+
+    style_color = "#808080"
+    rt_proxy = Line2D([0], [0], color=style_color, linewidth=1.4,
+                      linestyle="-", label="RT-based")
+    fi_proxy = Line2D([0], [0], color=style_color, linewidth=1.4,
+                      linestyle=":", dashes=(1, 1.6),
+                      dash_capstyle="butt",
+                      label="Fixed-Interval")
+
+    pattern_handles, pattern_labels = [], []
+    seen = set()
     for pat in sorted(set(seq_by_pat) | set(mass_by_pat),
                       key=lambda p: order_index.get(p, 999)):
-        if pat in seq_by_pat:
-            ordered_handles.append(seq_by_pat[pat])
-            ordered_labels.append(seq_by_pat[pat].get_label())
-        if pat in mass_by_pat:
-            ordered_handles.append(mass_by_pat[pat])
-            ordered_labels.append(mass_by_pat[pat].get_label())
+        if pat in seen:
+            continue
+        seen.add(pat)
+        disp = base_map.get(pat, (pat,))[0]
+        color = base_map.get(pat, (pat, "#808080"))[1]
+        proxy = Line2D([0], [0], color=color, linewidth=1.4,
+                       linestyle="-", label=disp)
+        pattern_handles.append(proxy)
+        pattern_labels.append(disp)
+
+    handles = [rt_proxy, fi_proxy] + pattern_handles
+    labels = ["RT-based", "Fixed-Interval"] + pattern_labels
 
     ax.legend(
-        ordered_handles, ordered_labels,
+        handles, labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
         bbox_transform=ax.transAxes,
         ncol=4,
         frameon=False,
-        handlelength=1.4,
-        handletextpad=0.3,
+        handlelength=1.6,
+        handletextpad=0.4,
         columnspacing=0.9,
     )
 
