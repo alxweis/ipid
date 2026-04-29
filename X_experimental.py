@@ -3721,7 +3721,6 @@ def plot_increment_cdfs_acm_style_combined(
         msm_mass: str,
         patterns,  # list[Pattern]
 ):
-    # Base colors (the originals from the single-msm version).
     base_map = {
         "Mirror":     ("Reflection",      "#FFE866"),
         "Constant":   ("Constant",        "#6FB8FF"),
@@ -3733,20 +3732,17 @@ def plot_increment_cdfs_acm_style_combined(
         "Random":     ("Random",          "#FFB266"),
         "Fallback":   ("Unclassified",    "#CCCCCC"),
     }
-    # seq = lighter + subscript "_1"
-    # mass = darker  + subscript "_2"
-    # Subscript via mathtext: $name_{1}$  (escape spaces/hyphens with \mathrm).
-    def _label(disp: str, sub: str) -> str:
-        # \text{...} renders upright text in mathtext and handles spaces/hyphens
-        # naturally (no escaping needed).
-        return rf"$\text{{{disp}}}_{{{sub}}}$"
 
+    def _label(disp: str, sub: str) -> str:
+        return rf"$\text{{{disp}}}_{{\text{{{sub}}}}}$"
+
+    # Same color for both — only linestyle distinguishes msm.
     display_map_seq = {
-        raw: (_label(disp, "RT"), _shift(color, 1.20))
+        raw: (_label(disp, "RT"), color)
         for raw, (disp, color) in base_map.items()
     }
     display_map_mass = {
-        raw: (_label(disp, "FI"), _shift(color, 0.65))
+        raw: (_label(disp, "FI"), color)
         for raw, (disp, color) in base_map.items()
     }
     order_index = {k: i for i, k in enumerate(base_map)}
@@ -3784,7 +3780,6 @@ def plot_increment_cdfs_acm_style_combined(
         print("[!] No data to plot.")
         return
 
-    # --- Plot-Style ---
     plt.rcParams.update({
         "font.family": "serif",
         "font.serif": ["Latin Modern Roman"],
@@ -3798,28 +3793,31 @@ def plot_increment_cdfs_acm_style_combined(
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.0, 2.5))
+    fig, ax = plt.subplots(figsize=(5.5, 2.5))
 
-    # Order matters for legend: seq first, then mass.
-    seq_handles, mass_handles = [], []
+    # Stash handles per pattern so we can interleave seq/mass in the legend.
+    seq_by_pat: dict = {}
+    mass_by_pat: dict = {}
 
-    def _draw(datasets, dmap, sink):
-        for raw_name, increments, *_ in datasets:
+    def _draw(datasets, dmap, sink, linestyle):
+        for raw_name, increments, n_total, *_ in datasets:
             display_name, color = dmap.get(raw_name, (raw_name, "#808080"))
+            # Append n=... to the legend label.
+            label = rf"{display_name} (n={n_total})"
             sorted_vals = np.sort(increments)
             cdf = np.arange(1, len(sorted_vals) + 1) / len(sorted_vals) * 100
             (line,) = ax.step(
                 sorted_vals, cdf,
                 where="post",
-                label=display_name,
+                label=label,
                 linewidth=1.4,
                 color=color,
-                linestyle="-",   # solid for both — only color encodes msm.
+                linestyle=linestyle,
             )
-            sink.append(line)
+            sink[raw_name] = line
 
-    _draw(datasets_seq, display_map_seq, seq_handles)
-    _draw(datasets_mass, display_map_mass, mass_handles)
+    _draw(datasets_seq, display_map_seq, seq_by_pat, linestyle="-")
+    _draw(datasets_mass, display_map_mass, mass_by_pat, linestyle=":")
 
     # --- Achsen ---
     ax.set_xscale("log")
@@ -3842,18 +3840,28 @@ def plot_increment_cdfs_acm_style_combined(
     for spine in ax.spines.values():
         spine.set_linewidth(0.5)
 
-    # --- Legende: 2 Zeilen, 4 Spalten, seq zuerst dann mass ---
-    ordered_handles = seq_handles + mass_handles
+    # --- Legende: für jedes Pattern abwechselnd RT (seq) dann FI (mass) ---
+    ordered_handles = []
+    all_pats = sorted(
+        set(seq_by_pat) | set(mass_by_pat),
+        key=lambda p: order_index.get(p, 999),
+        )
+    for pat in all_pats:
+        if pat in seq_by_pat:
+            ordered_handles.append(seq_by_pat[pat])
+        if pat in mass_by_pat:
+            ordered_handles.append(mass_by_pat[pat])
     ordered_labels = [h.get_label() for h in ordered_handles]
+
     ax.legend(
         ordered_handles, ordered_labels,
         loc="lower center",
         bbox_to_anchor=(0.5, 1.0),
         bbox_transform=ax.transAxes,
-        ncol=4,
+        ncol=2,
         frameon=False,
-        handlelength=1.0,
-        handletextpad=0.2,
+        handlelength=1.6,        # a bit longer so dotted vs solid is visible
+        handletextpad=0.4,
         columnspacing=0.8,
     )
 
