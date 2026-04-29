@@ -3781,7 +3781,7 @@ def plot_increment_cdfs_acm_style_combined(
         "pdf.fonttype": 42,
     })
 
-    fig, ax = plt.subplots(figsize=(5.5, 2.0))
+    fig, ax = plt.subplots(figsize=(5.0, 2.0))
 
     seq_by_pat: dict = {}
     mass_by_pat: dict = {}
