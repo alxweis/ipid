@@ -1822,7 +1822,6 @@ def print_constant_pattern_distribution(msm_path: str):
         print(f"{k}: {v} ({v / s * 100:.6f}%)")
 
 
-####
 def plot_caida_os_distribution_acm_style(
         caida_itdk_path: str,
         msm_path: str,
@@ -1835,6 +1834,7 @@ def plot_caida_os_distribution_acm_style(
     ip_to_node_file = os.path.join(caida_itdk_path, "ip_to_node.csv.zst")
     targets_base_path = os.path.dirname(os.readlink(os.path.join(msm_path, "targets.csv.zst")))
     targets_os_file = os.path.join(targets_base_path, "targets_os.csv.zst")
+    eval_file = os.path.join(msm_path, "eval.csv.zst")
     out_dir = os.path.join(msm_path, "analysis", "caida_os_distribution")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -1848,15 +1848,32 @@ def plot_caida_os_distribution_acm_style(
         CREATE VIEW targets_os AS
         SELECT IP, OS FROM read_csv_auto('{targets_os_file}', compression='zstd');
     """)
+    con.execute(f"""
+        CREATE VIEW eval_ips AS
+        SELECT IP FROM read_csv_auto('{eval_file}', compression='zstd');
+    """)
+
+    # Router: T=1 aus ip_to_node, OS via JOIN, OS muss vorhanden sein
+    # All Others: eval.csv.zst MINUS T=1 (anti-join), OS via JOIN, OS muss vorhanden sein
     df_joined = con.execute("""
-        SELECT n.IP, n.T, n.D, t.OS
+        SELECT 'router' AS GROUP_TAG, t.OS
         FROM ip_to_node n
-        LEFT JOIN targets_os t ON n.IP = t.IP
-        WHERE (n.T = 1) OR (n.T = 0 AND n.D = 1)
+        JOIN targets_os t ON n.IP = t.IP
+        WHERE n.T = 1 AND t.OS IS NOT NULL
+
+        UNION ALL
+
+        SELECT 'others' AS GROUP_TAG, t.OS
+        FROM eval_ips e
+        JOIN targets_os t ON e.IP = t.IP
+        WHERE t.OS IS NOT NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM ip_to_node n
+              WHERE n.IP = e.IP AND n.T = 1
+          )
     """).fetch_df()
     con.close()
 
-    df_joined = df_joined[df_joined["OS"].notna()]
     df_joined["OS"] = df_joined["OS"].astype(str).str.lower()
 
     # --- OS -> Gruppe/Raw mapping ---
@@ -1868,24 +1885,22 @@ def plot_caida_os_distribution_acm_style(
 
     df_joined["LABEL"] = df_joined["OS"].apply(map_os_to_group_or_raw)
 
-    # Save CSV
+    # Save CSV (jetzt mit GROUP_TAG statt T/D)
     df_joined.to_csv(os.path.join(out_dir, "caida_os.csv.zst"),
                      index=False, compression="zstd")
 
     # --- Distributions ---
-    transit = df_joined[df_joined["T"] == 1]
-    endhost = df_joined[(df_joined["T"] == 0) & (df_joined["D"] == 1)]
+    transit = df_joined[df_joined["GROUP_TAG"] == "router"]
+    endhost = df_joined[df_joined["GROUP_TAG"] == "others"]
 
     transit_dist = transit["LABEL"].value_counts(normalize=True) * 100
     endhost_dist = endhost["LABEL"].value_counts(normalize=True) * 100
 
     # --- Display-Map bauen (Reihenfolge = Sortier- und Legendenreihenfolge) ---
-    # Basis: OS-Gruppen in definierter Reihenfolge
     display_map = {
         grp: (grp, col) for grp, (_, col) in os_groups.items()
     }
 
-    # Zusätzliche einzelne OSes > 1% in stabiler Reihenfolge anhängen
     extra_labels = sorted(
         lbl for lbl in set(df_joined["LABEL"])
         if lbl not in os_groups
@@ -1899,11 +1914,9 @@ def plot_caida_os_distribution_acm_style(
     for lbl in extra_labels:
         display_map[lbl] = (pretty_oses.get(lbl, lbl), _stable_color(lbl))
 
-    # Fallback/Unclassified vor "Other"
     if "Fallback" in display_map:
         display_map["Fallback"] = ("Unclassified", display_map["Fallback"][1])
 
-    # "Other" als letzte Kategorie
     display_map["Other"] = ("Other", fallback_color)
 
     # --- Gefilterte Klassen (>1% in mindestens einem Datensatz) + Other ---
@@ -1917,7 +1930,6 @@ def plot_caida_os_distribution_acm_style(
     transit_values = [transit_dist.get(c, 0.0) for c in all_classes]
     endhost_values = [endhost_dist.get(c, 0.0) for c in all_classes]
 
-    # Rest zu 100% als "Other"
     all_classes.append("Other")
     transit_values.append(100 - sum(transit_values))
     endhost_values.append(100 - sum(endhost_values))
@@ -1948,7 +1960,6 @@ def plot_caida_os_distribution_acm_style(
     labels.append("Router")
 
     n_bars = len(data_sets)
-
     total_height = 2 * y_padding + n_bars * bar_height + max(n_bars - 1, 0) * bar_gap
     y_positions = [
         y_padding + bar_height / 2 + i * (bar_height + bar_gap)
@@ -2010,7 +2021,7 @@ def plot_caida_os_distribution_acm_style(
         columnspacing=0.8,
     )
 
-    out_file = os.path.join(out_dir, "os_distribution_acm_style_new.pdf")
+    out_file = os.path.join(out_dir, "os_distribution_acm_style_fixed.pdf")
     plt.savefig(out_file, format="pdf", bbox_inches="tight", pad_inches=0.02)
     plt.close(fig)
 
