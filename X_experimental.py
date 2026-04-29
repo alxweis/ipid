@@ -3874,8 +3874,8 @@ def plot_increment_cdfs_acm_style_combined(
         pattern_handles.append(proxy)
         pattern_labels.append(disp)
 
-    handles = [rt_proxy, fi_proxy] + pattern_handles
-    labels = ["RT-based", "Fixed-Interval"] + pattern_labels
+    handles = pattern_handles + [rt_proxy, fi_proxy]
+    labels = pattern_labels + ["RT-based", "Fixed-Interval"]
 
     ax.legend(
         handles, labels,
